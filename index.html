@@ -1,0 +1,1735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CIT Document Tracker — Group 6</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --bg:#f0f2f5; --sidebar:#141a16; --accent:#4ade80; --accent-d:#22c55e;
+  --text:#1a1a1a; --muted:#6b7280; --border:#e2e8f0; --white:#ffffff;
+  --red:#ef4444; --yellow:#f59e0b; --blue:#3b82f6; --purple:#8b5cf6;
+  --card:#ffffff; --mono:'DM Mono',monospace; --sans:'DM Sans',sans-serif;
+  --orange:#f97316;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;display:flex;}
+
+/* AUTH */
+#auth-screen{display:none;position:fixed;inset:0;z-index:999;background:radial-gradient(ellipse at 60% 40%,#1e3a28 0%,#0d1a10 60%,#0a0f0b 100%);align-items:center;justify-content:center;}
+#auth-screen.auth-show{display:flex;}
+.auth-card{display:flex;flex-direction:column;align-items:center;width:360px;max-width:95vw;animation:popIn .3s ease;}
+.auth-badge{width:52px;height:52px;background:var(--accent);border-radius:50%;display:grid;place-items:center;font-size:26px;margin-bottom:18px;}
+.auth-card>h2{font-size:20px;font-weight:600;color:#e6edf3;margin-bottom:20px;text-align:center;letter-spacing:-.3px;}
+.auth-tabs{display:flex;gap:2px;background:rgba(255,255,255,.06);border-radius:8px;padding:3px;width:100%;margin-bottom:18px;}
+.auth-tab{flex:1;padding:8px;border:none;border-radius:6px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;color:rgba(255,255,255,.45);background:transparent;transition:all .15s;}
+.auth-tab.active{background:rgba(74,222,128,.15);color:var(--accent);}
+.auth-field{width:100%;margin-bottom:10px;}
+.auth-field input{width:100%;padding:11px 14px;border:1px solid #30363d;border-radius:6px;font-family:var(--sans);font-size:14px;outline:none;color:#e6edf3;background:#161b22;transition:all .15s;}
+.auth-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(74,222,128,.1);}
+.auth-field input::placeholder{color:rgba(255,255,255,.3);font-size:13px;}
+.btn-auth-submit{width:100%;padding:11px;background:var(--accent);color:#0d1117;border:none;border-radius:6px;font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;margin-top:4px;}
+.btn-auth-submit:hover{background:var(--accent-d);}
+.btn-auth-link{background:none;border:none;color:rgba(74,222,128,.7);font-family:var(--sans);font-size:12px;cursor:pointer;margin-top:8px;text-decoration:underline;width:100%;text-align:center;}
+.btn-auth-link:hover{color:var(--accent);}
+.auth-error{color:#f85149;font-size:12px;margin-top:10px;width:100%;padding:9px 12px;background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.2);border-radius:6px;text-align:center;}
+.auth-footer{font-size:11px;color:rgba(255,255,255,.3);margin-top:20px;text-align:center;}
+.auth-divider{width:100%;border-top:1px solid rgba(255,255,255,.08);margin:14px 0;}
+
+/* TRACKING PAGE */
+#track-screen{display:none;position:fixed;inset:0;z-index:1000;overflow-y:auto;background:#0a0f0b;}
+#track-screen.show{display:block;}
+.track-hero{background:radial-gradient(ellipse at 50% 0%,#1a3d22 0%,#0d1a10 55%,#0a0f0b 100%);padding:48px 24px 36px;text-align:center;border-bottom:1px solid rgba(74,222,128,.1);}
+.track-logo{display:inline-flex;align-items:center;gap:10px;margin-bottom:32px;padding:8px 16px;border:1px solid rgba(74,222,128,.2);border-radius:99px;background:rgba(74,222,128,.06);}
+.track-logo-dot{width:20px;height:20px;background:var(--accent);border-radius:5px;display:grid;place-items:center;font-size:10px;}
+.track-logo span{font-size:12px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.5px;}
+.track-doc-badge{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:28px;margin:0 auto 16px;border:2px solid rgba(74,222,128,.3);}
+.track-doc-name{font-size:24px;font-weight:700;color:#e6edf3;margin-bottom:6px;letter-spacing:-.3px;}
+.track-doc-meta{font-size:13px;color:rgba(255,255,255,.4);font-family:'DM Mono',monospace;}
+.track-status-pill{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:99px;font-size:14px;font-weight:700;margin-top:18px;letter-spacing:.2px;}
+.track-body{max-width:680px;margin:0 auto;padding:32px 24px 60px;}
+.track-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;margin-bottom:16px;overflow:hidden;}
+.track-card-head{padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:8px;}
+.track-card-head h3{font-size:13px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.3px;text-transform:uppercase;}
+.track-card-body{padding:18px 20px;}
+.track-field{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start;}
+.track-field:last-child{margin-bottom:0;}
+.track-field-label{font-size:11px;font-weight:600;color:rgba(255,255,255,.3);letter-spacing:.5px;text-transform:uppercase;width:110px;flex-shrink:0;padding-top:2px;}
+.track-field-value{font-size:14px;color:rgba(255,255,255,.85);font-weight:500;flex:1;line-height:1.5;}
+.track-workflow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:18px 20px;}
+.twf-step{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:60px;}
+.twf-dot{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;border:2px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);background:rgba(255,255,255,.04);font-weight:700;}
+.twf-dot.done{background:rgba(74,222,128,.15);border-color:rgba(74,222,128,.5);color:#4ade80;}
+.twf-dot.current{background:var(--accent);border-color:var(--accent-d);color:#0d1117;box-shadow:0 0 16px rgba(74,222,128,.4);}
+.twf-dot.rejected{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.4);color:#f87171;}
+.twf-label{font-size:10px;color:rgba(255,255,255,.3);text-align:center;white-space:nowrap;font-weight:500;}
+.twf-label.done{color:rgba(74,222,128,.7);}
+.twf-label.current{color:var(--accent);font-weight:700;}
+.twf-label.rejected{color:#f87171;}
+.twf-arrow{color:rgba(255,255,255,.12);font-size:18px;flex-shrink:0;margin-top:-4px;}
+.track-timeline{position:relative;padding-left:24px;}
+.track-timeline::before{content:'';position:absolute;left:9px;top:0;bottom:0;width:2px;background:rgba(255,255,255,.08);}
+.ttl-item{position:relative;margin-bottom:20px;}
+.ttl-item:last-child{margin-bottom:0;}
+.ttl-dot{position:absolute;left:-24px;top:3px;width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.1);background:#1a2620;}
+.ttl-dot.released{background:#22c55e;border-color:rgba(74,222,128,.6);box-shadow:0 0 8px rgba(74,222,128,.3);}
+.ttl-dot.rejected{background:#ef4444;border-color:rgba(239,68,68,.5);}
+.ttl-dot.approved{background:#16a34a;border-color:rgba(74,222,128,.4);}
+.ttl-dot.processing{background:#f59e0b;border-color:rgba(245,158,11,.4);}
+.ttl-dot.forapproval{background:#3b82f6;border-color:rgba(59,130,246,.4);}
+.ttl-dot.received{background:#64748b;border-color:rgba(100,116,139,.4);}
+.ttl-status-label{font-size:13px;font-weight:700;color:rgba(255,255,255,.85);}
+.ttl-meta{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
+.ttl-note{font-size:12px;color:rgba(255,255,255,.5);margin-top:6px;padding:8px 12px;background:rgba(255,255,255,.04);border-radius:6px;font-style:italic;}
+.track-enc-box{background:rgba(0,0,0,.3);border:1px solid rgba(74,222,128,.15);border-radius:10px;padding:14px 16px;}
+.track-enc-row{display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;}
+.track-enc-row:last-child{margin-bottom:0;}
+.track-enc-label{font-size:10px;font-weight:700;color:rgba(74,222,128,.5);letter-spacing:.5px;text-transform:uppercase;width:80px;flex-shrink:0;padding-top:2px;}
+.track-enc-val{font-family:'DM Mono',monospace;font-size:11px;word-break:break-all;color:rgba(74,222,128,.7);}
+.track-back-btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:var(--accent);color:#0d1117;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;margin-top:4px;}
+.track-back-btn:hover{background:var(--accent-d);}
+.track-not-found{text-align:center;padding:80px 24px;}
+.track-not-found h2{font-size:20px;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:8px;}
+.track-not-found p{font-size:14px;color:rgba(255,255,255,.35);}
+
+/* ENCRYPT ANIMATION */
+#encrypt-overlay{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);align-items:center;justify-content:center;}
+#encrypt-overlay.show{display:flex;}
+.encrypt-card{background:#111b14;border:1px solid rgba(74,222,128,.2);border-radius:16px;padding:32px 36px;width:380px;max-width:95vw;text-align:center;animation:popIn .25s ease;}
+.encrypt-icon{font-size:36px;margin-bottom:14px;animation:spin 1.5s linear infinite;display:inline-block;}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.encrypt-card h3{color:#e6edf3;font-size:16px;font-weight:600;margin-bottom:6px;}
+.encrypt-step{color:var(--accent);font-size:13px;margin-bottom:16px;font-family:var(--mono);min-height:20px;}
+.encrypt-bar-wrap{background:rgba(255,255,255,.08);border-radius:99px;height:6px;overflow:hidden;margin-bottom:10px;}
+.encrypt-bar{height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .4s ease;}
+.encrypt-substep{font-size:11px;color:rgba(255,255,255,.3);font-family:var(--mono);min-height:16px;}
+
+/* APP */
+#app{display:none;width:100%;}
+#app.show{display:flex;min-height:100vh;}
+
+/* SIDEBAR */
+.sidebar{width:224px;min-height:100vh;background:#141a16;display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh;border-right:1px solid rgba(255,255,255,.05);overflow-y:auto;}
+.sidebar-logo{padding:14px 14px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.05);margin-bottom:4px;}
+.logo-mark{width:28px;height:28px;background:var(--accent);border-radius:7px;display:grid;place-items:center;font-size:14px;flex-shrink:0;}
+.sidebar-logo h1{color:#e2e8e4;font-size:13px;font-weight:600;line-height:1.2;}
+.user-info-bar{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);margin-bottom:4px;display:flex;align-items:center;gap:9px;}
+.user-avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;color:#0d1117;}
+.user-name{font-size:13px;color:rgba(255,255,255,.75);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.user-role-badge{font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:20px;margin-top:1px;display:inline-block;}
+.role-admin{background:rgba(249,115,22,.18);color:#fb923c;}
+.role-user{background:rgba(59,130,246,.15);color:#60a5fa;}
+.nav-section-label{padding:12px 14px 4px;font-size:10px;font-weight:500;color:rgba(255,255,255,.22);letter-spacing:.5px;text-transform:uppercase;}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 14px;color:rgba(255,255,255,.48);font-size:13px;cursor:pointer;border:none;background:none;width:calc(100% - 12px);margin:1px 6px;border-radius:6px;transition:all .12s;font-family:var(--sans);position:relative;}
+.nav-item:hover{color:rgba(255,255,255,.85);background:rgba(255,255,255,.06);}
+.nav-item.active{color:#fff;background:rgba(74,222,128,.12);font-weight:500;}
+.nav-item.active .nav-icon svg{stroke:var(--accent);}
+.nav-icon{width:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;opacity:.7;}
+.nav-item.active .nav-icon{opacity:1;}
+.nav-badge{background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:99px;padding:1px 5px;margin-left:auto;}
+.sidebar-bottom{margin-top:auto;padding:10px 10px;border-top:1px solid rgba(255,255,255,.05);}
+.lock-btn{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;background:none;border:none;border-radius:6px;color:rgba(255,255,255,.35);font-size:13px;cursor:pointer;transition:all .12s;font-family:var(--sans);}
+.lock-btn:hover{color:#f87171;background:rgba(239,68,68,.08);}
+.notif-btn{position:relative;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 10px;cursor:pointer;color:rgba(255,255,255,.6);font-size:13px;display:flex;align-items:center;gap:6px;font-family:var(--sans);margin:6px 6px 2px;width:calc(100% - 12px);transition:all .15s;}
+.notif-btn:hover{background:rgba(255,255,255,.12);color:#fff;}
+.notif-count{background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:99px;padding:1px 5px;margin-left:auto;}
+
+/* MAIN */
+.main{flex:1;overflow-y:auto;padding:28px 32px;}
+.page{display:none;animation:slideIn .2s ease;}
+.page.active{display:block;}
+@keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
+@keyframes popIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.page-header{margin-bottom:18px;}
+.page-header h2{font-size:22px;font-weight:600;}
+.page-header p{font-size:13px;color:var(--muted);margin-top:3px;}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+.stat{background:var(--card);border-radius:12px;padding:18px 20px;border:1px solid var(--border);}
+.stat-label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px;}
+.stat-num{font-size:30px;font-weight:600;color:var(--text);line-height:1;}
+.stat-num.green{color:#16a34a;}.stat-num.yellow{color:#d97706;}.stat-num.red{color:#dc2626;}.stat-num.blue{color:#2563eb;}
+
+/* CARD */
+.card{background:var(--card);border-radius:12px;border:1px solid var(--border);margin-bottom:20px;overflow:hidden;}
+.card-head{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.card-head h3{font-size:14px;font-weight:600;}
+.card-head p{font-size:12px;color:var(--muted);margin-top:1px;}
+.card-body{padding:20px 22px;}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+.form-grid.cols3{grid-template-columns:1fr 1fr 1fr;}
+.field label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;}
+.field input,.field select,.field textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-family:var(--sans);font-size:13px;color:var(--text);background:#fff;outline:none;transition:border-color .15s;}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent-d);box-shadow:0 0 0 3px rgba(74,222,128,.12);}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+.btn-primary{background:var(--accent);color:#0d1117;}.btn-primary:hover{background:var(--accent-d);}
+.btn-ghost{background:var(--bg);border:1px solid var(--border);color:var(--muted);}.btn-ghost:hover{border-color:#94a3b8;color:var(--text);}
+.btn-sm{padding:5px 12px;font-size:12px;border-radius:6px;}
+.btn-blue{background:#eff6ff;color:var(--blue);border:1px solid #bfdbfe;}.btn-blue:hover{background:#dbeafe;}
+.btn-purple{background:#f5f3ff;color:var(--purple);border:1px solid #ddd6fe;}.btn-purple:hover{background:#ede9fe;}
+.btn-red-soft{background:#fef2f2;color:var(--red);border:1px solid #fecaca;}.btn-red-soft:hover{background:#fee2e2;}
+.btn-yellow{background:var(--yellow);color:#fff;}.btn-yellow:hover{background:#d97706;}
+.btn-orange{background:#fff7ed;color:var(--orange);border:1px solid #fed7aa;}.btn-orange:hover{background:#ffedd5;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+/* TABLE */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{text-align:left;padding:10px 14px;font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;background:#f8fafc;border-bottom:1px solid var(--border);}
+tbody td{padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover td{background:#f8fafc;}
+.doc-id-cell{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.doc-name-cell{font-weight:600;font-size:13px;}
+.enc-cell{font-family:var(--mono);font-size:11px;color:#94a3b8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dec-cell{font-family:var(--mono);font-size:12px;color:#16a34a;font-weight:500;}
+
+/* BADGES */
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-received{background:#f1f5f9;color:#64748b;}
+.badge-processing{background:#fef9c3;color:#854d0e;}
+.badge-forapproval{background:#eff6ff;color:#1d4ed8;}
+.badge-approved{background:#f0fdf4;color:#15803d;}
+.badge-released{background:#dcfce7;color:#15803d;}
+.badge-rejected{background:#fef2f2;color:#b91c1c;}
+.prio{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;}
+.prio-low{background:#f1f5f9;color:#94a3b8;}.prio-normal{background:#eff6ff;color:#3b82f6;}
+.prio-high{background:#fff7ed;color:#f97316;}.prio-urgent{background:#fef2f2;color:#ef4444;}
+
+/* WORKFLOW */
+.workflow{display:flex;gap:4px;margin-bottom:20px;padding:14px 20px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow-x:auto;}
+.wf-step{display:flex;align-items:center;gap:4px;white-space:nowrap;}
+.wf-dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:10px;border:2px solid var(--border);color:var(--muted);background:#fff;}
+.wf-dot.done{background:#dcfce7;border-color:#22c55e;color:#16a34a;}
+.wf-dot.active{background:var(--accent);border-color:var(--accent-d);color:#0d1117;}
+.wf-label{font-size:11px;color:var(--muted);}
+.wf-label.done{color:#16a34a;font-weight:500;}.wf-label.active{color:var(--text);font-weight:600;}
+.wf-arrow{color:var(--border);font-size:14px;margin:0 2px;}
+
+/* NOTIFICATIONS */
+.notif-list{display:flex;flex-direction:column;gap:0;}
+.notif-item{padding:12px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:10px;align-items:flex-start;cursor:pointer;transition:opacity .15s;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item.read{opacity:.5;}
+.notif-item-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:5px;}
+.notif-item.read .notif-item-dot{background:var(--border);}
+.notif-item-text{font-size:13px;line-height:1.5;}
+.notif-item-time{font-size:11px;color:var(--muted);margin-top:2px;}
+.notif-item-link{font-size:11px;color:var(--blue);margin-top:3px;font-weight:500;}
+
+/* ACTIVITY FEED */
+.activity-list{display:flex;flex-direction:column;gap:0;}
+.activity-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #f1f5f9;align-items:flex-start;}
+.activity-item:last-child{border-bottom:none;}
+.activity-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+.activity-text{font-size:13px;line-height:1.5;}
+.activity-time{font-size:11px;color:var(--muted);margin-top:2px;}
+
+/* DEMO / ALGO */
+.algo-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+.chip{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500;}
+.demo-result{display:none;margin-top:16px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px 18px;}
+.demo-row{display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;font-size:13px;}
+.demo-row:last-child{margin-bottom:0;}
+.demo-label{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;width:80px;flex-shrink:0;padding-top:1px;}
+.demo-val{font-family:var(--mono);font-size:12px;word-break:break-all;}
+.demo-val.enc{color:#dc2626;}.demo-val.dec{color:#16a34a;font-weight:600;}
+
+/* MODAL */
+.overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);align-items:center;justify-content:center;}
+.overlay.open{display:flex;}
+.modal{background:#fff;border-radius:14px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.15);overflow:hidden;animation:popIn .2s ease;max-height:90vh;display:flex;flex-direction:column;}
+.modal-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.modal-head h3{font-size:15px;font-weight:600;}
+.modal-close{background:var(--bg);border:1px solid var(--border);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--muted);display:grid;place-items:center;}
+.modal-close:hover{background:#fee2e2;border-color:#fca5a5;color:var(--red);}
+.modal-body{padding:20px 22px;overflow-y:auto;}
+.modal-body .field{margin-bottom:14px;}
+.modal-body .field:last-of-type{margin-bottom:0;}
+#qr-wrap{display:flex;justify-content:center;padding:10px 0;}
+
+/* HISTORY TIMELINE */
+.timeline{position:relative;padding-left:20px;}
+.timeline::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:2px;background:#e2e8f0;}
+.tl-item{position:relative;margin-bottom:16px;}
+.tl-item:last-child{margin-bottom:0;}
+.tl-dot{position:absolute;left:-20px;top:3px;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px var(--border);background:#94a3b8;}
+.tl-dot.released{background:#22c55e;box-shadow:0 0 0 2px #dcfce7;}
+.tl-dot.rejected{background:#ef4444;box-shadow:0 0 0 2px #fee2e2;}
+.tl-dot.approved{background:#16a34a;box-shadow:0 0 0 2px #dcfce7;}
+.tl-dot.processing{background:#f59e0b;box-shadow:0 0 0 2px #fef9c3;}
+.tl-status{font-size:13px;font-weight:600;}
+.tl-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.tl-note{font-size:12px;color:var(--text);margin-top:4px;font-style:italic;background:#f8fafc;border-radius:6px;padding:6px 10px;}
+
+/* USER MGMT */
+.user-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f1f5f9;}
+.user-row:last-child{border-bottom:none;}
+.user-row-avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:14px;font-weight:700;flex-shrink:0;}
+.user-row-info{flex:1;}
+.user-row-name{font-size:13px;font-weight:600;}
+.user-row-meta{font-size:11px;color:var(--muted);margin-top:1px;}
+
+/* ACTIVITY LOG TABLE */
+.log-table{width:100%;}
+.log-row{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f1f5f9;align-items:flex-start;}
+.log-row:last-child{border-bottom:none;}
+.log-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;flex-shrink:0;margin-top:5px;}
+.log-msg{font-size:13px;flex:1;}
+.log-time{font-size:11px;color:var(--muted);white-space:nowrap;}
+
+/* ACTIVITY FILTER */
+.act-filter-bar{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap;}
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;right:24px;z-index:9999;background:#1c2b20;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;border-left:3px solid var(--accent);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;max-width:280px;}
+#toast.show{opacity:1;transform:translateY(0);}
+.empty-msg{text-align:center;padding:36px;color:var(--muted);font-size:13px;}
+.search-input{padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;font-family:var(--sans);width:220px;}
+.search-input:focus{border-color:var(--accent-d);box-shadow:0 0 0 3px rgba(74,222,128,.12);}
+
+/* QR Reset banner */
+.reset-qr-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin-top:12px;text-align:center;}
+.reset-qr-box p{font-size:13px;color:#15803d;margin-bottom:10px;}
+
+@media(max-width:768px){
+  .sidebar{width:180px;}
+  .main{padding:20px 16px;}
+  .stats{grid-template-columns:1fr 1fr;}
+  .form-grid,.form-grid.cols3{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- ════ TRACKING PAGE (Public — no login needed) ════ -->
+<div id="track-screen">
+  <div class="track-hero" id="track-hero">
+    <div class="track-logo">
+      <div class="track-logo-dot">📄</div>
+      <span>CIT DOCUMENT TRACKER</span>
+    </div>
+    <div id="track-content-hero"></div>
+  </div>
+  <div class="track-body">
+    <div id="track-content-body"></div>
+    <div style="text-align:center;margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,.06);">
+      <p style="font-size:11px;color:rgba(255,255,255,.2);margin-bottom:16px;font-family:'DM Mono',monospace;">Secured with IDEA Encryption · Group 6 · CIT Document Tracker</p>
+      <button class="track-back-btn" onclick="window.location.href=window.location.pathname">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Go to Sign In
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ AUTH SCREEN ════ -->
+<div id="auth-screen" class="auth-show">
+  <div class="auth-card">
+    <div class="auth-badge">📄</div>
+    <h2>CIT Document Tracker</h2>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Create Account</button>
+    </div>
+    <!-- Login -->
+    <div id="login-form" style="width:100%">
+      <div class="auth-field"><input type="text" id="login-user" placeholder="Username" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="auth-field"><input type="password" id="login-pass" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <button class="btn-auth-submit" onclick="doLogin()">Sign In</button>
+      <p id="login-error" class="auth-error" style="display:none"></p>
+    </div>
+    <!-- Register -->
+    <div id="register-form" style="display:none;width:100%">
+      <div class="auth-field"><input type="text" id="reg-name" placeholder="Full Name"></div>
+      <div class="auth-field"><input type="text" id="reg-user" placeholder="Username (letters & numbers)"></div>
+      <div class="auth-field"><input type="password" id="reg-pass" placeholder="Password (min 4 chars)"></div>
+      <div class="auth-field"><input type="password" id="reg-confirm" placeholder="Confirm Password" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <button class="btn-auth-submit" onclick="doRegister()">Create Account</button>
+      <p id="reg-error" class="auth-error" style="display:none"></p>
+    </div>
+    <div class="auth-footer">CIT Document Tracker · IDEA Encryption · Group 6</div>
+  </div>
+</div>
+
+<!-- ENCRYPTION ANIMATION -->
+<div id="encrypt-overlay">
+  <div class="encrypt-card">
+    <div class="encrypt-icon">🔐</div>
+    <h3>Encrypting Document</h3>
+    <div id="encrypt-step" class="encrypt-step">Initializing cipher…</div>
+    <div class="encrypt-bar-wrap"><div class="encrypt-bar" id="encrypt-bar"></div></div>
+    <div id="encrypt-substep" class="encrypt-substep"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">📄</div>
+      <h1>CIT Doc Tracker</h1>
+    </div>
+    <div id="user-info-bar" class="user-info-bar"></div>
+    <button class="notif-btn" onclick="openModal('notif-modal')" id="notif-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Notifications
+      <span class="notif-count" id="notif-count" style="display:none">0</span>
+    </button>
+    <div class="nav-section-label">Main</div>
+    <button class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>Dashboard
+    </button>
+    <button class="nav-item" id="nav-register" onclick="showPage('register',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>Register Doc
+    </button>
+    <button class="nav-item" id="nav-vault" onclick="showPage('vault',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Secure Vault
+    </button>
+    <button class="nav-item admin-only" id="nav-users" onclick="showPage('users',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>User Management
+    </button>
+    <button class="nav-item admin-only" id="nav-actlogs" onclick="showPage('actlogs',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>Activity Logs
+    </button>
+    <div class="nav-section-label">Tools</div>
+    <button class="nav-item" id="nav-demo" onclick="showPage('demo',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>IDEA Demo
+    </button>
+    <button class="nav-item" id="nav-settings" onclick="showPage('settings',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Settings
+    </button>
+    <div class="sidebar-bottom">
+      <button class="lock-btn" onclick="logout()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Log Out
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h2 id="dash-title">Dashboard</h2>
+        <p id="dash-subtitle">Overview of tracked documents</p>
+      </div>
+      <div class="stats" id="stats-row"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="dash-grid">
+        <div class="card">
+          <div class="card-head"><div><h3>Recent Documents</h3><p>Latest entries</p></div></div>
+          <table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="dash-tbody"></tbody></table>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3 id="my-activity-title">My Recent Activity</h3></div>
+          <div class="card-body"><div class="activity-list" id="activity-list"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTER DOC -->
+    <div class="page" id="page-register">
+      <div class="page-header"><h2>Register Document</h2><p>New document will be encrypted using IDEA</p></div>
+      <div class="workflow" id="register-workflow">
+        <div class="wf-step"><div class="wf-dot active">1</div><span class="wf-label active">Submit</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">2</div><span class="wf-label">Received</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">3</div><span class="wf-label">Processing</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">4</div><span class="wf-label">For Approval</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">5</div><span class="wf-label">Approved</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">6</div><span class="wf-label">Released</span></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Document Details</h3></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label>Document Name</label><input type="text" id="new-name" placeholder="e.g. Enrollment Form"></div>
+            <div class="field"><label>Document Type</label>
+              <select id="new-type">
+                <option value="">Select type…</option>
+                <option>Academic</option><option>Laboratory</option>
+                <option>Administrative</option><option>Financial</option><option>Other</option>
+              </select>
+            </div>
+            <div class="field"><label>Submitted By</label><input type="text" id="new-by" placeholder="Full name"></div>
+            <div class="field"><label>Purpose</label><input type="text" id="new-purpose" placeholder="Brief description"></div>
+            <div class="field"><label>Priority Level</label>
+              <select id="new-priority">
+                <option value="Normal">Normal</option><option value="Low">Low</option>
+                <option value="High">High</option><option value="Urgent">Urgent</option>
+              </select>
+            </div>
+            <div class="field"><label>Expected Date (optional)</label><input type="date" id="new-due"></div>
+          </div>
+          <button class="btn btn-primary" id="save-btn" onclick="addDocument()">🔐 &nbsp;Encrypt &amp; Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VAULT -->
+    <div class="page" id="page-vault">
+      <div class="page-header"><h2>Secure Vault</h2><p id="vault-subtitle">Documents encrypted with IDEA algorithm</p></div>
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Document Registry</h3></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="vault-user-filter" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--sans);outline:none;display:none" onchange="renderVault()">
+              <option value="">All Users</option>
+            </select>
+            <input class="search-input" id="search-input" placeholder="🔍  Search…" oninput="renderVault()">
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead id="vault-thead"><tr>
+              <th>Doc ID</th><th>Name</th><th>By</th><th>IDEA Encrypted</th><th>Decrypted</th><th>Priority</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="vault-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- USER MANAGEMENT (Admin) -->
+    <div class="page" id="page-users">
+      <div class="page-header"><h2>User Management</h2><p>All registered accounts</p></div>
+      <div class="card">
+        <div class="card-head"><h3>Registered Users</h3></div>
+        <div class="card-body" id="users-list"></div>
+      </div>
+    </div>
+
+    <!-- ACTIVITY LOGS (Admin) -->
+    <div class="page" id="page-actlogs">
+      <div class="page-header"><h2>Activity Logs</h2><p>Audit trail of all system actions</p></div>
+      <div class="card">
+        <div class="card-head">
+          <h3>Logs</h3>
+          <div class="act-filter-bar">
+            <select id="actlog-user-filter" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--sans);outline:none;" onchange="renderActivityLogs()">
+              <option value="">All Users</option>
+            </select>
+            <button class="btn btn-sm btn-ghost" onclick="clearActivityLogs()">Clear All</button>
+          </div>
+        </div>
+        <div class="card-body" id="actlogs-body">
+          <p style="font-size:13px;color:var(--muted)">No activity yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- IDEA DEMO -->
+    <div class="page" id="page-demo">
+      <div class="page-header"><h2>IDEA Encryption Demo</h2><p>Test the algorithm with any message and key</p></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-head"><h3>Algorithm Info</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--muted);line-height:1.7">
+            IDEA (International Data Encryption Algorithm) is a symmetric-key block cipher using a 64-bit block and a 128-bit key, expanded into 52 subkeys over 8 full rounds plus an output transformation. Each round combines three algebraic operations: multiplication mod 65537, addition mod 65536, and bitwise XOR — making it resistant to differential and linear cryptanalysis.
+          </p>
+          <div class="algo-chips">
+            <span class="chip">64-bit Block</span><span class="chip">128-bit Key</span>
+            <span class="chip">52 Subkeys</span><span class="chip">8 Rounds</span>
+            <span class="chip">MUL mod 65537</span><span class="chip">ADD mod 65536</span>
+            <span class="chip">XOR Bitwise</span><span class="chip">PKCS#7 Padding</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Try It</h3></div>
+        <div class="card-body">
+          <div class="form-grid cols3">
+            <div class="field"><label>Secret Key (128-bit / 16 chars)</label><input type="text" id="demo-key" value="Group6CITKey2024"></div>
+            <div class="field"><label>Plaintext Message</label><input type="text" id="demo-msg" value="Hello CIT Group 6!"></div>
+            <div class="field" style="display:flex;align-items:flex-end"><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="runDemo()">▶ Run IDEA</button></div>
+          </div>
+          <div class="demo-result" id="demo-result">
+            <div class="demo-row"><span class="demo-label">Original</span><span class="demo-val" id="d-orig"></span></div>
+            <div class="demo-row"><span class="demo-label">Encrypted</span><span class="demo-val enc" id="d-enc"></span></div>
+            <div class="demo-row"><span class="demo-label">Decrypted</span><span class="demo-val dec" id="d-dec"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="page-header"><h2>Settings</h2><p>Manage your account</p></div>
+      <div class="card" style="max-width:440px">
+        <div class="card-head"><h3>Change Password</h3></div>
+        <div class="card-body">
+          <div class="field" style="margin-bottom:14px"><label>Current Password</label><input type="password" id="cur-pass" placeholder="Your current password"></div>
+          <div class="field" style="margin-bottom:14px"><label>New Password</label><input type="password" id="new-pass" placeholder="Min. 4 characters"></div>
+          <div class="field" style="margin-bottom:16px"><label>Confirm New Password</label><input type="password" id="conf-pass" placeholder="Repeat new password"></div>
+          <button class="btn btn-yellow" onclick="changePassword()">Update Password</button>
+          <p style="font-size:12px;color:var(--muted);margin-top:10px">⚠️ You will be logged out after changing your password.</p>
+        </div>
+      </div>
+      <div class="card" style="max-width:440px;margin-top:16px" id="admin-settings-card">
+        <div class="card-head"><h3>System Info</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--muted);line-height:1.7">
+            Encryption key: <code style="font-family:var(--mono);background:#f8fafc;padding:2px 6px;border-radius:4px;font-size:12px">Group6CITKey2024</code><br>
+            Algorithm: IDEA (International Data Encryption Algorithm)<br>
+            Block size: 64-bit &nbsp;·&nbsp; Key size: 128-bit &nbsp;·&nbsp; Rounds: 8<br>
+            QR payloads: IDEA-encrypted · Reset tokens: IDEA-encrypted
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODALS -->
+
+<!-- Update Status -->
+<div class="overlay" id="update-modal">
+  <div class="modal">
+    <div class="modal-head"><h3>Update Document Status</h3><button class="modal-close" onclick="closeModal('update-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Document ID</label><input type="text" id="upd-id" readonly style="background:#f8fafc;color:var(--muted)"></div>
+      <div class="field"><label>Document Name</label><input type="text" id="upd-name" readonly style="background:#f8fafc;color:var(--muted)"></div>
+      <div class="field"><label>New Status</label>
+        <select id="upd-status">
+          <option>Received</option><option>Processing</option>
+          <option>For Approval</option><option>Approved</option>
+          <option>Released</option><option>Rejected</option>
+        </select>
+      </div>
+      <div class="field"><label>Admin Note (optional)</label><input type="text" id="upd-note" placeholder="Reason for status change…"></div>
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="applyUpdate()">Save Changes</button>
+        <button class="btn btn-ghost" onclick="closeModal('update-modal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- QR Modal -->
+<div class="overlay" id="qr-modal">
+  <div class="modal" style="width:460px">
+    <div class="modal-head"><h3>🔐 Document QR Code</h3><button class="modal-close" onclick="closeModal('qr-modal')">✕</button></div>
+    <div class="modal-body" style="text-align:center">
+      <p id="qr-name" style="font-weight:600;font-size:15px;margin-bottom:2px"></p>
+      <p id="qr-status" style="font-size:12px;color:var(--muted);margin-bottom:14px"></p>
+      <div id="qr-wrap" style="display:inline-block;padding:12px;background:#fff;border-radius:10px;border:1px solid var(--border);margin-bottom:12px"></div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:4px">Point any phone camera or QR scanner at this code</p>
+      <p style="font-size:10px;color:#94a3b8;font-family:'DM Mono',monospace;margin-bottom:16px" id="qr-enc-hint"></p>
+      <!-- Divider -->
+      <div style="border-top:1px solid var(--border);margin:4px 0 14px;"></div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px;font-weight:500">Testing in browser?</p>
+      <button onclick="simulateScan()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:#1c2b20;color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:8px;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;">
+        📱 Simulate QR Scan
+      </button>
+      <p style="font-size:10px;color:#b0bec5;margin-top:10px">QR payload is IDEA-encrypted — raw document ID is never exposed</p>
+    </div>
+  </div>
+</div>
+
+<!-- Scan Result Modal (what phone sees) -->
+<div class="overlay" id="scan-result-modal">
+  <div class="modal" style="width:480px;max-height:90vh">
+    <div class="modal-head" style="background:#0d1a10;border-bottom:1px solid rgba(74,222,128,.15)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;background:#4ade80;border-radius:7px;display:grid;place-items:center;font-size:13px;flex-shrink:0">📄</div>
+        <div>
+          <h3 style="color:#e6edf3;font-size:14px">CIT Document Tracker</h3>
+          <p style="font-size:10px;color:rgba(255,255,255,.35);margin-top:1px">Live Document Status</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal('scan-result-modal')" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">✕</button>
+    </div>
+    <div class="modal-body" style="background:#0d1a10;padding:0;overflow-y:auto" id="scan-result-body"></div>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div class="overlay" id="history-modal">
+  <div class="modal">
+    <div class="modal-head"><h3>Document History</h3><button class="modal-close" onclick="closeModal('history-modal')">✕</button></div>
+    <div class="modal-body">
+      <p id="hist-name" style="font-weight:600;margin-bottom:4px;font-size:14px"></p>
+      <p id="hist-id" style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:16px"></p>
+      <div class="timeline" id="hist-timeline"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Notifications Modal -->
+<div class="overlay" id="notif-modal">
+  <div class="modal" style="width:380px">
+    <div class="modal-head">
+      <h3>Notifications</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-sm btn-ghost" onclick="markAllRead()">Mark all read</button>
+        <button class="modal-close" onclick="closeModal('notif-modal')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body"><div class="notif-list" id="notif-list"></div></div>
+  </div>
+</div>
+
+<!-- User Vault Modal (Admin) -->
+<div class="overlay" id="user-vault-modal">
+  <div class="modal" style="width:700px;max-width:95vw">
+    <div class="modal-head">
+      <div>
+        <h3 id="uv-title">User Documents</h3>
+        <p id="uv-subtitle" style="font-size:12px;color:var(--muted);margin-top:1px"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('user-vault-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <!-- Tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--border);padding:0 22px;gap:0">
+        <button id="uv-tab-docs" onclick="switchUVTab('docs')" style="padding:12px 16px;border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);cursor:pointer;">Documents</button>
+        <button id="uv-tab-logs" onclick="switchUVTab('logs')" style="padding:12px 16px;border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;">Activity Log</button>
+      </div>
+      <div id="uv-docs-panel" style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Doc ID</th><th>Name</th><th>Type</th><th>Priority</th><th>Status</th><th>Date</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="uv-tbody"></tbody>
+        </table>
+      </div>
+      <div id="uv-logs-panel" style="display:none;padding:16px 22px">
+        <div class="log-table" id="uv-logs-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ══ IDEA ENCRYPTION ═══════════════════════════════════════ */
+const IDEA = (() => {
+  function mu(a,b){a&=0xFFFF;b&=0xFFFF;if(!a)a=65536;if(!b)b=65536;const r=Number(BigInt(a)*BigInt(b)%65537n);return r===65536?0:r;}
+  function mi(a){if(!a)return 0;if(a===1)return 1;let t=0n,nt=1n,r=65537n,nr=BigInt(a);while(nr){const q=r/nr;[t,nt]=[nt,t-q*nt];[r,nr]=[nr,r%nr];}return Number(t<0n?t+65537n:t);}
+  const ai=a=>(65536-a)&0xFFFF,ad=(a,b)=>(a+b)&0xFFFF,xo=(a,b)=>a^b;
+  function expandKey(keyStr){
+    const src=new TextEncoder().encode(keyStr.padEnd(16,'\0').slice(0,16));
+    const buf=new Uint8Array(16);buf.set(src);const sk=[];
+    while(sk.length<52){
+      for(let i=0;i<8&&sk.length<52;i++)sk.push(((buf[i*2]<<8)|buf[i*2+1])&0xFFFF);
+      let v=0n;for(let i=0;i<16;i++)v=(v<<8n)|BigInt(buf[i]);
+      v=((v<<25n)|(v>>103n))&((1n<<128n)-1n);
+      for(let i=15;i>=0;i--){buf[i]=Number(v&0xFFn);v>>=8n;}
+    }
+    return sk;
+  }
+  function decSubkeys(ek){
+    const dk=new Array(52).fill(0);let p=0,q=48;
+    dk[p++]=mi(ek[q]);dk[p++]=ai(ek[q+1]);dk[p++]=ai(ek[q+2]);dk[p++]=mi(ek[q+3]);
+    for(let r=7;r>=0;r--){q=r*6;dk[p++]=ek[q+4];dk[p++]=ek[q+5];dk[p++]=mi(ek[q]);
+      if(r>0){dk[p++]=ai(ek[q+2]);dk[p++]=ai(ek[q+1]);}
+      else{dk[p++]=ai(ek[q+1]);dk[p++]=ai(ek[q+2]);}dk[p++]=mi(ek[q+3]);}
+    return dk;
+  }
+  function block(w1,w2,w3,w4,sk){
+    let a=w1,b=w2,c=w3,d=w4;
+    for(let r=0;r<8;r++){const z=r*6;
+      const t1=mu(a,sk[z]),t2=ad(b,sk[z+1]),t3=ad(c,sk[z+2]),t4=mu(d,sk[z+3]);
+      const t5=xo(t1,t3),t6=xo(t2,t4);
+      const t7=mu(t5,sk[z+4]),t8=ad(t6,t7),t9=mu(t8,sk[z+5]),t10=ad(t7,t9);
+      const o1=xo(t1,t9),o2=xo(t2,t10),o3=xo(t3,t9),o4=xo(t4,t10);
+      if(r<7){a=o1;b=o3;c=o2;d=o4;}else{a=o1;b=o2;c=o3;d=o4;}
+    }
+    return[mu(a,sk[48]),ad(b,sk[49]),ad(c,sk[50]),mu(d,sk[51])];
+  }
+  function encrypt(text,keyStr){
+    const sk=expandKey(keyStr);const data=new TextEncoder().encode(text);
+    const pad=8-(data.length%8);const p=new Uint8Array(data.length+pad);
+    p.set(data);p.fill(pad,data.length);let hex='';
+    for(let i=0;i<p.length;i+=8){
+      const[y1,y2,y3,y4]=block((p[i]<<8)|p[i+1],(p[i+2]<<8)|p[i+3],(p[i+4]<<8)|p[i+5],(p[i+6]<<8)|p[i+7],sk);
+      hex+=y1.toString(16).padStart(4,'0')+y2.toString(16).padStart(4,'0')+y3.toString(16).padStart(4,'0')+y4.toString(16).padStart(4,'0');
+    }
+    return hex.toUpperCase();
+  }
+  function decrypt(hex,keyStr){
+    const dk=decSubkeys(expandKey(keyStr));const bytes=[];
+    for(let i=0;i<hex.length;i+=16){
+      const c=hex.slice(i,i+16);
+      const[y1,y2,y3,y4]=block(parseInt(c.slice(0,4),16),parseInt(c.slice(4,8),16),parseInt(c.slice(8,12),16),parseInt(c.slice(12,16),16),dk);
+      bytes.push((y1>>8)&0xFF,y1&0xFF,(y2>>8)&0xFF,y2&0xFF,(y3>>8)&0xFF,y3&0xFF,(y4>>8)&0xFF,y4&0xFF);
+    }
+    const padLen=bytes[bytes.length-1];
+    return new TextDecoder().decode(new Uint8Array(bytes.slice(0,bytes.length-padLen)));
+  }
+  return{encrypt,decrypt};
+})();
+
+/* ══ CONSTANTS ═════════════════════════════════════════════ */
+const KEY = "Group6CITKey2024";
+
+/* ══ STATE ══════════════════════════════════════════════════ */
+let accounts      = [];  // [{id,username,name,password,role,color,created}]
+let docs          = [];  // [{id,name,type,by,purpose,date,status,enc,ownerId,ownerName,priority,due,history}]
+let notifications = {};  // {userId: [{id,msg,date,read,documentId}]}
+let activityLogs  = {};  // {userId: [{msg,date,color}]}
+let currentUser   = null;
+let updateDocId   = null;
+let _uvCurrentUid = null;
+
+/* ══ HELPERS ════════════════════════════════════════════════ */
+const genId  = () => 'DOC-' + Date.now().toString(36).toUpperCase().slice(-5);
+const genUID = () => 'USR-' + Date.now().toString(36).toUpperCase();
+const nowStr = () => new Date().toLocaleString('en-PH');
+const colors = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399','#f87171','#fbbf24'];
+function avatarColor(idx){ return colors[idx % colors.length]; }
+const badgeMap = {Received:'received',Processing:'processing','For Approval':'forapproval',Approved:'approved',Released:'released',Rejected:'rejected'};
+function statusBadge(s){ return `<span class="badge badge-${badgeMap[s]||'received'}">${s}</span>`; }
+function prioBadge(p){ return `<span class="prio prio-${(p||'Normal').toLowerCase()}">${p||'Normal'}</span>`; }
+function initials(name){ return (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+function statusColor(s){
+  const m={Released:'#22c55e',Rejected:'#ef4444',Approved:'#16a34a',Processing:'#f59e0b','For Approval':'#3b82f6',Received:'#94a3b8'};
+  return m[s]||'#94a3b8';
+}
+
+/* ══ STORAGE ════════════════════════════════════════════════ */
+function save(){
+  try{localStorage.setItem('cit_accounts',JSON.stringify(accounts));}catch(e){}
+  try{localStorage.setItem('cit_docs2',JSON.stringify(docs));}catch(e){}
+  try{localStorage.setItem('cit_notifs',JSON.stringify(notifications));}catch(e){}
+  try{localStorage.setItem('cit_actlogs',JSON.stringify(activityLogs));}catch(e){}
+}
+function load(){
+  try{const s=localStorage.getItem('cit_accounts');if(s)accounts=JSON.parse(s);}catch(e){}
+  try{const s=localStorage.getItem('cit_docs2');if(s)docs=JSON.parse(s);}catch(e){}
+  try{const s=localStorage.getItem('cit_notifs');if(s)notifications=JSON.parse(s);}catch(e){}
+  try{const s=localStorage.getItem('cit_actlogs');if(s)activityLogs=JSON.parse(s);}catch(e){}
+}
+
+/* ══ ACTIVITY LOGGING — FIX ══════════════════════════════════
+   Per-user logs. Admin can see all; users see only their own. */
+function logActivity(userId, message, color){
+  if(!activityLogs[userId]) activityLogs[userId]=[];
+  activityLogs[userId].push({msg:message, date:nowStr(), color:color||'#94a3b8'});
+  if(activityLogs[userId].length>100) activityLogs[userId]=activityLogs[userId].slice(-100);
+  save();
+}
+
+/* ══ AUTH ═══════════════════════════════════════════════════ */
+function switchAuthTab(tab){
+  document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active',(tab==='login'?i===0:i===1)));
+  document.getElementById('login-form').style.display     = tab==='login'?'':'none';
+  document.getElementById('register-form').style.display  = tab==='register'?'':'none';
+  document.getElementById('login-error').style.display='none';
+  document.getElementById('reg-error').style.display='none';
+}
+
+function doLogin(){
+  const u=document.getElementById('login-user').value.trim().toLowerCase();
+  const p=document.getElementById('login-pass').value;
+  const err=document.getElementById('login-error');
+  if(!u||!p){showAuthError(err,'Please enter username and password.');return;}
+  const acc=accounts.find(a=>a.username===u && a.password===p);
+  if(!acc){showAuthError(err,'Incorrect username or password.');return;}
+  currentUser=acc;
+  logActivity(acc.id,`Logged in`, '#4ade80');
+  save();
+  enterApp();
+}
+
+function doRegister(){
+  const name=document.getElementById('reg-name').value.trim();
+  const u=document.getElementById('reg-user').value.trim().toLowerCase();
+  const p=document.getElementById('reg-pass').value;
+  const c=document.getElementById('reg-confirm').value;
+  const err=document.getElementById('reg-error');
+  if(!name||!u||!p||!c){showAuthError(err,'Please fill all fields.');return;}
+  if(!/^[a-z0-9_]+$/.test(u)){showAuthError(err,'Username: letters, numbers, underscores only.');return;}
+  if(p.length<4){showAuthError(err,'Password must be at least 4 characters.');return;}
+  if(p!==c){showAuthError(err,'Passwords do not match.');return;}
+  if(accounts.find(a=>a.username===u)){showAuthError(err,'Username already taken.');return;}
+  const idx=accounts.length;
+  const acc={id:genUID(),username:u,name,password:p,role:'user',color:avatarColor(idx),created:nowStr()};
+  accounts.push(acc);
+  notifications[acc.id]=[];
+  activityLogs[acc.id]=[];
+  logActivity(acc.id,'Account created','#4ade80');
+  save();
+  currentUser=acc;
+  enterApp();
+}
+
+function showAuthError(el,msg){el.textContent=msg;el.style.display='block';}
+
+function logout(){
+  if(currentUser) logActivity(currentUser.id,'Logged out','#94a3b8');
+  save();
+  currentUser=null;
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('app').style.display='none';
+  document.getElementById('auth-screen').classList.add('auth-show');
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+  document.getElementById('login-error').style.display='none';
+  switchAuthTab('login');
+}
+
+function enterApp(){
+  document.getElementById('auth-screen').classList.remove('auth-show');
+  const app=document.getElementById('app');
+  app.style.display='flex';
+  app.classList.add('show');
+  setupSidebar();
+  renderAll();
+  showPage('dashboard',document.getElementById('nav-dashboard'));
+  renderNotifCount();
+}
+
+/* ══ SIDEBAR ════════════════════════════════════════════════ */
+function setupSidebar(){
+  const isAdmin=currentUser.role==='admin';
+  document.getElementById('user-info-bar').innerHTML=`
+    <div class="user-avatar" style="background:${currentUser.color||'#4ade80'}">${initials(currentUser.name||currentUser.username)}</div>
+    <div>
+      <div class="user-name">${currentUser.name||currentUser.username}</div>
+      <span class="user-role-badge ${isAdmin?'role-admin':'role-user'}">${isAdmin?'ADMIN':'USER'}</span>
+    </div>`;
+  document.getElementById('nav-users').style.display   = isAdmin?'':'none';
+  document.getElementById('nav-actlogs').style.display = isAdmin?'':'none';
+  const adminCard=document.getElementById('admin-settings-card');
+  if(adminCard) adminCard.style.display=isAdmin?'':'none';
+}
+
+/* ══ NAVIGATION ═════════════════════════════════════════════ */
+function showPage(id,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id==='vault')    renderVault();
+  if(id==='users')    renderUsers();
+  if(id==='actlogs')  renderActivityLogs();
+}
+
+/* ══ RENDER ALL ═════════════════════════════════════════════ */
+function renderAll(){ renderStats(); renderDash(); renderVault(); renderNotifCount(); }
+
+/* ══ STATS ══════════════════════════════════════════════════ */
+function renderStats(){
+  const isAdmin=currentUser.role==='admin';
+  const myDocs=isAdmin?docs:docs.filter(d=>d.ownerId===currentUser.id);
+  const total=myDocs.length,released=myDocs.filter(d=>d.status==='Released').length,
+        pending=myDocs.filter(d=>['Received','Processing','For Approval'].includes(d.status)).length,
+        rejected=myDocs.filter(d=>d.status==='Rejected').length;
+  document.getElementById('stats-row').innerHTML=`
+    <div class="stat"><div class="stat-label">${isAdmin?'Total Docs':'My Docs'}</div><div class="stat-num">${total}</div></div>
+    <div class="stat"><div class="stat-label">Released</div><div class="stat-num green">${released}</div></div>
+    <div class="stat"><div class="stat-label">In Progress</div><div class="stat-num yellow">${pending}</div></div>
+    <div class="stat"><div class="stat-label">Rejected</div><div class="stat-num red">${rejected}</div></div>`;
+  document.getElementById('dash-title').textContent    = isAdmin?'Admin Dashboard':'My Dashboard';
+  document.getElementById('dash-subtitle').textContent = isAdmin?'Overview of all documents':`Welcome back, ${currentUser.name||currentUser.username}`;
+}
+
+/* ══ DASHBOARD ══════════════════════════════════════════════ */
+function renderDash(){
+  const isAdmin=currentUser.role==='admin';
+  const myDocs=isAdmin?docs:docs.filter(d=>d.ownerId===currentUser.id);
+  const rows=[...myDocs].reverse().slice(0,6);
+  const tb=document.getElementById('dash-tbody');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="4"><div class="empty-msg">No documents yet.</div></td></tr>`;}
+  else tb.innerHTML=rows.map(d=>`<tr>
+    <td class="doc-id-cell">${d.id}</td>
+    <td class="doc-name-cell">${d.name}${isAdmin?`<br><span style="font-size:11px;color:var(--muted);font-weight:400">by ${d.ownerName}</span>`:''}</td>
+    <td>${statusBadge(d.status)}</td>
+    <td>${dashActions(d)}</td>
+  </tr>`).join('');
+
+  // FIX: Activity on dashboard shows ONLY current user's activity
+  const al=document.getElementById('activity-list');
+  document.getElementById('my-activity-title').textContent=isAdmin?'System Activity (All Users)':'My Recent Activity';
+  
+  let acts;
+  if(isAdmin){
+    // Admin sees ALL users' activity merged and sorted
+    acts=[];
+    Object.entries(activityLogs).forEach(([uid,logs])=>{
+      const acc=accounts.find(a=>a.id===uid);
+      logs.forEach(l=>acts.push({...l, uname:(acc?acc.username:'unknown')}));
+    });
+    acts.sort((a,b)=>new Date(b.date)-new Date(a.date));
+    acts=acts.slice(0,8);
+  } else {
+    acts=[...(activityLogs[currentUser.id]||[])].reverse().slice(0,8);
+  }
+  
+  if(!acts.length){al.innerHTML=`<p style="font-size:13px;color:var(--muted)">No recent activity.</p>`;return;}
+  al.innerHTML=acts.map(a=>`
+    <div class="activity-item">
+      <div class="activity-dot" style="background:${a.color||'#94a3b8'}"></div>
+      <div>
+        <div class="activity-text">${isAdmin&&a.uname?`<strong>@${a.uname}</strong>: `:''}${a.msg}</div>
+        <div class="activity-time">${a.date}</div>
+      </div>
+    </div>`).join('');
+}
+
+function dashActions(d){
+  const isAdmin=currentUser.role==='admin';
+  const isOwner=d.ownerId===currentUser.id;
+  let btns='';
+  if(isAdmin){
+    btns+=`<button class="btn btn-sm btn-blue" onclick="openUpdate('${d.id}')">Update</button>`;
+    btns+=`<button class="btn btn-sm btn-purple" onclick="openQR('${d.id}')">QR</button>`;
+    btns+=`<button class="btn btn-sm btn-orange" onclick="openHistory('${d.id}')">History</button>`;
+    btns+=`<button class="btn btn-sm btn-red-soft" onclick="deleteDoc('${d.id}')">Delete</button>`;
+  } else if(isOwner){
+    if(d.status==='Released') btns+=`<button class="btn btn-sm btn-purple" onclick="openQR('${d.id}')">QR</button>`;
+    btns+=`<button class="btn btn-sm btn-orange" onclick="openHistory('${d.id}')">History</button>`;
+    btns+=`<button class="btn btn-sm btn-red-soft" onclick="deleteDoc('${d.id}')">Delete</button>`;
+  }
+  return `<div style="display:flex;gap:5px;flex-wrap:wrap">${btns}</div>`;
+}
+
+/* ══ VAULT ══════════════════════════════════════════════════ */
+function renderVault(){
+  const isAdmin=currentUser.role==='admin';
+  const term=(document.getElementById('search-input')?.value||'').toLowerCase();
+  const userFilter=document.getElementById('vault-user-filter')?.value||'';
+  const uf=document.getElementById('vault-user-filter');
+  if(uf){
+    uf.style.display=isAdmin?'':'none';
+    if(isAdmin){
+      const opts=accounts.filter(a=>a.role!=='admin').map(a=>`<option value="${a.id}">${a.name||a.username}</option>`).join('');
+      uf.innerHTML='<option value="">All Users</option>'+opts;
+      uf.value=userFilter;
+    }
+  }
+  // FIX: Role-based — users see only their own docs
+  let rows=isAdmin?docs:docs.filter(d=>d.ownerId===currentUser.id);
+  if(isAdmin&&userFilter) rows=rows.filter(d=>d.ownerId===userFilter);
+  if(term) rows=rows.filter(d=>d.id.toLowerCase().includes(term)||d.name.toLowerCase().includes(term)||(d.by||'').toLowerCase().includes(term)||(d.ownerName||'').toLowerCase().includes(term));
+  const tb=document.getElementById('vault-tbody');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="8"><div class="empty-msg">No documents found.</div></td></tr>`;return;}
+  tb.innerHTML=rows.map(d=>`<tr>
+    <td class="doc-id-cell">${d.id}</td>
+    <td class="doc-name-cell">${d.name}${isAdmin?`<br><span style="font-size:11px;color:var(--muted);font-weight:400">👤 ${d.ownerName}</span>`:''}</td>
+    <td style="font-size:13px">${d.by}</td>
+    <td class="enc-cell" title="${d.enc}">${d.enc.slice(0,14)}…</td>
+    <td class="dec-cell">${IDEA.decrypt(d.enc,KEY)}</td>
+    <td>${prioBadge(d.priority)}</td>
+    <td>${statusBadge(d.status)}</td>
+    <td style="white-space:nowrap">${dashActions(d)}</td>
+  </tr>`).join('');
+}
+
+/* ══ USER MANAGEMENT ════════════════════════════════════════ */
+function renderUsers(){
+  const ul=document.getElementById('users-list');
+  const users=accounts.filter(a=>a.role!=='admin');
+  if(!users.length){ul.innerHTML=`<p style="font-size:13px;color:var(--muted)">No registered users yet.</p>`;return;}
+  ul.innerHTML=users.map((u,i)=>{
+    const cnt=docs.filter(d=>d.ownerId===u.id).length;
+    const logCnt=(activityLogs[u.id]||[]).length;
+    return `<div class="user-row">
+      <div class="user-row-avatar" style="background:${u.color||avatarColor(i)}">${initials(u.name||u.username)}</div>
+      <div class="user-row-info">
+        <div class="user-row-name">${u.name||u.username}</div>
+        <div class="user-row-meta">@${u.username} &nbsp;·&nbsp; Joined: ${u.created} &nbsp;·&nbsp; ${cnt} doc${cnt!==1?'s':''} &nbsp;·&nbsp; ${logCnt} log${logCnt!==1?'s':''}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-blue" onclick="viewUserVault('${u.id}')">View</button>
+        <button class="btn btn-sm btn-red-soft" onclick="deleteUser('${u.id}')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function viewUserVault(uid){
+  const u=accounts.find(a=>a.id===uid);if(!u)return;
+  _uvCurrentUid=uid;
+  const userDocs=docs.filter(d=>d.ownerId===uid);
+  document.getElementById('uv-title').textContent=`${u.name||u.username}`;
+  document.getElementById('uv-subtitle').textContent=`@${u.username} · ${userDocs.length} doc${userDocs.length!==1?'s':''}`;
+  switchUVTab('docs');
+  openModal('user-vault-modal');
+}
+
+function switchUVTab(tab){
+  const docsPanel=document.getElementById('uv-docs-panel');
+  const logsPanel=document.getElementById('uv-logs-panel');
+  const tabDocs=document.getElementById('uv-tab-docs');
+  const tabLogs=document.getElementById('uv-tab-logs');
+  if(tab==='docs'){
+    docsPanel.style.display=''; logsPanel.style.display='none';
+    tabDocs.style.borderBottom='2px solid var(--accent)'; tabDocs.style.color='var(--text)'; tabDocs.style.fontWeight='600';
+    tabLogs.style.borderBottom='2px solid transparent'; tabLogs.style.color='var(--muted)'; tabLogs.style.fontWeight='500';
+    renderUVDocs();
+  } else {
+    docsPanel.style.display='none'; logsPanel.style.display='';
+    tabLogs.style.borderBottom='2px solid var(--accent)'; tabLogs.style.color='var(--text)'; tabLogs.style.fontWeight='600';
+    tabDocs.style.borderBottom='2px solid transparent'; tabDocs.style.color='var(--muted)'; tabDocs.style.fontWeight='500';
+    renderUVLogs();
+  }
+}
+
+function renderUVDocs(){
+  const uid=_uvCurrentUid;
+  const userDocs=docs.filter(d=>d.ownerId===uid);
+  const tb=document.getElementById('uv-tbody');
+  if(!userDocs.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty-msg">No documents.</div></td></tr>`;return;}
+  tb.innerHTML=userDocs.map(d=>`<tr>
+    <td class="doc-id-cell">${d.id}</td>
+    <td class="doc-name-cell">${d.name}</td>
+    <td style="font-size:12px;color:var(--muted)">${d.type}</td>
+    <td>${prioBadge(d.priority)}</td>
+    <td>${statusBadge(d.status)}</td>
+    <td style="font-size:12px;color:var(--muted)">${d.date}</td>
+    <td><div style="display:flex;gap:5px">
+      <button class="btn btn-sm btn-blue" onclick="openUpdate('${d.id}');closeModal('user-vault-modal')">Update</button>
+      <button class="btn btn-sm btn-purple" onclick="openQR('${d.id}')">QR</button>
+      <button class="btn btn-sm btn-red-soft" onclick="deleteDoc('${d.id}');renderUVDocs();renderUsers()">Del</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function renderUVLogs(){
+  const uid=_uvCurrentUid;
+  const logs=[...(activityLogs[uid]||[])].reverse();
+  const lb=document.getElementById('uv-logs-body');
+  if(!logs.length){lb.innerHTML=`<p style="font-size:13px;color:var(--muted)">No activity logs for this user.</p>`;return;}
+  lb.innerHTML=logs.map(l=>`
+    <div class="log-row">
+      <div class="log-dot" style="background:${l.color||'#94a3b8'}"></div>
+      <div class="log-msg">${l.msg}</div>
+      <div class="log-time">${l.date}</div>
+    </div>`).join('');
+}
+
+function deleteUser(uid){
+  const u=accounts.find(a=>a.id===uid);if(!u)return;
+  const cnt=docs.filter(d=>d.ownerId===uid).length;
+  if(!confirm(`Remove user "${u.name||u.username}"?\nThis will also delete their ${cnt} document(s).`))return;
+  accounts=accounts.filter(a=>a.id!==uid);
+  docs=docs.filter(d=>d.ownerId!==uid);
+  delete notifications[uid];
+  delete activityLogs[uid];
+  logActivity(currentUser.id,`Removed user "${u.name||u.username}"`, '#ef4444');
+  save();renderAll();renderUsers();toast('User removed.');
+}
+
+/* ══ ACTIVITY LOGS PAGE (Admin) ═════════════════════════════ */
+function renderActivityLogs(){
+  const filterEl=document.getElementById('actlog-user-filter');
+  const users=accounts.filter(a=>a.role!=='admin');
+  const opts=users.map(u=>`<option value="${u.id}">${u.name||u.username} (@${u.username})</option>`).join('');
+  filterEl.innerHTML='<option value="">All Users</option>'+opts;
+  
+  const selectedUid=filterEl.value;
+  const body=document.getElementById('actlogs-body');
+  
+  let entries=[];
+  if(selectedUid){
+    const acc=accounts.find(a=>a.id===selectedUid);
+    entries=[...(activityLogs[selectedUid]||[])].reverse().map(l=>({...l,uname:acc?acc.username:'?'}));
+  } else {
+    Object.entries(activityLogs).forEach(([uid,logs])=>{
+      const acc=accounts.find(a=>a.id===uid);
+      logs.forEach(l=>entries.push({...l,uname:acc?acc.username:'?'}));
+    });
+    entries.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  }
+  
+  if(!entries.length){body.innerHTML=`<p style="font-size:13px;color:var(--muted)">No activity logs.</p>`;return;}
+  body.innerHTML=entries.map(l=>`
+    <div class="log-row">
+      <div class="log-dot" style="background:${l.color||'#94a3b8'}"></div>
+      <div class="log-msg"><span style="font-weight:600;color:var(--blue)">@${l.uname}</span> — ${l.msg}</div>
+      <div class="log-time">${l.date}</div>
+    </div>`).join('');
+}
+
+function clearActivityLogs(){
+  if(!confirm('Clear ALL activity logs? This cannot be undone.'))return;
+  activityLogs={};
+  save();renderActivityLogs();toast('Activity logs cleared.');
+}
+
+/* ══ ADD DOCUMENT ═══════════════════════════════════════════ */
+function addDocument(){
+  const name=document.getElementById('new-name').value.trim();
+  const type=document.getElementById('new-type').value;
+  const by=document.getElementById('new-by').value.trim();
+  const purpose=document.getElementById('new-purpose').value.trim();
+  const priority=document.getElementById('new-priority').value||'Normal';
+  const due=document.getElementById('new-due').value||null;
+  if(!name||!type||!by||!purpose){toast('Please fill in all required fields.');return;}
+  const btn=document.getElementById('save-btn');
+  btn.disabled=true;
+  const overlay=document.getElementById('encrypt-overlay');
+  const bar=document.getElementById('encrypt-bar');
+  const step=document.getElementById('encrypt-step');
+  const sub=document.getElementById('encrypt-substep');
+  overlay.classList.add('show');
+  const steps=[
+    [0,'Initializing 128-bit key…','Loading key: Group6CITKey2024'],
+    [18,'Expanding 52 subkeys…','Rotating 128-bit buffer by 25 bits…'],
+    [40,'Applying 8 cipher rounds…','MUL mod 65537 · ADD mod 65536 · XOR'],
+    [65,'Output transformation…','Final multiply & add operations'],
+    [85,'Applying PKCS#7 padding…','Block-aligning plaintext'],
+    [95,'Finalizing ciphertext…','Converting to HEX representation'],
+    [100,'✅ Encryption complete!','Document secured & ready to save'],
+  ];
+  let i=0;
+  function nextStep(){
+    if(i>=steps.length){finishSave(name,type,by,purpose,priority,due,overlay,btn);return;}
+    const[pct,msg,s]=steps[i++];
+    bar.style.width=pct+'%';step.textContent=msg;sub.textContent=s;
+    setTimeout(nextStep,i===steps.length?400:320);
+  }
+  setTimeout(nextStep,50);
+}
+
+function finishSave(name,type,by,purpose,priority,due,overlay,btn){
+  const enc=IDEA.encrypt(name,KEY);
+  const doc={
+    id:genId(),name,type,by,purpose,date:nowStr(),status:'Received',enc,
+    ownerId:currentUser.id,ownerName:currentUser.username,
+    priority,due:due||null,
+    history:[{status:'Received',date:nowStr(),note:'Document submitted & encrypted',by:currentUser.username}]
+  };
+  docs.push(doc);
+  logActivity(currentUser.id,`Submitted document "${name}"`, '#4ade80');
+  save();renderAll();
+  setTimeout(()=>{
+    overlay.classList.remove('show');
+    document.getElementById('encrypt-bar').style.width='0%';
+    btn.disabled=false;
+    ['new-name','new-type','new-by','new-purpose'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('new-priority').value='Normal';
+    document.getElementById('new-due').value='';
+    toast('Document encrypted and saved! Status: Received');
+    showPage('vault',document.getElementById('nav-vault'));
+  },600);
+}
+
+/* ══ DELETE DOC ═════════════════════════════════════════════ */
+function deleteDoc(id){
+  if(!confirm('Delete this document? This cannot be undone.'))return;
+  const d=docs.find(d=>d.id===id);
+  docs=docs.filter(d=>d.id!==id);
+  if(d) logActivity(currentUser.id,`Deleted document "${d.name}"`, '#ef4444');
+  save();renderAll();toast('Document removed.');
+}
+
+/* ══ UPDATE STATUS ══════════════════════════════════════════ */
+function openUpdate(id){
+  const d=docs.find(d=>d.id===id);if(!d)return;
+  updateDocId=id;
+  document.getElementById('upd-id').value=id;
+  document.getElementById('upd-name').value=d.name;
+  document.getElementById('upd-status').value=d.status;
+  document.getElementById('upd-note').value='';
+  openModal('update-modal');
+}
+function applyUpdate(){
+  const d=docs.find(d=>d.id===updateDocId);if(!d)return;
+  const newStatus=document.getElementById('upd-status').value;
+  const note=document.getElementById('upd-note').value.trim();
+  d.status=newStatus;
+  if(!d.history)d.history=[];
+  d.history.push({status:newStatus,date:nowStr(),note:note||'',by:currentUser.username});
+  // FIX: Notification includes documentId for redirect
+  addNotification(d.ownerId,`Your document "${d.name}" status changed to <strong>${newStatus}</strong>${note?` — ${note}`:''}`,d.id);
+  logActivity(currentUser.id,`Updated "${d.name}" → ${newStatus}`, statusColor(newStatus));
+  // Also log for doc owner if different
+  if(d.ownerId!==currentUser.id){
+    logActivity(d.ownerId,`Document "${d.name}" status changed to ${newStatus}`, statusColor(newStatus));
+  }
+  save();renderAll();closeModal('update-modal');toast(`Status updated to "${newStatus}"`);
+}
+
+/* ══ QR CODE — scannable plain-text + IDEA-encrypted proof ══ */
+function docOffice(type){
+  const m={Academic:'Office of the Registrar',Laboratory:'Laboratory Office',Administrative:'Administrative Office',Financial:'Accounting Office',Other:'Document Control Office'};
+  return m[type]||'Document Control Office';
+}
+
+let _currentQRDocId = '';
+
+function openQR(id){
+  const d = docs.find(d=>d.id===id); if(!d) return;
+  _currentQRDocId = id;
+
+  const encId   = IDEA.encrypt(d.id, KEY);
+  const encName = d.enc;
+  const relEntry = [...(d.history||[])].reverse().find(h=>h.status==='Released');
+  const histLines = (d.history||[]).map(h=>`  [${h.status}] ${h.date} by ${h.by}${h.note?' - '+h.note:''}`).join('\n');
+
+  // Plain-text payload — scannable by any phone camera/QR app
+  const payload = [
+    '=== CIT DOCUMENT TRACKER ===',
+    'Group 6 | IDEA Encryption',
+    '',
+    'DOCUMENT ID : ' + d.id,
+    'NAME        : ' + d.name,
+    'TYPE        : ' + d.type,
+    'OFFICE      : ' + docOffice(d.type),
+    'SUBMITTED BY: ' + d.by,
+    'PURPOSE     : ' + d.purpose,
+    'DATE FILED  : ' + d.date,
+    'PRIORITY    : ' + (d.priority||'Normal'),
+    'STATUS      : ' + d.status,
+    'RELEASED    : ' + (relEntry ? relEntry.date : 'Not yet released'),
+    '',
+    '--- IDEA ENCRYPTED ---',
+    'ENC NAME : ' + encName,
+    'ENC ID   : ' + encId,
+    '',
+    '--- HISTORY ---',
+    histLines || '  (none)',
+    '',
+    '============================',
+  ].join('\n');
+
+  document.getElementById('qr-name').textContent   = d.name;
+  document.getElementById('qr-status').textContent = 'Status: ' + d.status + '  ·  ID: ' + d.id;
+  document.getElementById('qr-enc-hint').textContent = 'IDEA Enc ID: ' + encId.slice(0,24) + '…';
+  document.getElementById('qr-wrap').innerHTML = '';
+  openModal('qr-modal');
+
+  setTimeout(()=>{
+    new QRCode(document.getElementById('qr-wrap'), {
+      text: payload,
+      width: 200, height: 200,
+      correctLevel: QRCode.CorrectLevel.L  // L = highest capacity, best for longer text
+    });
+  }, 80);
+}
+
+function simulateScan(){
+  if(!_currentQRDocId){ toast('Open a QR code first.'); return; }
+  const d = docs.find(d=>d.id===_currentQRDocId);
+  if(!d){ toast('Document not found.'); return; }
+  closeModal('qr-modal');
+  renderScanResult(d);
+  openModal('scan-result-modal');
+}
+
+function renderScanResult(d){
+  const sColors = {Released:'#22c55e',Rejected:'#ef4444',Approved:'#16a34a',Processing:'#f59e0b','For Approval':'#3b82f6',Received:'#64748b'};
+  const sc = sColors[d.status]||'#64748b';
+  const office = docOffice(d.type);
+  const workflow = ['Received','Processing','For Approval','Approved','Released'];
+  const curIdx = workflow.indexOf(d.status);
+  const isRejected = d.status==='Rejected';
+
+  const wfDots = isRejected
+    ? `<div style="text-align:center;padding:16px 0;color:#f87171;font-size:13px;font-weight:600">⛔ Document Rejected</div>`
+    : workflow.map((s,i)=>{
+        const done=curIdx>i, curr=curIdx===i;
+        const bg = curr ? sc : done ? '#22c55e22' : 'rgba(255,255,255,.04)';
+        const bc = curr ? sc : done ? '#22c55e55' : 'rgba(255,255,255,.08)';
+        const tc = curr ? '#fff' : done ? '#22c55e' : 'rgba(255,255,255,.2)';
+        const icon = done ? '✓' : curr ? '●' : i+1;
+        return `${i>0?`<div style="flex:1;height:2px;background:${done?'#22c55e33':'rgba(255,255,255,.06)'};margin-top:13px;min-width:8px"></div>`:''}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:44px">
+            <div style="width:26px;height:26px;border-radius:50%;background:${bg};border:2px solid ${bc};color:${tc};display:grid;place-items:center;font-size:11px;font-weight:700${curr?';box-shadow:0 0 10px '+sc+'66':''}">${icon}</div>
+            <span style="font-size:9px;color:${done||curr?tc:'rgba(255,255,255,.2)'};font-weight:${curr?700:500};white-space:nowrap;text-align:center">${s}</span>
+          </div>`;
+      }).join('');
+
+  const relEntry = [...(d.history||[])].reverse().find(h=>h.status==='Released');
+  const hist = [...(d.history||[])].reverse();
+  const histHtml = hist.length===0
+    ? '<p style="font-size:12px;color:rgba(255,255,255,.3)">No history recorded.</p>'
+    : hist.map(h=>{
+        const dc={Released:'#22c55e',Rejected:'#ef4444',Approved:'#16a34a',Processing:'#f59e0b','For Approval':'#3b82f6',Received:'#64748b'}[h.status]||'#64748b';
+        return `<div style="display:flex;gap:10px;margin-bottom:14px;align-items:flex-start">
+          <div style="width:10px;height:10px;border-radius:50%;background:${dc};flex-shrink:0;margin-top:3px"></div>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.85)">${h.status}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px">By ${h.by} · ${h.date}</div>
+            ${h.note?`<div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:4px;padding:6px 10px;background:rgba(255,255,255,.04);border-radius:5px;font-style:italic">"${h.note}"</div>`:''}
+          </div>
+        </div>`;
+      }).join('');
+
+  document.getElementById('scan-result-body').innerHTML = `
+    <div style="background:radial-gradient(ellipse at 50% 0%,#1a3d22,#0d1a10 70%);padding:22px 20px 18px;text-align:center;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="font-size:20px;font-weight:700;color:#e6edf3;margin-bottom:3px">${d.name}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.35);font-family:'DM Mono',monospace;margin-bottom:12px">${d.id} · ${d.type}</div>
+      <div style="display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border-radius:99px;font-size:13px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
+        <span style="width:7px;height:7px;border-radius:50%;background:${sc}"></span>${d.status}
+      </div>
+    </div>
+    <div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.8px;text-transform:uppercase;margin-bottom:12px">Document Progress</div>
+      <div style="display:flex;align-items:center;gap:0">${wfDots}</div>
+    </div>
+    <div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.8px;text-transform:uppercase;margin-bottom:12px">Document Details</div>
+      ${[['Submitted By',d.by],['Purpose',d.purpose],['Assigned Office',office],['Priority',d.priority||'Normal'],['Date Filed',d.date],['Release Date',relEntry?`<span style="color:#4ade80">${relEntry.date}</span>`:'<span style="color:rgba(255,255,255,.25)">Pending</span>']].map(([l,v])=>`
+        <div style="display:flex;gap:10px;margin-bottom:9px;font-size:12px">
+          <span style="color:rgba(255,255,255,.3);width:96px;flex-shrink:0">${l}</span>
+          <span style="color:rgba(255,255,255,.8)">${v}</span>
+        </div>`).join('')}
+    </div>
+    <div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.8px;text-transform:uppercase;margin-bottom:12px">Status History</div>
+      ${histHtml}
+    </div>
+    <div style="padding:16px 18px">
+      <div style="font-size:9px;font-weight:700;color:rgba(74,222,128,.35);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">🔐 IDEA Encryption Proof</div>
+      <div style="background:rgba(0,0,0,.3);border:1px solid rgba(74,222,128,.1);border-radius:8px;padding:12px 14px">
+        ${[['Key','Group6CITKey2024'],['Algorithm','IDEA · 128-bit · 8 Rounds'],['Encrypted',d.enc.slice(0,28)+'…'],['Decrypted',IDEA.decrypt(d.enc,KEY)]].map(([l,v])=>`
+          <div style="display:flex;gap:8px;margin-bottom:7px;font-size:10px;font-family:'DM Mono',monospace">
+            <span style="color:rgba(74,222,128,.35);width:68px;flex-shrink:0">${l}</span>
+            <span style="color:rgba(74,222,128,.7);word-break:break-all">${v}</span>
+          </div>`).join('')}
+      </div>
+      <p style="font-size:10px;color:rgba(255,255,255,.2);text-align:center;margin-top:16px">CIT Document Tracker · IDEA Encryption · Group 6</p>
+    </div>`;
+}
+
+/* ══ OPEN DOCUMENT FROM NOTIFICATION — FIX ══════════════════ */
+function openDocumentFromNotif(documentId){
+  const doc=docs.find(d=>d.id===documentId);
+  if(!doc){toast('Document not found.');return;}
+  closeModal('notif-modal');
+  // Navigate to vault and open history
+  showPage('vault',document.getElementById('nav-vault'));
+  setTimeout(()=>openHistory(documentId),150);
+}
+
+/* ══ HISTORY ════════════════════════════════════════════════ */
+function openHistory(id){
+  const d=docs.find(d=>d.id===id);if(!d)return;
+  document.getElementById('hist-name').textContent=d.name;
+  document.getElementById('hist-id').textContent=d.id;
+  const tl=document.getElementById('hist-timeline');
+  if(!d.history||!d.history.length){tl.innerHTML='<p style="font-size:13px;color:var(--muted)">No history yet.</p>';}
+  else tl.innerHTML=d.history.map(h=>`
+    <div class="tl-item">
+      <div class="tl-dot ${(h.status||'').toLowerCase().replace(' ','')}"></div>
+      <div class="tl-status">${statusBadge(h.status)}</div>
+      <div class="tl-meta">By ${h.by} &nbsp;·&nbsp; ${h.date}</div>
+      ${h.note?`<div class="tl-note">"${h.note}"</div>`:''}
+    </div>`).join('');
+  openModal('history-modal');
+}
+
+/* ══ NOTIFICATIONS — FIX: includes documentId ══════════════ */
+function addNotification(userId, msg, documentId){
+  if(!notifications[userId]) notifications[userId]=[];
+  notifications[userId].push({id:Date.now(),msg,date:nowStr(),read:false,documentId:documentId||null});
+  save();renderNotifCount();
+}
+function renderNotifCount(){
+  if(!currentUser)return;
+  const notifs=(notifications[currentUser.id]||[]).filter(n=>!n.read);
+  const el=document.getElementById('notif-count');
+  if(notifs.length){el.textContent=notifs.length;el.style.display='';}
+  else el.style.display='none';
+}
+function openNotifModal(){
+  const notifs=(notifications[currentUser.id]||[]).slice().reverse();
+  const nl=document.getElementById('notif-list');
+  if(!notifs.length){nl.innerHTML='<p style="font-size:13px;color:var(--muted);padding:8px 0">No notifications.</p>';}
+  else nl.innerHTML=notifs.map(n=>`
+    <div class="notif-item ${n.read?'read':''}" onclick="handleNotifClick(${n.id})">
+      <div class="notif-item-dot"></div>
+      <div>
+        <div class="notif-item-text">${n.msg}</div>
+        <div class="notif-item-time">${n.date}</div>
+        ${n.documentId?`<div class="notif-item-link">→ View Document</div>`:''}
+      </div>
+    </div>`).join('');
+  openModal('notif-modal');
+  setTimeout(()=>markAllRead(),1500);
+}
+// FIX: clicking notification navigates to document
+function handleNotifClick(id){
+  const notifs=notifications[currentUser.id]||[];
+  const n=notifs.find(n=>n.id===id);
+  if(!n)return;
+  n.read=true;
+  save();renderNotifCount();
+  if(n.documentId){
+    openDocumentFromNotif(n.documentId);
+  }
+}
+function markRead(id){
+  const notifs=notifications[currentUser.id]||[];
+  const n=notifs.find(n=>n.id===id);if(n)n.read=true;
+  save();renderNotifCount();
+}
+function markAllRead(){
+  (notifications[currentUser.id]||[]).forEach(n=>n.read=true);
+  save();renderNotifCount();
+  document.querySelectorAll('.notif-item').forEach(el=>el.classList.add('read'));
+  document.querySelectorAll('.notif-item-dot').forEach(el=>el.style.background='var(--border)');
+  document.getElementById('notif-count').style.display='none';
+}
+document.getElementById('notif-btn').onclick=openNotifModal;
+
+/* ══ SETTINGS — Logout after password change ════════════════ */
+function changePassword(){
+  const cur=document.getElementById('cur-pass').value;
+  const np=document.getElementById('new-pass').value;
+  const conf=document.getElementById('conf-pass').value;
+  if(!cur||!np||!conf){toast('Please fill all password fields.');return;}
+  if(currentUser.password!==cur){toast('Current password is incorrect.');return;}
+  if(np.length<4){toast('New password must be at least 4 characters.');return;}
+  if(np!==conf){toast('New passwords do not match.');return;}
+  currentUser.password=np;
+  const acc=accounts.find(a=>a.id===currentUser.id);
+  if(acc) acc.password=np;
+  logActivity(currentUser.id,'Password changed','#f59e0b');
+  save();
+  ['cur-pass','new-pass','conf-pass'].forEach(id=>document.getElementById(id).value='');
+  // FIX: Force logout after password change
+  toast('Password updated. Please sign in again.');
+  setTimeout(()=>logout(),1500);
+}
+
+/* ══ DEMO ════════════════════════════════════════════════════ */
+function runDemo(){
+  const key=document.getElementById('demo-key').value||KEY;
+  const msg=document.getElementById('demo-msg').value||'Hello CIT!';
+  const enc=IDEA.encrypt(msg,key),dec=IDEA.decrypt(enc,key);
+  document.getElementById('d-orig').textContent=msg;
+  document.getElementById('d-enc').textContent=enc;
+  document.getElementById('d-dec').textContent=dec;
+  document.getElementById('demo-result').style.display='block';
+  toast('Encryption demo complete!');
+}
+
+/* ══ TRACKING PAGE (Public) ════════════════════════════════ */
+function initTrackingPage(){
+  const params = new URLSearchParams(window.location.search);
+  const encParam = params.get('track');
+  if(!encParam) return false;
+
+  // Load data from localStorage (same origin)
+  load();
+
+  const screen = document.getElementById('track-screen');
+  screen.classList.add('show');
+
+  try {
+    const docId = IDEA.decrypt(encParam, KEY);
+    const d = docs.find(d => d.id === docId);
+
+    if(!d){
+      document.getElementById('track-content-hero').innerHTML=`
+        <div class="track-doc-badge" style="background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3)">⚠️</div>
+        <div class="track-doc-name">Document Not Found</div>
+        <div class="track-doc-meta">The QR code may be outdated or from a different system</div>`;
+      document.getElementById('track-content-body').innerHTML=`
+        <div class="track-not-found">
+          <h2>Could not locate document</h2>
+          <p>The encrypted ID in this QR code did not match any document in the system.<br>Please contact the issuing office for assistance.</p>
+        </div>`;
+      return true;
+    }
+
+    const statusColors = {Released:'#22c55e',Rejected:'#ef4444',Approved:'#16a34a',Processing:'#f59e0b','For Approval':'#3b82f6',Received:'#64748b'};
+    const sColor = statusColors[d.status]||'#64748b';
+    const office = docOffice(d.type);
+    const workflow = ['Received','Processing','For Approval','Approved','Released'];
+    const isRejected = d.status === 'Rejected';
+    const curIdx = workflow.indexOf(d.status);
+
+    // ── Hero ──
+    document.getElementById('track-content-hero').innerHTML=`
+      <div class="track-doc-badge" style="background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.25)">📄</div>
+      <div class="track-doc-name">${d.name}</div>
+      <div class="track-doc-meta">${d.id} &nbsp;·&nbsp; ${d.type} &nbsp;·&nbsp; ${office}</div>
+      <div class="track-status-pill" style="background:${sColor}22;border:1px solid ${sColor}55;color:${sColor}">
+        <span style="width:8px;height:8px;border-radius:50%;background:${sColor};display:inline-block${d.status!=='Rejected'&&d.status!=='Released'?';animation:pulse 1.5s infinite':''}"></span>
+        ${d.status}
+      </div>`;
+
+    // ── Workflow ──
+    const wfHtml = isRejected
+      ? `<div style="text-align:center;width:100%;padding:8px 0">
+           <span style="font-size:13px;color:#f87171;font-weight:600">⛔ Document was Rejected</span>
+           <p style="font-size:12px;color:rgba(255,255,255,.3);margin-top:4px">Check the history below for details.</p>
+         </div>`
+      : workflow.map((step, i) => {
+          const done = curIdx > i;
+          const curr = curIdx === i;
+          const cls  = done?'done':curr?'current':'';
+          return `${i>0?'<div class="twf-arrow">›</div>':''}
+            <div class="twf-step">
+              <div class="twf-dot ${cls}">${done?'✓':i+1}</div>
+              <div class="twf-label ${cls}">${step}</div>
+            </div>`;
+        }).join('');
+
+    // ── History timeline ──
+    const hist = (d.history||[]);
+    const histHtml = hist.length === 0
+      ? '<p style="font-size:13px;color:rgba(255,255,255,.3)">No history recorded.</p>'
+      : [...hist].reverse().map(h => {
+          const dotCls = (h.status||'').toLowerCase().replace(/\s+/g,'');
+          return `<div class="ttl-item">
+            <div class="ttl-dot ${dotCls}"></div>
+            <div class="ttl-status-label">${h.status}</div>
+            <div class="ttl-meta">Updated by ${h.by} &nbsp;·&nbsp; ${h.date}</div>
+            ${h.note?`<div class="ttl-note">"${h.note}"</div>`:''}
+          </div>`;
+        }).join('');
+
+    // ── Release date ──
+    const relEntry = [...(d.history||[])].reverse().find(h=>h.status==='Released');
+    const releaseDate = relEntry ? relEntry.date : '—';
+
+    // ── Body ──
+    document.getElementById('track-content-body').innerHTML=`
+      <!-- Workflow -->
+      <div class="track-card">
+        <div class="track-card-head"><h3>📋 &nbsp;Document Workflow</h3></div>
+        <div class="track-workflow">${wfHtml}</div>
+      </div>
+
+      <!-- Document Info -->
+      <div class="track-card">
+        <div class="track-card-head"><h3>📄 &nbsp;Document Information</h3></div>
+        <div class="track-card-body">
+          <div class="track-field"><span class="track-field-label">Document</span><span class="track-field-value" style="font-weight:700">${d.name}</span></div>
+          <div class="track-field"><span class="track-field-label">Type</span><span class="track-field-value">${d.type}</span></div>
+          <div class="track-field"><span class="track-field-label">Submitted By</span><span class="track-field-value">${d.by}</span></div>
+          <div class="track-field"><span class="track-field-label">Purpose</span><span class="track-field-value">${d.purpose}</span></div>
+          <div class="track-field"><span class="track-field-label">Assigned Office</span><span class="track-field-value">${office}</span></div>
+          <div class="track-field"><span class="track-field-label">Date Filed</span><span class="track-field-value">${d.date}</span></div>
+          <div class="track-field"><span class="track-field-label">Release Date</span><span class="track-field-value" style="color:${relEntry?'#4ade80':'rgba(255,255,255,.4)'}">${releaseDate}</span></div>
+          <div class="track-field"><span class="track-field-label">Priority</span><span class="track-field-value">${d.priority||'Normal'}</span></div>
+          <div class="track-field"><span class="track-field-label">Current Status</span>
+            <span class="track-field-value">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700;background:${sColor}22;color:${sColor};border:1px solid ${sColor}44">${d.status}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="track-card">
+        <div class="track-card-head"><h3>🕐 &nbsp;Status History</h3></div>
+        <div class="track-card-body"><div class="track-timeline">${histHtml}</div></div>
+      </div>
+
+      <!-- IDEA Encryption Proof -->
+      <div class="track-card">
+        <div class="track-card-head"><h3>🔐 &nbsp;IDEA Encryption Verification</h3></div>
+        <div class="track-card-body">
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;line-height:1.6">
+            This QR code's payload is encrypted using the IDEA (International Data Encryption Algorithm) with a 128-bit key.
+            The document name is stored as IDEA ciphertext. When scanned, the system decrypts the document ID from the URL parameter to retrieve this record.
+          </p>
+          <div class="track-enc-box">
+            <div class="track-enc-row"><span class="track-enc-label">Doc ID</span><span class="track-enc-val">${d.id}</span></div>
+            <div class="track-enc-row"><span class="track-enc-label">Encrypted</span><span class="track-enc-val">${d.enc}</span></div>
+            <div class="track-enc-row"><span class="track-enc-label">Decrypted</span><span class="track-enc-val" style="color:#4ade80">${IDEA.decrypt(d.enc,KEY)}</span></div>
+            <div class="track-enc-row"><span class="track-enc-label">URL Token</span><span class="track-enc-val">${encParam.slice(0,32)}…</span></div>
+          </div>
+        </div>
+      </div>`;
+
+  } catch(e) {
+    document.getElementById('track-content-hero').innerHTML=`
+      <div class="track-doc-badge" style="background:rgba(239,68,68,.12)">⚠️</div>
+      <div class="track-doc-name">Invalid QR Code</div>
+      <div class="track-doc-meta">Could not decrypt the QR payload</div>`;
+    document.getElementById('track-content-body').innerHTML=`
+      <div class="track-not-found">
+        <h2>Decryption Failed</h2>
+        <p>This QR code could not be verified. It may have been tampered with or generated by a different system.</p>
+      </div>`;
+  }
+
+  // Add pulse keyframe
+  const style = document.createElement('style');
+  style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}';
+  document.head.appendChild(style);
+
+  return true;
+}
+
+/* ══ MODAL HELPERS ══════════════════════════════════════════ */
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
+
+/* ══ TOAST ══════════════════════════════════════════════════ */
+let toastTimer;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+/* ══ INIT ═══════════════════════════════════════════════════ */
+load();
+
+// ── Check if this is a QR tracking scan ──
+if(initTrackingPage()){
+  // Tracking page shown — do not init app or auth
+} else {
+
+// Ensure admin always exists
+if(!accounts.find(a=>a.role==='admin')){
+  const adminAcc={id:'USR-ADMIN0',username:'admin',name:'System Admin',password:'admin1234',role:'admin',color:'#fb923c',created:nowStr()};
+  accounts.unshift(adminAcc);
+  notifications['USR-ADMIN0']=[];
+  activityLogs['USR-ADMIN0']=[];
+  save();
+}
+
+// Seed demo data
+if(docs.length===0){
+  let demoUser=accounts.find(a=>a.role==='user');
+  if(!demoUser){
+    demoUser={id:genUID(),username:'juandelacruz',name:'Juan dela Cruz',password:'pass1234',role:'user',color:'#60a5fa',created:nowStr()};
+    accounts.push(demoUser);
+    notifications[demoUser.id]=[];
+    activityLogs[demoUser.id]=[];
+  }
+  const seedDocs=[
+    ['Enrollment Form','Academic','Juan dela Cruz','2nd Semester Enrollment','Processing','Normal'],
+    ['Laboratory Request','Laboratory','Maria Santos','Lab Equipment Request','For Approval','High'],
+    ['Certificate of Registration','Academic','Pedro Reyes','COR for Scholarship','Released','Normal'],
+    ['Leave of Absence Form','Administrative','Ana Reyes','Medical Reason','Approved','Low'],
+    ['Scholarship Application','Financial','Carlos Tan','Merit Scholarship','Received','Urgent'],
+  ];
+  seedDocs.forEach(([name,type,by,purpose,status,priority])=>{
+    const enc=IDEA.encrypt(name,KEY);
+    docs.push({
+      id:genId(),name,type,by,purpose,date:nowStr(),status,enc,
+      ownerId:demoUser.id,ownerName:demoUser.username,
+      priority,due:null,
+      history:[{status,date:nowStr(),note:'Initial seed',by:'system'}]
+    });
+  });
+  logActivity(demoUser.id,'System initialized with demo documents','#4ade80');
+  save();
+}
+
+renderAll();
+
+} // end tracking page check
+</script>
+</body>
+</html>
