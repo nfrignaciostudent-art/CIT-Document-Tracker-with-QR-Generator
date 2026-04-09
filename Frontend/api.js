@@ -18,10 +18,14 @@
      - null           ONLY if the server is completely unreachable (offline)
 ══════════════════════════════════════════════════════════════════════ */
 
-/* FIX: Use relative URL so API calls work on any device/network.
-   When frontend + backend are on the same server (Render, local, etc.),
-   relative paths like /api/... always resolve correctly.
-   Never falls back to localhost which breaks phone QR scans. */
+/* ── API Base URL ──────────────────────────────────────────────────────
+   IMPORTANT: If your frontend (GitHub Pages) is separate from your
+   backend (Render), set window.CIT_API_BASE to your Render URL.
+   Add this in index.html BEFORE api.js loads:
+     <script>window.CIT_API_BASE = 'https://your-app.onrender.com';</script>
+   If frontend + backend are on the SAME server (Render serving both),
+   leave it as '' (relative URLs will work automatically).
+──────────────────────────────────────────────────────────────────── */
 const API_BASE = window.CIT_API_BASE || '';
 
 /* ── Core JSON helper ── */

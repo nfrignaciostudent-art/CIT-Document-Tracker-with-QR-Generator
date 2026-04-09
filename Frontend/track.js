@@ -368,8 +368,8 @@ function renderPublicTrackResult(d) {
   /* Download zone — no inline preview */
   document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
 
-  /* QR code — FIX: always use current origin, never stored localhost */
-  const trackUrl = window.location.origin + '?track=' + (d.internalId || d.id);
+  /* QR code — FIX: use full page URL so QR works on GitHub Pages, Render, etc. */
+  const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
   const qrBox    = document.getElementById('pub-qr-box');
   qrBox.innerHTML = '';
   const target = document.createElement('div');

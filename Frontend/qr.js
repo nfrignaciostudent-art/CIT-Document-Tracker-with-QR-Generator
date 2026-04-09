@@ -17,9 +17,10 @@ function decodeSnapshot(str) {
 }
 
 function getSavedBaseUrl() {
-  /* FIX: Always use current origin so QR works on any network/device.
-     Never use the stored value which may contain localhost:3000. */
-  return window.location.origin;
+  /* FIX: Use full current page URL (origin + pathname) so QR works
+     on GitHub Pages, Render, localhost — anywhere.
+     e.g. https://site.github.io/repo/Frontend/index.html → correct full path */
+  return window.location.href.split('?')[0].replace(/\/+$/, '');
 }
 
 /* Build a static QR pointing to ?track=<internalId> */
@@ -27,8 +28,8 @@ function buildQR(docKey, baseUrl, targetElId) {
   const d = docs.find(function(x){ return (x.internalId||x.id) === docKey; });
   if (!d) return;
 
-  /* FIX: Always build from current origin — never from stored localhost URL */
-  const cleanBase = window.location.origin;
+  /* Always build from the current full page URL */
+  const cleanBase = window.location.href.split('?')[0].replace(/\/+$/, '');
   const trackUrl  = cleanBase + '?track=' + (d.internalId || d.id);
 
   const wrap = document.getElementById(targetElId || 'qr-wrap');
@@ -104,8 +105,9 @@ function simulateScan() {
 
 /* Build receipt QR on the register page */
 function buildReceiptQR(doc) {
-  /* FIX: Always use current origin — never localhost */
-  const trackUrl = window.location.origin + '?track=' + (doc.internalId || doc.id);
+  /* FIX: Use full current page URL so QR works on GitHub Pages, Render, etc. */
+  const cleanBase = window.location.href.split('?')[0].replace(/\/+$/, '');
+  const trackUrl  = cleanBase + '?track=' + (doc.internalId || doc.id);
 
   document.getElementById('receipt-qr-url').textContent = trackUrl;
 
