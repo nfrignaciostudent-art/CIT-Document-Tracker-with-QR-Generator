@@ -18,7 +18,11 @@
      - null           ONLY if the server is completely unreachable (offline)
 ══════════════════════════════════════════════════════════════════════ */
 
-const API_BASE = window.CIT_API_BASE || 'http://localhost:3000';
+/* FIX: Use relative URL so API calls work on any device/network.
+   When frontend + backend are on the same server (Render, local, etc.),
+   relative paths like /api/... always resolve correctly.
+   Never falls back to localhost which breaks phone QR scans. */
+const API_BASE = window.CIT_API_BASE || '';
 
 /* ── Core JSON helper ── */
 async function apiRequest(method, path, body = null, token = null) {
