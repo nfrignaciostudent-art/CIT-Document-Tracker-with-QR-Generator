@@ -1,0 +1,15 @@
+node_modules/
+.env
+backend/uploads/
+*.class
+.vscode/
+.DS_Store
+package-lock.json
+
+# Java files
+*.java
+IDEA_CIT_Document_T*/
+Document.class
+IDEA.class
+QRGenerator.class
+Tracker.class

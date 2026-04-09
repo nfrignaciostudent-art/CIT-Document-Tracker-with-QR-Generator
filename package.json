@@ -1,0 +1,18 @@
+{
+  "name": "idea-cit-document-tracker",
+  "version": "1.0.0",
+  "description": "IDEA CIT Document Tracker Project",
+  "workspaces": [
+    "backend",
+    "Frontend"
+  ],
+  "scripts": {
+    "install-all": "npm install",
+    "start-backend": "npm start --workspace=backend",
+    "start-frontend": "npm start --workspace=Frontend",
+    "dev": "npm run dev-frontend",
+    "dev-backend": "npm run dev --workspace=backend",
+    "dev-frontend": "npm run dev --workspace=Frontend",
+    "seed": "node Frontend/seed.js"
+  }
+}
