@@ -186,7 +186,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .user-info-bar{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.04);margin-bottom:4px;display:flex;align-items:center;gap:9px;}
 .user-avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;color:#0d1117;}
 .user-name{font-size:13px;color:rgba(255,255,255,.72);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.user-role-badge{font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:20px;margin-top:1px;display:inline-block;}
+.user-role-badge{font-size:9px;font-weight:700;letter-spacing:0;padding:2px 7px;border-radius:20px;margin-top:1px;display:inline-block;}
 .role-admin{background:rgba(249,115,22,.16);color:#fb923c;}
 .role-user{background:rgba(59,130,246,.14);color:#60a5fa;}
 .nav-section-label{padding:12px 14px 4px;font-size:10px;font-weight:500;color:rgba(255,255,255,.2);letter-spacing:.5px;text-transform:uppercase;}

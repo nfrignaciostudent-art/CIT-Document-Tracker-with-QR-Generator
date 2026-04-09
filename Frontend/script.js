@@ -575,7 +575,7 @@ function dashActions(d){
   } else if(d.status==='Released' && !hasProcessed){
     menuItems+=`<button class="dropdown-item" disabled title="Released but no processed file attached yet">No File</button>`;
   } else if(docHasOriginalFile(d)){
-    menuItems+=`<button class="dropdown-item" style="color:#3b82f6" onclick="closeAllActionMenus(); viewFile('${docKey}','original',this)">📎 File Attached</button>`;
+    menuItems+=`<button class="dropdown-item" style="color:#3b82f6" onclick="closeAllActionMenus(); viewFile('${docKey}','original',this)">File Attached</button>`;
   }
 
   if(isAdmin){
@@ -1101,7 +1101,7 @@ function openUpdate(docKey){
     document.getElementById('upd-file-action-label').textContent = 'Replace Processed File (optional)';
   } else {
     existingEl.style.display = 'none';
-    document.getElementById('upd-file-action-label').textContent = 'Upload Processed/Final File';
+    document.getElementById('upd-file-action-label').textContent = 'Upload Processed';
   }
   onUpdateStatusChange(d.status);
   openModal('update-modal');

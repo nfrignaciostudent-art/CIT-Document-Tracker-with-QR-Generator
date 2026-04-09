@@ -234,16 +234,12 @@ function logout() {
 /* ── Setup sidebar ── */
 function setupSidebar() {
   const isAdmin = currentUser.role === 'admin';
-  const modeTag = currentUser._backendMode
-    ? '<span style="font-size:9px;color:rgba(74,222,128,.6);display:block;margin-top:2px">● MongoDB</span>'
-    : '<span style="font-size:9px;color:rgba(251,146,60,.5);display:block;margin-top:2px">○ Offline</span>';
 
   document.getElementById('user-info-bar').innerHTML = `
     <div class="user-avatar" style="background:${currentUser.color || '#4ade80'}">${initials(currentUser.name || currentUser.username)}</div>
     <div>
       <div class="user-name">${currentUser.name || currentUser.username}</div>
       <span class="user-role-badge ${isAdmin ? 'role-admin' : 'role-user'}">${isAdmin ? 'ADMIN' : 'USER'}</span>
-      ${modeTag}
     </div>`;
 
   document.getElementById('nav-users').style.display     = isAdmin ? '' : 'none';
