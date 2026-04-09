@@ -307,25 +307,25 @@ function renderPublicTrackResult(d) {
   const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
 
-  /* Status Banner */
+  /* Status Banner — compact receipt-style */
   document.getElementById('status-banner').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
-        <h2 style="font-size:22px;font-weight:700;color:#e6edf3;margin-bottom:4px">${d.name}</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);font-family:'DM Mono',monospace">${dispId} &nbsp;·&nbsp; ${d.type}</p>
+        <h2 style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:3px">${d.name}</h2>
+        <p style="font-size:11px;color:rgba(255,255,255,.4);font-family:'DM Mono',monospace">${dispId} &nbsp;·&nbsp; ${d.type}</p>
       </div>
-      <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:99px;
-                  font-size:14px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
-        <span style="width:8px;height:8px;border-radius:50%;background:${sc};display:inline-block${
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;
+                  font-size:12px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
+        <span style="width:6px;height:6px;border-radius:50%;background:${sc};display:inline-block${
           !isRejected && !isReleased ? ';animation:pulse 1.5s infinite' : ''
         }"></span>
         ${d.status}
       </div>
     </div>
     ${(lastLoc.location || lastLoc.handler) ? `
-    <div style="margin-top:12px;display:flex;gap:20px;flex-wrap:wrap;padding:10px 0;border-top:1px solid rgba(255,255,255,.07)">
-      ${lastLoc.location ? `<span style="font-size:13px;color:rgba(255,255,255,.6)">Location: <strong style="color:rgba(255,255,255,.85)">${lastLoc.location}</strong></span>` : ''}
-      ${lastLoc.handler  ? `<span style="font-size:13px;color:rgba(255,255,255,.6)">Handler: <strong style="color:rgba(255,255,255,.85)">${lastLoc.handler}</strong></span>`  : ''}
+    <div style="margin-top:8px;display:flex;gap:16px;flex-wrap:wrap;padding:8px 0;border-top:1px solid rgba(255,255,255,.07)">
+      ${lastLoc.location ? `<span style="font-size:11px;color:rgba(255,255,255,.6)">Location: <strong style="color:rgba(255,255,255,.85)">${lastLoc.location}</strong></span>` : ''}
+      ${lastLoc.handler  ? `<span style="font-size:11px;color:rgba(255,255,255,.6)">Handler: <strong style="color:rgba(255,255,255,.85)">${lastLoc.handler}</strong></span>`  : ''}
     </div>` : ''}`;
 
   /* Workflow progress */
@@ -359,19 +359,17 @@ function renderPublicTrackResult(d) {
       ? `<span style="color:#4ade80">${releaseDate}</span>`
       : `<span style="color:rgba(255,255,255,.25)">Pending</span>`]
   ].map(function(row){
-    return `<div class="detail-row">
-      <span class="detail-label">${row[0]}</span>
-      <span class="detail-value">${row[1]}</span>
+    return `<div class="detail-row" style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start">
+      <span class="detail-label" style="font-size:10px;font-weight:600;color:rgba(255,255,255,.28);letter-spacing:.5px;text-transform:uppercase;width:100px;flex-shrink:0;padding-top:1px">${row[0]}</span>
+      <span class="detail-value" style="font-size:12px;color:rgba(255,255,255,.82);flex:1;line-height:1.4">${row[1]}</span>
     </div>`;
   }).join('');
 
   /* Download zone — no inline preview */
   document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
 
-  /* QR code */
-  const baseUrl  = (getSavedBaseUrl() || window.location.origin + window.location.pathname)
-                     .replace(/\/+$/, '').split('?')[0];
-  const trackUrl = baseUrl + '?track=' + (d.internalId || d.id);
+  /* QR code — FIX: always use current origin, never stored localhost */
+  const trackUrl = window.location.origin + '?track=' + (d.internalId || d.id);
   const qrBox    = document.getElementById('pub-qr-box');
   qrBox.innerHTML = '';
   const target = document.createElement('div');

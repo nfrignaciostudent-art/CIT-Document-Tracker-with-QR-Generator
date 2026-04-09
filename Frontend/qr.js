@@ -17,7 +17,9 @@ function decodeSnapshot(str) {
 }
 
 function getSavedBaseUrl() {
-  return localStorage.getItem('cit_qr_base_url') || '';
+  /* FIX: Always use current origin so QR works on any network/device.
+     Never use the stored value which may contain localhost:3000. */
+  return window.location.origin;
 }
 
 /* Build a static QR pointing to ?track=<internalId> */
@@ -25,8 +27,8 @@ function buildQR(docKey, baseUrl, targetElId) {
   const d = docs.find(function(x){ return (x.internalId||x.id) === docKey; });
   if (!d) return;
 
-  const cleanBase = (baseUrl || window.location.origin + window.location.pathname)
-                      .replace(/\/+$/, '').split('?')[0];
+  /* FIX: Always build from current origin — never from stored localhost URL */
+  const cleanBase = window.location.origin;
   const trackUrl  = cleanBase + '?track=' + (d.internalId || d.id);
 
   const wrap = document.getElementById(targetElId || 'qr-wrap');
@@ -102,9 +104,8 @@ function simulateScan() {
 
 /* Build receipt QR on the register page */
 function buildReceiptQR(doc) {
-  const baseUrl  = (getSavedBaseUrl() || window.location.origin + window.location.pathname)
-                     .replace(/\/+$/, '').split('?')[0];
-  const trackUrl = baseUrl + '?track=' + (doc.internalId || doc.id);
+  /* FIX: Always use current origin — never localhost */
+  const trackUrl = window.location.origin + '?track=' + (doc.internalId || doc.id);
 
   document.getElementById('receipt-qr-url').textContent = trackUrl;
 
