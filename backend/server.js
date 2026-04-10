@@ -22,6 +22,7 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+/* ── API Routes ─────────────────────────────────────────────────── */
 app.use('/api/auth',      authRoutes);
 app.use('/api/documents', documentRoutes);
 
@@ -67,10 +68,18 @@ app.get('/seed-admin', async (req, res) => {
   }
 });
 
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+/* ── Serve Frontend Static Files ────────────────────────────────── */
+// All your frontend files (index.html, style.css, script.js, etc.)
+// must be placed inside a folder called "public" at the project root.
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Catch-all: return index.html for any non-API route
+// This must come AFTER all API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+/* ── Error Handlers ─────────────────────────────────────────────── */
 app.use((err, req, res, next) => {
   console.error('[Server Error]', err);
   res.status(500).json({ message: err.message || 'Internal server error' });
