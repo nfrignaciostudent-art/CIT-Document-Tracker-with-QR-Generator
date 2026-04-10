@@ -1,4 +1,4 @@
-# CIT Document Tracker
+# CIT Document Tracker With QR Generator
 
 **Group 6** · Node.js + Express + MongoDB + IDEA-128 Encryption
 
