@@ -6,7 +6,7 @@
 const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
 
-const JWT_SECRET  = process.env.JWT_SECRET  || 'cit_group6_secret_2024';
+const JWT_SECRET  = process.env.JWT_SECRET  || 'cit_group6_secret_key_2024';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
 
 const generateToken = (id) => jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
@@ -29,12 +29,14 @@ const registerUser = async (req, res) => {
     const exists = await User.findOne({ username });
     if (exists) return res.status(409).json({ message: 'Username already taken.' });
 
-    const user = await User.create({
+    /* ✅ Use new User + .save() to ensure bcrypt pre('save') hook fires */
+    const user = new User({
       userId:   userId || ('USR-' + Date.now().toString(36).toUpperCase()),
       username, name, password,
-      role:     role || 'user',
+      role:     role  || 'user',
       color:    color || '#4ade80'
     });
+    await user.save();
 
     res.status(201).json({
       _id:      user._id,
@@ -59,8 +61,16 @@ const loginUser = async (req, res) => {
       return res.status(400).json({ message: 'Username and password are required.' });
     }
 
-    const user = await User.findOne({ username: username.toLowerCase() });
-    if (!user || !(await user.matchPassword(password))) {
+    const user = await User.findOne({ username: username.toLowerCase().trim() });
+
+    if (!user) {
+      console.warn('[loginUser] User not found:', username);
+      return res.status(401).json({ message: 'Incorrect username or password.' });
+    }
+
+    const passwordMatch = await user.matchPassword(password);
+    if (!passwordMatch) {
+      console.warn('[loginUser] Password mismatch for:', username);
       return res.status(401).json({ message: 'Incorrect username or password.' });
     }
 
@@ -79,7 +89,7 @@ const loginUser = async (req, res) => {
   }
 };
 
-/* ── GET /api/auth/me ── (protected, for token validation) */
+/* ── GET /api/auth/me ── (protected) */
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');

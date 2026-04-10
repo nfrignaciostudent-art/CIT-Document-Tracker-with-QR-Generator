@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════════════
+   server.js — Main Server Entry Point
+   CIT Document Tracker · Group 6
+══════════════════════════════════════════════════════════════════════ */
+
 require('dotenv').config();
 const express    = require('express');
 const cors       = require('cors');
@@ -24,20 +29,42 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'CIT DocTracker API running', group: 'Group 6' });
 });
 
-/* TEMP: Seed admin user */
+/* ══════════════════════════════════════════════════════════════════════
+   /seed-admin — One-time admin seeder route
+   FIX: Uses `new User().save()` instead of `User.create()` to ensure
+   the bcrypt pre('save') hook fires and the password gets HASHED.
+   Using User.create() with a plain password stores it as plain text,
+   causing bcrypt.compare() to always return false → 401 on login.
+   IMPORTANT: Remove this route after confirming login works!
+══════════════════════════════════════════════════════════════════════ */
 app.get('/seed-admin', async (req, res) => {
-  const User = require('./models/User');
-  const existing = await User.findOne({ username: 'admin' });
-  if (existing) return res.json({ message: 'Admin already exists' });
-  await User.create({
-    userId: 'USR-ADMIN',
-    username: 'admin',
-    name: 'Administrator',
-    password: 'admin1234',
-    role: 'admin',
-    color: '#4ade80'
-  });
-  res.json({ message: 'Admin created!' });
+  try {
+    const User = require('./models/User');
+
+    /* Delete any existing broken admin (plain-text password) first */
+    await User.deleteOne({ username: 'admin' });
+
+    /* Create fresh admin — new + save() ALWAYS triggers pre('save') bcrypt hook */
+    const admin = new User({
+      userId:   'USR-ADMIN',
+      username: 'admin',
+      name:     'Administrator',
+      password: 'admin1234',   // will be hashed by pre('save') hook in User.js
+      role:     'admin',
+      color:    '#4ade80'
+    });
+    await admin.save();
+
+    res.json({
+      message:  '✅ Admin created successfully with hashed password!',
+      username: 'admin',
+      password: 'admin1234',
+      note:     'Remove this /seed-admin route after confirming login works.'
+    });
+  } catch (err) {
+    console.error('[seed-admin]', err);
+    res.status(500).json({ message: err.message });
+  }
 });
 
 app.use((req, res) => {
