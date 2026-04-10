@@ -30,44 +30,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'CIT DocTracker API running', group: 'Group 6' });
 });
 
-/* ══════════════════════════════════════════════════════════════════════
-   /seed-admin — One-time admin seeder route
-   FIX: Uses `new User().save()` instead of `User.create()` to ensure
-   the bcrypt pre('save') hook fires and the password gets HASHED.
-   Using User.create() with a plain password stores it as plain text,
-   causing bcrypt.compare() to always return false → 401 on login.
-   IMPORTANT: Remove this route after confirming login works!
-══════════════════════════════════════════════════════════════════════ */
-app.get('/seed-admin', async (req, res) => {
-  try {
-    const User = require('./models/User');
-
-    /* Delete any existing broken admin (plain-text password) first */
-    await User.deleteOne({ username: 'admin' });
-
-    /* Create fresh admin — new + save() ALWAYS triggers pre('save') bcrypt hook */
-    const admin = new User({
-      userId:   'USR-ADMIN',
-      username: 'admin',
-      name:     'Administrator',
-      password: 'admin1234',   // will be hashed by pre('save') hook in User.js
-      role:     'admin',
-      color:    '#4ade80'
-    });
-    await admin.save();
-
-    res.json({
-      message:  '✅ Admin created successfully with hashed password!',
-      username: 'admin',
-      password: 'admin1234',
-      note:     'Remove this /seed-admin route after confirming login works.'
-    });
-  } catch (err) {
-    console.error('[seed-admin]', err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
 /* ── Serve Frontend Static Files ────────────────────────────────── */
 // All your frontend files (index.html, style.css, script.js, etc.)
 // must be placed inside a folder called "public" at the project root.
