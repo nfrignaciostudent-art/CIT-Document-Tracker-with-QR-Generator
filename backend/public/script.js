@@ -1777,6 +1777,40 @@ async function _appInit() {
         docs = docs.filter(d => !d._backendSynced || backendIds.has(d.internalId||d.id));
         save();
       }
+
+      /* ── Fetch scan logs from backend so Movement Logs page shows
+         scans from ALL devices, not just this browser's localStorage ── */
+      if (isAdmin) {
+        try {
+          const scanLogs = await apiGetAllScanLogs(token);
+          if (Array.isArray(scanLogs) && scanLogs.length > 0) {
+            /* Merge: add backend entries that aren't already in local movementLogs.
+               Use timestamp+documentId as a dedup key. */
+            const localKeys = new Set(
+              movementLogs.map(m => (m.documentId || '') + '|' + (m.timestamp || m.displayDate || ''))
+            );
+            scanLogs.forEach(s => {
+              const key = (s.documentId || '') + '|' + (s.timestamp || s.displayDate || '');
+              if (!localKeys.has(key)) {
+                movementLogs.push({
+                  documentId:  s.documentId,
+                  handledBy:   s.handledBy,
+                  location:    s.location,
+                  action:      'Scanned',
+                  timestamp:   s.timestamp,
+                  displayDate: s.displayDate || s.timestamp,
+                });
+                localKeys.add(key);
+              }
+            });
+            /* Sort newest first */
+            movementLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            save();
+          }
+        } catch(e) {
+          console.warn('[_appInit] Could not fetch backend scan logs:', e);
+        }
+      }
     } else if(!token) {
       _seedDemoDocsIfEmpty();
     }

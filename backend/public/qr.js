@@ -83,6 +83,12 @@ function openQR(docKey) {
   localStorage.setItem('cit_qr_base_url', saved);
   document.getElementById('qr-base-url').value = saved;
 
+  /* ── Hide "Simulate QR Scan" button for non-admins ── */
+  const simBtn = document.getElementById('qr-simulate-btn');
+  if (simBtn) {
+    simBtn.style.display = (currentUser && currentUser.role === 'admin') ? '' : 'none';
+  }
+
   openModal('qr-modal');
   setTimeout(function(){ buildQR(docKey, saved); }, 150);
 }
@@ -90,9 +96,9 @@ function openQR(docKey) {
 function simulateScan() {
   if (!_currentQRDocId) { toast('Open a QR code first.'); return; }
 
-  /* ── ADMIN ONLY ── Users can only view documents, not log movement ── */
+  /* ── ADMIN ONLY — users can only view, not log movement ── */
   if (!currentUser || currentUser.role !== 'admin') {
-    toast('Only admins can log QR scan movement from within the app.');
+    toast('Only admins can log movement from within the app.');
     return;
   }
 
@@ -132,7 +138,7 @@ function buildReceiptQR(doc) {
 }
 
 function confirmScanLog() {
-  /* Safety: double-check admin role */
+  /* Admin-only safety check */
   if (!currentUser || currentUser.role !== 'admin') {
     toast('Only admins can log movement.');
     closeModal('scan-log-modal');
@@ -155,9 +161,13 @@ function confirmScanLog() {
 
   logMovement(d.internalId || d.id, handler, location);
 
-  /* ── Persist scan log to backend so it appears in history on all devices ── */
+  /* Persist to backend so it appears in Movement Logs from any device */
   try {
-    apiLogScan(d.internalId || d.id, { handledBy: handler, location, note: 'Admin QR scan (simulated)' });
+    apiLogScan(d.internalId || d.id, {
+      handledBy: handler,
+      location,
+      note: 'Admin QR scan (simulated)'
+    });
   } catch(e) { console.warn('[confirmScanLog] Backend sync failed', e); }
 
   closeModal('scan-log-modal');

@@ -195,9 +195,15 @@ async function apiDeleteDocument(documentId, token) {
   return await apiRequest('DELETE', `/api/documents/${encodeURIComponent(documentId)}`, null, token || _jwt());
 }
 
-/* ── POST /api/documents/:id/scan-log (public — no auth needed) ──
-   Called automatically when a QR code is scanned.
-   Saves scan movement log to MongoDB so it persists across devices. */
+/* ── POST /api/documents/:id/scan-log (public — no auth) ──────────
+   Saves a QR scan movement log to MongoDB for cross-device visibility. */
 async function apiLogScan(documentId, payload) {
   return await apiRequest('POST', `/api/documents/${encodeURIComponent(documentId)}/scan-log`, payload);
+}
+
+/* ── GET /api/scan-logs (admin only) ──────────────────────────────
+   Fetches all QR scan logs from MongoDB so Movement Logs page
+   shows scans from ALL devices, not just the current browser. */
+async function apiGetAllScanLogs(token) {
+  return await apiRequest('GET', '/api/documents/scan-logs', null, token || _jwt());
 }

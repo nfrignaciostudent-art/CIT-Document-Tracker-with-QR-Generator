@@ -452,13 +452,13 @@ const deleteDocument = async (req, res) => {
   }
 };
 
-/* ── POST /api/documents/:id/scan-log (PUBLIC — no auth needed) ──
+/* ── POST /api/documents/:id/scan-log (PUBLIC — no auth) ──────────
+   Appends a Scanned entry to the document history in MongoDB.
    Called automatically when a QR code is scanned.
-   Appends a Scanned entry to the document's history in MongoDB.
    Does NOT change document status. ─────────────────────────────── */
 const logScan = async (req, res) => {
   try {
-    const query      = req.params.documentId;
+    const query = req.params.documentId;
     const { handledBy, location, note } = req.body;
 
     if (!handledBy || !location) {
@@ -477,7 +477,7 @@ const logScan = async (req, res) => {
 
     doc.history.push({
       action:   'Scanned',
-      status:   doc.status,          // current status — unchanged
+      status:   doc.status,
       date:     new Date().toLocaleString('en-PH'),
       note:     note     || '',
       by:       handledBy,
@@ -498,6 +498,44 @@ const logScan = async (req, res) => {
   }
 };
 
+/* ── GET /api/scan-logs (Auth + Admin only) ───────────────────────
+   Returns ALL Scanned entries from all document histories.
+   Used by the Movement Logs page to show cross-device scan data. */
+const getAllScanLogs = async (req, res) => {
+  try {
+    const docs = await Document.find(
+      { 'history.action': 'Scanned' },
+      { internalId: 1, displayId: 1, fullDisplayId: 1, name: 1, history: 1 }
+    ).lean();
+
+    const scanLogs = [];
+    docs.forEach(doc => {
+      (doc.history || []).forEach(h => {
+        if (h.action === 'Scanned') {
+          scanLogs.push({
+            documentId:   doc.internalId,
+            displayId:    doc.fullDisplayId || doc.displayId,
+            documentName: doc.name,
+            handledBy:    h.by       || h.handler || '—',
+            location:     h.location || '—',
+            action:       'Scanned',
+            timestamp:    h.date,
+            displayDate:  h.date,
+          });
+        }
+      });
+    });
+
+    /* Sort newest first */
+    scanLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    res.json(scanLogs);
+  } catch (err) {
+    console.error('[getAllScanLogs]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   registerDocument,
   trackDocument,
@@ -507,4 +545,5 @@ module.exports = {
   getAllDocuments,
   deleteDocument,
   logScan,
+  getAllScanLogs,
 };

@@ -198,7 +198,7 @@ function confirmAutoScanLog(docId) {
     return;
   }
 
-  /* Auto-create movement log entry */
+  /* Auto-create movement log entry locally */
   const entry = {
     documentId:  docId,
     handledBy:   handler,
@@ -215,9 +215,12 @@ function confirmAutoScanLog(docId) {
     _markScanned(docId);
   } catch(e) { console.warn('Could not save movement log', e); }
 
-  /* ── Also persist to backend so the log appears across all devices ── */
+  /* ── Also persist to backend so admin sees it in Movement Logs
+     from any device — no localStorage dependency ── */
   try {
-    apiLogScan(docId, { handledBy: handler, location, note: 'QR scan' });
+    if (typeof apiLogScan === 'function') {
+      apiLogScan(docId, { handledBy: handler, location, note: 'QR scan' });
+    }
   } catch(e) { console.warn('[confirmAutoScanLog] Backend sync failed', e); }
 
   dismissScanBanner();
