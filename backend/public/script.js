@@ -1964,3 +1964,235 @@ function _seedDemoDocsIfEmpty(){
 }
 
 _appInit();
+/* ================================================================
+   FEATURE 1 — GLOBAL SEARCH
+   Searches docs by ID, name, status, type. Dropdown results.
+   Click → opens document history modal via vault page.
+================================================================ */
+function initGlobalSearch() {
+  const input = document.getElementById('global-search-input');
+  if (!input) return;
+  input.addEventListener('input', _debounceSearch);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeSearchResults(); input.blur(); }
+    if (e.key === 'Enter') {
+      const first = document.querySelector('.gsearch-item');
+      if (first) first.click();
+    }
+  });
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#global-search-wrap')) closeSearchResults();
+  });
+}
+
+let _gsearchTimer = null;
+function _debounceSearch() {
+  clearTimeout(_gsearchTimer);
+  _gsearchTimer = setTimeout(doGlobalSearch, 180);
+}
+
+function doGlobalSearch() {
+  const q = (document.getElementById('global-search-input')?.value || '').trim().toLowerCase();
+  const resultsEl = document.getElementById('global-search-results');
+  if (!resultsEl) return;
+  if (!q || q.length < 1) { closeSearchResults(); return; }
+
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const pool = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id; });
+
+  const matches = pool.filter(function(d) {
+    return (d.fullDisplayId || d.displayId || d.id || '').toLowerCase().includes(q) ||
+           (d.name   || '').toLowerCase().includes(q) ||
+           (d.status || '').toLowerCase().includes(q) ||
+           (d.type   || '').toLowerCase().includes(q) ||
+           (d.by     || '').toLowerCase().includes(q);
+  }).slice(0, 8);
+
+  if (!matches.length) {
+    resultsEl.innerHTML = '<div class="gsearch-empty">No results found for "' + q + '"</div>';
+    resultsEl.classList.add('open');
+    return;
+  }
+
+  resultsEl.innerHTML = matches.map(function(d) {
+    const docKey = d.internalId || d.id;
+    return '<div class="gsearch-item" onclick="openSearchResult(\'' + docKey + '\')">' +
+      '<div class="gsearch-item-icon">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+      '</div>' +
+      '<div class="gsearch-item-info">' +
+        '<div class="gsearch-item-name">' + d.name + '</div>' +
+        '<div class="gsearch-item-meta">' + (d.fullDisplayId || d.displayId || d.id) + ' &nbsp;·&nbsp; ' + (d.type || '') + (isAdmin ? ' &nbsp;·&nbsp; ' + (d.ownerName || '') : '') + '</div>' +
+      '</div>' +
+      statusBadge(d.status) +
+    '</div>';
+  }).join('');
+  resultsEl.classList.add('open');
+}
+
+function closeSearchResults() {
+  const el = document.getElementById('global-search-results');
+  if (el) el.classList.remove('open');
+}
+
+function openSearchResult(docKey) {
+  closeSearchResults();
+  const inp = document.getElementById('global-search-input');
+  if (inp) inp.value = '';
+  closeAllActionMenus();
+  showPage('vault', document.getElementById('nav-vault'));
+  setTimeout(function(){ openHistory(docKey); }, 160);
+}
+
+/* ================================================================
+   FEATURE 2 — USER OVERVIEW PANEL  (admin only)
+   Shows totals, active count, recently added users.
+================================================================ */
+function renderUserOverview() {
+  const el   = document.getElementById('user-overview-body');
+  const card = document.getElementById('card-user-overview');
+  if (!el || !card) return;
+
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  card.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  const users = accounts.filter(function(a){ return a.role !== 'admin'; });
+  const total = users.length;
+
+  // Active = logged an activity in the last 7 days
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const active = users.filter(function(u) {
+    var logs = activityLogs[u.id] || [];
+    return logs.some(function(l) {
+      try { return (nowMs - new Date(l.date).getTime()) < sevenDaysMs; } catch(e){ return false; }
+    });
+  }).length;
+
+  // New = created this calendar month
+  const now = new Date();
+  const newThisMonth = users.filter(function(u) {
+    if (!u.created) return false;
+    try {
+      var d = new Date(u.created);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    } catch(e){ return false; }
+  }).length;
+
+  const recentUsers = users.slice().reverse().slice(0, 5);
+
+  el.innerHTML =
+    '<div class="user-ov-stats">' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num">' + total + '</div><div class="user-ov-stat-label">TOTAL</div></div>' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num" style="color:#4ade80">' + active + '</div><div class="user-ov-stat-label">ACTIVE</div></div>' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num" style="color:#60a5fa">' + newThisMonth + '</div><div class="user-ov-stat-label">NEW</div></div>' +
+    '</div>' +
+    (recentUsers.length ?
+      '<div class="user-ov-section-label">RECENTLY ADDED</div>' +
+      '<div class="user-ov-list">' +
+        recentUsers.map(function(u, i) {
+          return '<div class="user-ov-item">' +
+            '<div class="user-avatar" style="background:' + (u.color || avatarColor(i)) + ';width:32px;height:32px;min-width:32px;font-size:11px">' + initials(u.name || u.username) + '</div>' +
+            '<div class="user-ov-info">' +
+              '<div class="user-ov-name">' + (u.name || u.username) + '</div>' +
+              '<div class="user-ov-meta">' + (u.userId || u.id || '') + ' &nbsp;·&nbsp; ' + (u.created || '-') + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>'
+    : '<p style="font-size:13px;color:var(--muted);padding:12px 0">No users registered yet.</p>');
+}
+
+/* ================================================================
+   FEATURE 3 — PENDING / URGENT DOCUMENTS SECTION
+   Detects stuck docs by checking last history entry date.
+   Warning (yellow) = 1–2 days.  Urgent (red) = 3+ days.
+================================================================ */
+function _getDocLastUpdated(doc) {
+  if (doc.history && doc.history.length) {
+    var latest = null;
+    doc.history.forEach(function(h) {
+      if (!h.date) return;
+      try {
+        var d = new Date(h.date);
+        if (!isNaN(d) && (!latest || d > latest)) latest = d;
+      } catch(e){}
+    });
+    if (latest) return latest;
+  }
+  if (doc.date) { try { var d2 = new Date(doc.date); if (!isNaN(d2)) return d2; } catch(e){} }
+  return null;
+}
+
+function renderUrgentDocs() {
+  var el = document.getElementById('urgent-docs-list');
+  if (!el) return;
+
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  var pool = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id; });
+
+  var staluses = ['Pending', 'Processing', 'Received', 'For Approval'];
+  var nowMs = Date.now();
+
+  var urgentDocs = pool
+    .filter(function(d){ return staluses.includes(d.status); })
+    .map(function(d) {
+      var last = _getDocLastUpdated(d);
+      var daysAgo = last ? Math.floor((nowMs - last.getTime()) / 86400000) : 0;
+      return { doc: d, daysAgo: daysAgo, lastDate: last };
+    })
+    .filter(function(x){ return x.daysAgo >= 1; })
+    .sort(function(a, b){ return b.daysAgo - a.daysAgo; })
+    .slice(0, 5);
+
+  if (!urgentDocs.length) {
+    el.innerHTML =
+      '<div class="urgent-empty">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 8px;opacity:.3"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+        '<p>No delayed documents. All caught up!</p>' +
+      '</div>';
+    return;
+  }
+
+  el.innerHTML = urgentDocs.map(function(x) {
+    var d = x.doc;
+    var isUrgent = x.daysAgo >= 3;
+    var docKey = d.internalId || d.id;
+    var lastStr = x.lastDate ? x.lastDate.toLocaleDateString('en-PH', {month:'short',day:'numeric'}) : '-';
+    var sc = statusColorMap[d.status] || '#64748b';
+    return '<div class="urgent-doc-item ' + (isUrgent ? 'urgent-red' : 'urgent-yellow') + '">' +
+      '<div class="urgent-doc-main">' +
+        '<div class="urgent-doc-name">' + d.name + '</div>' +
+        '<div class="urgent-doc-id">' + (d.fullDisplayId || d.displayId || d.id) + '</div>' +
+        '<div class="urgent-doc-meta">' +
+          statusBadge(d.status) +
+          '<span class="urgent-since">No movement since ' + lastStr + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="urgent-doc-right">' +
+        '<span class="urgent-days ' + (isUrgent ? 'urgent-days-red' : 'urgent-days-yellow') + '">' + x.daysAgo + ' day' + (x.daysAgo !== 1 ? 's' : '') + '</span>' +
+        '<button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px" ' +
+          'onclick="closeAllActionMenus();showPage(\'vault\',document.getElementById(\'nav-vault\'));setTimeout(function(){openHistory(\'' + docKey + '\')},160)">View</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ================================================================
+   HOOK INTO EXISTING renderAll + enterApp
+   Non-destructive override — calls new features after the originals.
+================================================================ */
+(function() {
+  var _origRenderAll = renderAll;
+  renderAll = function() {
+    _origRenderAll.apply(this, arguments);
+    if (currentUser) { renderUserOverview(); renderUrgentDocs(); }
+  };
+
+  var _origEnterApp = enterApp;
+  enterApp = function() {
+    _origEnterApp.apply(this, arguments);
+    setTimeout(initGlobalSearch, 50);
+  };
+})();

@@ -202,11 +202,25 @@
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
-      <div class="page-header">
-        <h2 id="dash-title">Dashboard</h2>
-        <p id="dash-subtitle"></p>
+      <div class="page-header dash-header-row">
+        <div>
+          <h2 id="dash-title">Dashboard</h2>
+          <p id="dash-subtitle"></p>
+        </div>
+        <!-- ── FEATURE 1: Global Search ── -->
+        <div class="global-search-wrap" id="global-search-wrap">
+          <svg class="gsearch-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="global-search-input" class="global-search-input"
+            placeholder="Search anything..."
+            autocomplete="off" spellcheck="false"
+            onkeydown="if(event.key==='Escape')closeSearchResults()">
+          <div class="global-search-results" id="global-search-results"></div>
+        </div>
       </div>
+
       <div class="stats-grid" id="stats-row"></div>
+
+      <!-- ── Existing dash-grid (unchanged) ── -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="dash-grid">
         <div class="card">
           <div class="card-head"><div><h3>Recent Documents</h3><p></p></div></div>
@@ -217,6 +231,35 @@
           <div class="card-head"><h3 id="my-activity-title">My Recent Activity</h3></div>
           <div class="card-body"><div class="activity-list" id="activity-list"></div></div>
         </div>
+      </div>
+
+      <!-- ── FEATURE 2 & 3: Second row — Pending/Urgent + User Overview ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="dash-grid-2">
+
+        <!-- FEATURE 3: Pending / Urgent Documents -->
+        <div class="card" id="card-urgent-docs">
+          <div class="card-head">
+            <div>
+              <h3>Pending / Urgent Docs</h3>
+              <p class="card-subhead">Delayed documents needing attention</p>
+            </div>
+            <button class="dash-link-btn" onclick="showPage('vault',document.getElementById('nav-vault'))">View all</button>
+          </div>
+          <div id="urgent-docs-list" style="padding:0 0 4px"></div>
+        </div>
+
+        <!-- FEATURE 2: User Overview (admin only — hidden for users) -->
+        <div class="card" id="card-user-overview" style="display:none">
+          <div class="card-head">
+            <div>
+              <h3>User Overview</h3>
+              <p class="card-subhead">Registered accounts</p>
+            </div>
+            <button class="dash-link-btn" onclick="showPage('users',document.getElementById('nav-users'))">Manage</button>
+          </div>
+          <div id="user-overview-body" style="padding:0 16px 12px"></div>
+        </div>
+
       </div>
     </div>
 
