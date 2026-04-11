@@ -6,6 +6,13 @@
          baseUrl + "?track=" + doc.internalId (ULID)
          The QR never changes even after status updates.
          The ULID is not predictable — it is not an incrementing sequence.
+
+   CHANGES (v2):
+     • confirmScanLog now calls apiAddMovementLog() (admin-only, JWT)
+       instead of the public apiLogScan(). This enforces backend role
+       validation for manual movement log entries.
+     • simulateScan already enforces admin-only on the frontend.
+       Backend now enforces it too via the /movement route.
 ══════════════════════════════════════════════════════════════════════ */
 
 function encodeSnapshot(snap) {
@@ -17,9 +24,8 @@ function decodeSnapshot(str) {
 }
 
 function getSavedBaseUrl() {
-  /* FIX: Use full current page URL (origin + pathname) so QR works
-     on GitHub Pages, Render, localhost — anywhere.
-     e.g. https://site.github.io/repo/Frontend/index.html → correct full path */
+  /* Use full current page URL (origin + pathname) so QR works
+     on GitHub Pages, Render, localhost — anywhere. */
   return window.location.href.split('?')[0].replace(/\/+$/, '');
 }
 
@@ -28,7 +34,6 @@ function buildQR(docKey, baseUrl, targetElId) {
   const d = docs.find(function(x){ return (x.internalId||x.id) === docKey; });
   if (!d) return;
 
-  /* Always build from the current full page URL */
   const cleanBase = window.location.href.split('?')[0].replace(/\/+$/, '');
   const trackUrl  = cleanBase + '?track=' + (d.internalId || d.id);
 
@@ -93,10 +98,15 @@ function openQR(docKey) {
   setTimeout(function(){ buildQR(docKey, saved); }, 150);
 }
 
+/* ── simulateScan — ADMIN ONLY ─────────────────────────────────────
+   Opens the manual movement log modal from within the app.
+   Only admins can see this button (enforced in openQR above).
+   Backend further enforces admin role on the /movement endpoint.
+─────────────────────────────────────────────────────────────────── */
 function simulateScan() {
   if (!_currentQRDocId) { toast('Open a QR code first.'); return; }
 
-  /* ── ADMIN ONLY — users can only view, not log movement ── */
+  /* Frontend admin check */
   if (!currentUser || currentUser.role !== 'admin') {
     toast('Only admins can log movement from within the app.');
     return;
@@ -118,7 +128,6 @@ function simulateScan() {
 
 /* Build receipt QR on the register page */
 function buildReceiptQR(doc) {
-  /* FIX: Use full current page URL so QR works on GitHub Pages, Render, etc. */
   const cleanBase = window.location.href.split('?')[0].replace(/\/+$/, '');
   const trackUrl  = cleanBase + '?track=' + (doc.internalId || doc.id);
 
@@ -137,8 +146,14 @@ function buildReceiptQR(doc) {
   return trackUrl;
 }
 
-function confirmScanLog() {
-  /* Admin-only safety check */
+/* ── confirmScanLog — ADMIN ONLY ───────────────────────────────────
+   Called when admin submits the manual movement log form.
+   Uses apiAddMovementLog() which hits the admin-protected backend
+   endpoint POST /api/documents/:id/movement.
+   Backend enforces: protect() + adminOnly middleware.
+─────────────────────────────────────────────────────────────────── */
+async function confirmScanLog() {
+  /* Frontend admin check — belt and suspenders */
   if (!currentUser || currentUser.role !== 'admin') {
     toast('Only admins can log movement.');
     closeModal('scan-log-modal');
@@ -159,16 +174,33 @@ function confirmScanLog() {
   const d = docs.find(function(x){ return (x.internalId||x.id) === _currentQRDocId; });
   if (!d) { toast('Document not found.'); return; }
 
+  /* Record locally first */
   logMovement(d.internalId || d.id, handler, location);
 
-  /* Persist to backend so it appears in Movement Logs from any device */
+  /* ── Persist to backend via ADMIN-ONLY endpoint ──────────────────
+     POST /api/documents/:id/movement requires JWT + admin role.
+     The backend controller (addMovementLog) validates both.
+  ─────────────────────────────────────────────────────────────────── */
   try {
-    apiLogScan(d.internalId || d.id, {
-      handledBy: handler,
-      location,
-      note: 'Admin QR scan (simulated)'
-    });
-  } catch(e) { console.warn('[confirmScanLog] Backend sync failed', e); }
+    if (typeof apiAddMovementLog === 'function') {
+      const result = await apiAddMovementLog(
+        d.internalId || d.id,
+        {
+          handledBy: handler,
+          location,
+          note: `Movement logged by admin: ${currentUser.username || currentUser.name}`
+        },
+        currentUser.token
+      );
+
+      if (result && result._error) {
+        console.warn('[confirmScanLog] Backend sync failed:', result.message);
+        /* Don't block the UI — local log was already saved */
+      }
+    }
+  } catch(e) {
+    console.warn('[confirmScanLog] Backend sync failed:', e);
+  }
 
   closeModal('scan-log-modal');
   renderScanResult(d);

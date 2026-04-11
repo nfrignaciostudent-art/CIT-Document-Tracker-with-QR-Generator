@@ -2,10 +2,12 @@
    track.js — Public Document Tracking Logic
    CIT Document Tracker · Group 6
 
-   SCAN LOGGING RULE: Logging is AUTOMATIC on QR scan only.
-   When a user visits ?track=<internalId>, a scan modal appears
-   to capture handler identity. The log is created automatically
-   upon QR scan — no manual movement logging from inside the app.
+   SCAN LOGGING RULE (UPDATED):
+     QR scan logging is FULLY AUTOMATIC.
+     No form, no manual input, no banner.
+     When ?track= is detected, the system silently logs the scan event
+     to the backend with a timestamp and document ID.
+     Users cannot manually add or edit movement logs.
 ══════════════════════════════════════════════════════════════════════ */
 
 let _pubTrackDocId = null; // holds current tracked doc internal ID
@@ -23,6 +25,64 @@ function _canLog(docId) {
 }
 function _markScanned(docId) {
   try { localStorage.setItem(_getScanKey(docId), String(Date.now())); } catch(e) {}
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   _autoLogQRScan — AUTOMATIC, SILENT scan log on QR detection
+   No form. No manual input. System-generated only.
+   Users see no prompt — just a small toast confirmation.
+───────────────────────────────────────────────────────────────────── */
+function _autoLogQRScan(d) {
+  const docId = d.internalId || d.id;
+
+  /* Cooldown check to prevent duplicate logs from re-renders */
+  if (!_canLog(docId)) return;
+  _markScanned(docId);
+
+  /* Auto-generated scan entry — no user input required */
+  const entry = {
+    documentId:  docId,
+    handledBy:   'QR Visitor',
+    location:    'QR Scan',
+    action:      'Scanned',
+    timestamp:   new Date().toISOString(),
+    displayDate: new Date().toLocaleString('en-PH')
+  };
+
+  /* Save to local movement log for this session */
+  try {
+    const raw  = localStorage.getItem('cit_movements');
+    const logs = raw ? JSON.parse(raw) : [];
+    logs.push(entry);
+    localStorage.setItem('cit_movements', JSON.stringify(logs));
+  } catch(e) { console.warn('[_autoLogQRScan] Could not save to localStorage:', e); }
+
+  /* Persist to backend — fire and forget, do NOT await */
+  if (typeof apiLogScan === 'function') {
+    apiLogScan(docId, {
+      handledBy: 'QR Visitor',
+      location:  'QR Scan',
+      note:      'Auto-logged on QR scan'
+    }).catch(e => console.warn('[_autoLogQRScan] Backend sync failed:', e));
+  }
+
+  /* Non-intrusive confirmation toast */
+  _showScanToast('QR scan logged automatically.');
+}
+
+/* Small, non-blocking toast for scan confirmation */
+function _showScanToast(msg) {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#0d1a10;border:1px solid rgba(74,222,128,.3);color:rgba(74,222,128,.9);
+    padding:9px 20px;border-radius:8px;font-family:'DM Sans',sans-serif;
+    font-size:12px;font-weight:600;z-index:9999;
+    box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:none;
+    animation:fadeInUp .2s ease;`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -75,9 +135,8 @@ function initTrackingPage() {
 
   if (localDoc) {
     renderPublicTrackResult(localDoc);
-    if (_canLog(localDoc.internalId || localDoc.id)) {
-      setTimeout(() => showScanLogPrompt(localDoc), 800);
-    }
+    /* Auto-log silently — no manual prompt */
+    setTimeout(() => _autoLogQRScan(localDoc), 800);
     return true;
   }
 
@@ -87,7 +146,6 @@ function initTrackingPage() {
 }
 
 async function _fetchAndRenderPublicDoc(trackParam) {
-  /* Show a loading state */
   const errEl = document.getElementById('search-error');
   if (errEl) {
     errEl.innerHTML = '<span style="color:rgba(255,255,255,.5)">Looking up document…</span>';
@@ -112,7 +170,7 @@ async function _fetchAndRenderPublicDoc(trackParam) {
       fullDisplayId: result.fullDisplayId || result.displayId,
     };
 
-    /* Cache in local docs array for this session so QR/history work */
+    /* Cache in local docs array for this session */
     const existing = docs.findIndex(x => (x.internalId||x.id) === d.internalId);
     if (existing >= 0) {
       docs[existing] = { ...docs[existing], ...d };
@@ -123,123 +181,15 @@ async function _fetchAndRenderPublicDoc(trackParam) {
     if (errEl) errEl.style.display = 'none';
     renderPublicTrackResult(d);
 
-    if (_canLog(d.internalId || d.id)) {
-      setTimeout(() => showScanLogPrompt(d), 800);
-    }
+    /* Auto-log silently — no manual prompt */
+    setTimeout(() => _autoLogQRScan(d), 800);
+
   } catch(e) {
     console.error('[_fetchAndRenderPublicDoc]', e);
     showPublicError(
       'Could not reach the server. Please check your connection and try again.'
     );
   }
-}
-
-/* ─────────────────────────────────────────────────────────────────────
-   Show auto scan log prompt (appears when QR is scanned)
-   This is NOT a manual form — it appears automatically on QR scan
-───────────────────────────────────────────────────────────────────── */
-function showScanLogPrompt(d) {
-  const banner = document.createElement('div');
-  banner.id = 'scan-auto-banner';
-  banner.style.cssText = `
-    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-    width:min(480px, 92vw);background:#0d1a10;border:1px solid rgba(74,222,128,.3);
-    border-radius:12px;padding:18px 20px;z-index:9999;
-    box-shadow:0 8px 40px rgba(0,0,0,.6);font-family:'DM Sans',sans-serif;`;
-  banner.innerHTML = `
-    <p style="font-size:12px;font-weight:700;color:rgba(74,222,128,.8);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">QR Scan Detected — Log Movement</p>
-    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;line-height:1.5">
-      Scanning logs movement only. It does <u>not</u> change the document status.
-    </p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div>
-        <label style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;display:block;margin-bottom:5px">Your Name *</label>
-        <input id="auto-scan-handler" type="text" placeholder="e.g. John Santos"
-          style="width:100%;padding:8px 11px;border:1px solid rgba(255,255,255,.12);border-radius:7px;
-                 background:rgba(255,255,255,.06);color:#e6edf3;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box">
-      </div>
-      <div>
-        <label style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;display:block;margin-bottom:5px">Location *</label>
-        <input id="auto-scan-location" type="text" placeholder="e.g. Registrar's Office" list="auto-scan-loc-opts"
-          style="width:100%;padding:8px 11px;border:1px solid rgba(255,255,255,.12);border-radius:7px;
-                 background:rgba(255,255,255,.06);color:#e6edf3;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box">
-        <datalist id="auto-scan-loc-opts">
-          <option value="Registrar's Office"><option value="Dean's Office">
-          <option value="Accounting Office"><option value="Administrative Office">
-          <option value="Document Control Office"><option value="Archive Room">
-          <option value="Faculty Room"><option value="Library">
-        </datalist>
-      </div>
-    </div>
-    <p id="auto-scan-error" style="color:#f87171;font-size:11px;min-height:14px;margin-bottom:8px"></p>
-    <div style="display:flex;gap:8px">
-      <button onclick="confirmAutoScanLog('${d.internalId||d.id}')"
-        style="flex:1;padding:10px 0;background:#4ade80;color:#0d1117;border:none;border-radius:7px;
-               font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">
-        Log Movement
-      </button>
-      <button onclick="dismissScanBanner()"
-        style="padding:10px 18px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);
-               border:1px solid rgba(255,255,255,.1);border-radius:7px;
-               font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;">
-        Skip
-      </button>
-    </div>`;
-  document.body.appendChild(banner);
-}
-
-function confirmAutoScanLog(docId) {
-  const handler  = (document.getElementById('auto-scan-handler')  || {value:''}).value.trim();
-  const location = (document.getElementById('auto-scan-location') || {value:''}).value.trim();
-  const errEl    = document.getElementById('auto-scan-error');
-
-  if (!handler || !location) {
-    if (errEl) errEl.textContent = 'Please enter your name and current location.';
-    return;
-  }
-
-  /* Auto-create movement log entry locally */
-  const entry = {
-    documentId:  docId,
-    handledBy:   handler,
-    location,
-    action:      'Scanned',
-    timestamp:   new Date().toISOString(),
-    displayDate: new Date().toLocaleString('en-PH')
-  };
-  try {
-    const raw  = localStorage.getItem('cit_movements');
-    const logs = raw ? JSON.parse(raw) : [];
-    logs.push(entry);
-    localStorage.setItem('cit_movements', JSON.stringify(logs));
-    _markScanned(docId);
-  } catch(e) { console.warn('Could not save movement log', e); }
-
-  /* ── Also persist to backend so admin sees it in Movement Logs
-     from any device — no localStorage dependency ── */
-  try {
-    if (typeof apiLogScan === 'function') {
-      apiLogScan(docId, { handledBy: handler, location, note: 'QR scan' });
-    }
-  } catch(e) { console.warn('[confirmAutoScanLog] Backend sync failed', e); }
-
-  dismissScanBanner();
-
-  /* Show confirmation toast */
-  const conf = document.createElement('div');
-  conf.style.cssText = `
-    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-    background:#22c55e;color:#0d1117;padding:10px 22px;border-radius:8px;
-    font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;
-    z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.4);`;
-  conf.textContent = 'Movement logged successfully.';
-  document.body.appendChild(conf);
-  setTimeout(() => conf.remove(), 3000);
-}
-
-function dismissScanBanner() {
-  const banner = document.getElementById('scan-auto-banner');
-  if (banner) banner.remove();
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -284,6 +234,8 @@ async function handleTrack() {
     }
 
     renderPublicTrackResult(d);
+    /* NOTE: manual "Track" search does NOT auto-log a scan —
+       only an actual QR scan (via URL ?track= param) triggers auto-logging. */
   } catch(e) {
     console.error('[handleTrack]', e);
     errEl.innerHTML = 'Error searching for document. Please try again.';
@@ -303,6 +255,7 @@ function showPublicError(msg) {
 
 /* ─────────────────────────────────────────────────────────────────────
    Render full public tracking result
+   READ-ONLY for all users — no "add movement" buttons shown
 ───────────────────────────────────────────────────────────────────── */
 function renderPublicTrackResult(d) {
   _pubTrackDocId = d.internalId || d.id;
@@ -315,7 +268,7 @@ function renderPublicTrackResult(d) {
   const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
 
-  /* ── Populate new compact header card ── */
+  /* ── Populate header card ── */
   document.getElementById('res-doc-name').textContent = d.name;
   document.getElementById('res-doc-meta').textContent = dispId + ' · ' + d.type;
   document.getElementById('res-status-badge').innerHTML = `
@@ -333,8 +286,6 @@ function renderPublicTrackResult(d) {
   } else {
     locRow.style.display = 'none';
   }
-
-
 
   /* Document Details */
   const relEntry    = [...(d.history || [])].reverse().find(function(h){ return h.status === 'Released'; });
@@ -360,7 +311,7 @@ function renderPublicTrackResult(d) {
   /* Download zone */
   document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
 
-  /* QR code — FIX: use full page URL so QR works on GitHub Pages, Render, etc. */
+  /* QR code */
   const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
   const qrBox    = document.getElementById('pub-qr-box');
   qrBox.innerHTML = '';
@@ -369,8 +320,8 @@ function renderPublicTrackResult(d) {
   new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
   document.getElementById('qr-url-tag').textContent = trackUrl;
 
-  /* Activity History */
-  const hist    = d.history || [];
+  /* Activity History — READ-ONLY timeline, no add-movement buttons */
+  const hist  = d.history || [];
   let moves = [];
   try {
     const raw = localStorage.getItem('cit_movements');
@@ -428,7 +379,6 @@ function goBack() {
   document.getElementById('search-error').style.display   = 'none';
   _pubTrackDocId = null;
   window.history.replaceState({}, '', window.location.pathname);
-  dismissScanBanner();
 }
 
 function getLatestLocationPublic(d) {
@@ -644,6 +594,7 @@ function buildInternalFileSection(d, sc) {
   html += '</div></div>';
   return html;
 }
+
 /* ── Download the public QR code as PNG ── */
 function downloadPublicQR() {
   const qrBox = document.getElementById('pub-qr-box');

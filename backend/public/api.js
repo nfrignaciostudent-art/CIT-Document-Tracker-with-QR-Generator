@@ -2,15 +2,15 @@
    api.js — Centralized API Requests
    CIT Document Tracker · Group 6
 
-   FIX NOTES:
+   CHANGES (v2):
+     • Added apiAddMovementLog() — admin-only endpoint for manual
+       movement log entries from within the app (qr.js confirmScanLog).
+       Requires JWT. Distinct from apiLogScan (which is public/auto).
    ─────────────────────────────────────────────────────────────────────
-   • Added apiUploadDocumentWithFile()  — uses FormData so the IDEA-
-     encrypted file blob is sent as multipart, bypassing Express's
-     default 100 KB JSON body-parser limit.
-   • Added apiUpdateStatusWithFile()    — same reason for processed files.
-   • Plain apiRegisterDocument() still works for no-attachment docs.
-   • apiDownloadDocument() unchanged — backend should return { fileData }.
-   ─────────────────────────────────────────────────────────────────────
+
+   TWO SCAN LOG FUNCTIONS:
+     apiLogScan()        — public, auto, no auth. Called on QR scan.
+     apiAddMovementLog() — protected, admin only. Called manually.
 
    Returns:
      - Response JSON  if request succeeded (2xx)
@@ -103,24 +103,12 @@ async function apiRegisterDocument(payload, token) {
   return await apiRequest('POST', '/api/documents/register', payload, token || _jwt());
 }
 
-/* ── FIX: FormData registration — used when a file IS attached ──────
-   Sends payload as a JSON field called "data" plus the encrypted file
-   blob as a field called "file".  The backend must use multer (or
-   equivalent) to parse multipart/form-data on this route.
-
-   Why FormData instead of base64-in-JSON?
-   ─ Express body-parser default limit: ~100 KB
-   ─ A 500 KB file after base64 + IDEA encryption ≈ 1.3 MB JSON string
-   ─ FormData transfers the blob as binary — no size inflation, no limit
-───────────────────────────────────────────────────────────────────── */
+/* FormData registration — used when a file IS attached */
 async function apiUploadDocumentWithFile(jsonPayload, encryptedFileString, fileExt, token) {
   try {
     const form = new FormData();
-
-    // Put all document metadata as a JSON string in the "data" field
     form.append('data', JSON.stringify(jsonPayload));
 
-    // Convert the IDEA-encrypted file string to a Blob and attach it
     if (encryptedFileString) {
       const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
       const filename = 'encrypted' + (fileExt || '.bin');
@@ -149,7 +137,7 @@ async function apiTrackDocument(documentId) {
   return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}`);
 }
 
-/* Fetch the original file blob (auth required — for in-app viewing after page refresh) */
+/* Fetch the original file blob (auth required) */
 async function apiGetOriginalFile(documentId) {
   return await apiRequest('GET', `/api/documents/${encodeURIComponent(documentId)}/original-file`, null, _jwt());
 }
@@ -159,14 +147,12 @@ async function apiDownloadDocument(documentId) {
   return await apiRequest('GET', `/api/documents/download/${encodeURIComponent(documentId)}`, null, _jwt());
 }
 
-/* ── Plain JSON status update — used when there is NO processed file ── */
+/* Plain JSON status update — used when there is NO processed file */
 async function apiUpdateDocumentStatus(documentId, payload, token) {
   return await apiRequest('PATCH', `/api/documents/${encodeURIComponent(documentId)}/status`, payload, token || _jwt());
 }
 
-/* ── FIX: FormData status update — used when admin attaches a processed file ──
-   Same reasoning as apiUploadDocumentWithFile above.
-─────────────────────────────────────────────────────────────────────────────── */
+/* FormData status update — used when admin attaches a processed file */
 async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileString, fileExt, token) {
   try {
     const form = new FormData();
@@ -195,10 +181,26 @@ async function apiDeleteDocument(documentId, token) {
   return await apiRequest('DELETE', `/api/documents/${encodeURIComponent(documentId)}`, null, token || _jwt());
 }
 
-/* ── POST /api/documents/:id/scan-log (public — no auth) ──────────
-   Saves a QR scan movement log to MongoDB for cross-device visibility. */
+/* ── POST /api/documents/:id/scan-log (PUBLIC — no auth) ──────────
+   Auto-log when a QR code is scanned. System-generated only.
+   No user form or input required. handledBy/location are optional
+   (the backend sets safe defaults if absent). */
 async function apiLogScan(documentId, payload) {
   return await apiRequest('POST', `/api/documents/${encodeURIComponent(documentId)}/scan-log`, payload);
+}
+
+/* ── POST /api/documents/:id/movement (Admin only — JWT required) ──
+   Manual movement log entry, added by admin from within the app.
+   Requires a valid JWT token with admin role.
+   This is the ONLY way to manually add a movement log entry.
+   Users cannot call this endpoint (403 Forbidden from backend). */
+async function apiAddMovementLog(documentId, payload, token) {
+  return await apiRequest(
+    'POST',
+    `/api/documents/${encodeURIComponent(documentId)}/movement`,
+    payload,
+    token || _jwt()
+  );
 }
 
 /* ── GET /api/scan-logs (admin only) ──────────────────────────────

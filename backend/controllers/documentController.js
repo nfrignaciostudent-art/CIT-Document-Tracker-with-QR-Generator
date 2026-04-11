@@ -7,6 +7,14 @@
      displayId   — DOC-YYYYMMDD-XXXX (user-facing, incremental per day)
      verifyCode  — 4-char alphanumeric HMAC-based suffix
      fullDisplayId — displayId-verifyCode (on receipts)
+
+   CHANGES (v2):
+     • logScan       — handledBy & location are now OPTIONAL.
+                       Auto-logs with defaults when called by system
+                       (QR scan auto-logging requires no user input).
+     • addMovementLog — NEW, admin-only. Called from within the app
+                       when an admin manually logs a movement event.
+                       Enforced at route level (protect + adminOnly).
 ══════════════════════════════════════════════════════════════════════ */
 
 const path     = require('path');
@@ -42,17 +50,10 @@ async function genDisplayId() {
   const dateStr = `${yyyy}${mm}${dd}`;
   const prefix  = `DOC-${dateStr}-`;
 
-  /* Use findOneAndUpdate with $inc for an atomic sequence — no race condition */
-  const CounterModel = require('mongoose').connection.model
-    ? null
-    : null; // fallback below
-
-  /* Atomic approach: find the highest existing sequence for today, then add 1.
-     We use a retry loop in registerDocument for safety, but this reduces conflicts. */
   const last = await Document.findOne(
     { displayId: { $regex: `^${prefix}` } },
     { displayId: 1 },
-    { sort: { displayId: -1 } }   // lexicographic sort gives highest seq last
+    { sort: { displayId: -1 } }
   ).lean();
 
   let nextSeq = 1;
@@ -86,15 +87,8 @@ const trackUrl = (internalId) => `${APP_BASE_URL}?track=${internalId}`;
 
 /* ── POST /api/documents/register ── */
 const registerDocument = async (req, res) => {
-  /* ── Support both upload modes ──────────────────────────────────────
-     a) FormData  → frontend sends metadata as req.body.data (JSON string)
-                    + the IDEA-encrypted file blob as req.file
-     b) Plain JSON → everything is in req.body (no file, or file already
-                    embedded as base64 string in req.body.fileData)
-  ──────────────────────────────────────────────────────────────────── */
   let body;
   if (req.file) {
-    // FormData path — parse the "data" field
     try { body = JSON.parse(req.body.data); }
     catch (e) {
       return res.status(400).json({ message: 'Invalid document data JSON in FormData.' });
@@ -113,11 +107,8 @@ const registerDocument = async (req, res) => {
     return res.status(400).json({ message: 'Missing required fields.' });
   }
 
-  /* Resolve the actual file data:
-     - FormData upload  → req.file.buffer converted back to the encrypted string
-     - JSON upload      → fileData field (may be null if no attachment) */
   const resolvedFileData = req.file
-    ? req.file.buffer.toString('utf8')   // IDEA-encrypted string sent as binary blob
+    ? req.file.buffer.toString('utf8')
     : (fileData || null);
 
   const resolvedFileExt = req.file ? (fileExt || '') : (fileExt || null);
@@ -193,7 +184,6 @@ const registerDocument = async (req, res) => {
 };
 
 /* ── GET /api/documents/track/:id (PUBLIC — no auth) ── */
-/* Accepts internalId (ULID) or displayId or fullDisplayId */
 const trackDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -259,7 +249,6 @@ const downloadDocument = async (req, res) => {
       });
     }
 
-    /* Prefer processedFile (admin-approved final version), fall back to original */
     const fileData = doc.processedFile || doc.originalFile || doc.filePath;
     const fileExt  = doc.processedFile
       ? (doc.processedFileExt || null)
@@ -269,12 +258,10 @@ const downloadDocument = async (req, res) => {
       return res.status(404).json({ message: 'No file attached to this document.' });
     }
 
-    /* Base64 / JSON-encrypted data URI — return as JSON for client-side decryption */
     if (fileData.startsWith('data:') || fileData.startsWith('{')) {
       return res.json({ fileData, fileExt, name: doc.name });
     }
 
-    /* Legacy: actual file path on disk */
     const absPath = path.join(__dirname, '..', fileData);
     res.download(absPath, doc.name + (fileExt || ''));
   } catch (err) {
@@ -283,15 +270,11 @@ const downloadDocument = async (req, res) => {
   }
 };
 
-/* ── PATCH /api/documents/:id/status (Auth required) ── */
+/* ── PATCH /api/documents/:id/status (Auth + Admin required) ── */
 const updateDocumentStatus = async (req, res) => {
   try {
     const query = req.params.documentId;
 
-    /* ── Support both upload modes ──────────────────────────────────
-       a) FormData  → req.body.data = JSON string, req.file = processed file blob
-       b) Plain JSON → everything in req.body.processedFile (base64 string or null)
-    ────────────────────────────────────────────────────────────────── */
     let body;
     if (req.file) {
       try { body = JSON.parse(req.body.data); }
@@ -304,9 +287,8 @@ const updateDocumentStatus = async (req, res) => {
 
     const { status, note, location, handler, by, processedFileExt } = body;
 
-    // Resolve processed file from multer (FormData) or JSON body
     const resolvedProcessedFile = req.file
-      ? req.file.buffer.toString('utf8')    // IDEA-encrypted string sent as binary blob
+      ? req.file.buffer.toString('utf8')
       : (body.processedFile || null);
 
     const resolvedProcessedFileExt = req.file
@@ -321,7 +303,6 @@ const updateDocumentStatus = async (req, res) => {
     });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
-    /* Validation: cannot set Released without a processed file */
     if (status === 'Released' && !resolvedProcessedFile && !doc.processedFile) {
       return res.status(400).json({
         message: 'Cannot set status to "Released" without uploading a processed/final file.'
@@ -330,7 +311,6 @@ const updateDocumentStatus = async (req, res) => {
 
     doc.status = status;
 
-    /* Attach processed file if provided */
     if (resolvedProcessedFile) {
       doc.processedFile    = resolvedProcessedFile;
       doc.processedFileExt = resolvedProcessedFileExt || null;
@@ -366,10 +346,7 @@ const updateDocumentStatus = async (req, res) => {
   }
 };
 
-/* ── GET /api/documents/:id/original-file (Auth — fetch original encrypted file blob) ──
-   Used by the frontend after a page refresh when the in-memory file blob is gone.
-   Returns { fileData, fileExt, name } so the client can IDEA-decrypt locally.
-   Admin can access any doc's original file; regular users can only access their own. */
+/* ── GET /api/documents/:id/original-file (Auth required) ── */
 const getOriginalFile = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -379,7 +356,6 @@ const getOriginalFile = async (req, res) => {
 
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
-    /* Access control: admins see all, users only see their own */
     const isAdmin = req.user && req.user.role === 'admin';
     const isOwner = req.user && (
       String(req.user._id) === doc.ownerId ||
@@ -403,7 +379,7 @@ const getOriginalFile = async (req, res) => {
   }
 };
 
-/* ── GET /api/documents (Auth — get all or user's docs) ── */
+/* ── GET /api/documents (Auth required) ── */
 const getAllDocuments = async (req, res) => {
   try {
     const { ownerId, role } = req.query;
@@ -412,14 +388,11 @@ const getAllDocuments = async (req, res) => {
     const effectiveOwnerId = isAdmin ? null : (ownerId || req.user.userId || String(req.user._id));
     const filter = isAdmin ? {} : { ownerId: effectiveOwnerId };
 
-    /* Explicitly exclude the large file blob fields at the DB level —
-       this keeps the list response fast even with many documents */
     const docs = await Document.find(filter)
       .select('-filePath -fileData -originalFile -processedFile')
       .sort({ createdAt: -1 })
       .lean();
 
-    /* Add boolean flags so the frontend knows a file exists without the blob */
     const payload = docs.map(d => ({
       ...d,
       internalId:       d.internalId || String(d._id),
@@ -434,7 +407,7 @@ const getAllDocuments = async (req, res) => {
   }
 };
 
-/* ── DELETE /api/documents/:id (Auth required) ── */
+/* ── DELETE /api/documents/:id (Auth + Admin required) ── */
 const deleteDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -453,17 +426,19 @@ const deleteDocument = async (req, res) => {
 };
 
 /* ── POST /api/documents/:id/scan-log (PUBLIC — no auth) ──────────
-   Appends a Scanned entry to the document history in MongoDB.
-   Called automatically when a QR code is scanned.
-   Does NOT change document status. ─────────────────────────────── */
+   AUTO-LOG endpoint: called automatically when a QR code is scanned.
+   Does NOT change document status.
+   handledBy and location are OPTIONAL — defaults are used if absent.
+   No manual form or user input required on the frontend.
+─────────────────────────────────────────────────────────────────── */
 const logScan = async (req, res) => {
   try {
     const query = req.params.documentId;
-    const { handledBy, location, note } = req.body;
 
-    if (!handledBy || !location) {
-      return res.status(400).json({ message: 'handledBy and location are required.' });
-    }
+    /* ── Fields are now optional for auto-scan logging ── */
+    const handledBy = req.body.handledBy || 'QR Visitor';
+    const location  = req.body.location  || 'QR Scan';
+    const note      = req.body.note      || 'Auto-logged on QR scan';
 
     const doc = await Document.findOne({
       $or: [
@@ -479,9 +454,9 @@ const logScan = async (req, res) => {
       action:   'Scanned',
       status:   doc.status,
       date:     new Date().toLocaleString('en-PH'),
-      note:     note     || '',
+      note,
       by:       handledBy,
-      location: location || '',
+      location,
       handler:  handledBy,
     });
 
@@ -494,6 +469,58 @@ const logScan = async (req, res) => {
     });
   } catch (err) {
     console.error('[logScan]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ── POST /api/documents/:id/movement (Auth + Admin only) ─────────
+   MANUAL movement log entry — only admins can call this.
+   Called from within the app (qr.js confirmScanLog).
+   Requires handledBy and location (validated here).
+   Does NOT change document status.
+─────────────────────────────────────────────────────────────────── */
+const addMovementLog = async (req, res) => {
+  try {
+    const query = req.params.documentId;
+    const { handledBy, location, note } = req.body;
+
+    if (!handledBy || !location) {
+      return res.status(400).json({ message: 'handledBy and location are required for manual movement log.' });
+    }
+
+    const doc = await Document.findOne({
+      $or: [
+        { internalId:    query },
+        { displayId:     query },
+        { fullDisplayId: query },
+      ]
+    });
+
+    if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
+
+    /* Record who added this log (must be an authenticated admin) */
+    const adminUsername = req.user ? (req.user.username || req.user.name || 'admin') : 'admin';
+
+    doc.history.push({
+      action:   'Scanned',
+      status:   doc.status,
+      date:     new Date().toLocaleString('en-PH'),
+      note:     note || `Movement logged by admin: ${adminUsername}`,
+      by:       handledBy,
+      location,
+      handler:  handledBy,
+    });
+
+    await doc.save();
+
+    res.json({
+      message:    'Movement log added successfully.',
+      internalId: doc.internalId,
+      status:     doc.status,
+      addedBy:    adminUsername,
+    });
+  } catch (err) {
+    console.error('[addMovementLog]', err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -545,5 +572,6 @@ module.exports = {
   getAllDocuments,
   deleteDocument,
   logScan,
+  addMovementLog,
   getAllScanLogs,
 };
