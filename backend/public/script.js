@@ -2196,3 +2196,242 @@ function renderUrgentDocs() {
     setTimeout(initGlobalSearch, 50);
   };
 })();
+
+/* ================================================================
+   PATCH 2 — Fix all issues from user feedback:
+   1. Stats cards: add date range + real % change badges
+   2. Admin right card: swap "System Activity" → Pending/Urgent
+   3. User Overview: accurate active count (has ever logged in)
+   4. Pending/Urgent: admin only, hidden from regular users
+   5. dash-grid-2: admin = User Overview only; user = hidden
+================================================================ */
+
+/* ── Date helpers ── */
+function _ordinal(n) {
+  var s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+function _statDateRange() {
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var now = new Date();
+  return 'From Jan 1st \u2013 ' + months[now.getMonth()] + ' ' + _ordinal(now.getDate());
+}
+
+/* ── % change: this month count vs last month count ── */
+function _countInMonth(pool, m, y, statusFilter) {
+  return pool.filter(function(d) {
+    var raw = d.date || d.createdAt || '';
+    var dt; try { dt = new Date(raw); } catch(e) { return false; }
+    if (isNaN(dt)) return false;
+    var ok = dt.getMonth() === m && dt.getFullYear() === y;
+    if (!ok) return false;
+    if (statusFilter) return statusFilter.includes(d.status);
+    return true;
+  }).length;
+}
+function _pctChange(pool, statusFilter) {
+  var now = new Date();
+  var tm = now.getMonth(), ty = now.getFullYear();
+  var lm = tm === 0 ? 11 : tm - 1;
+  var ly = tm === 0 ? ty - 1 : ty;
+  var cur  = _countInMonth(pool, tm, ty, statusFilter);
+  var prev = _countInMonth(pool, lm, ly, statusFilter);
+  if (prev === 0 && cur === 0) return null;
+  if (prev === 0) return { pct: '100.0', up: true };
+  var p = ((cur - prev) / prev * 100).toFixed(1);
+  return { pct: Math.abs(parseFloat(p)).toFixed(1), up: parseFloat(p) >= 0 };
+}
+function _pctChangeUsers() {
+  var now = new Date();
+  var tm = now.getMonth(), ty = now.getFullYear();
+  var lm = tm === 0 ? 11 : tm - 1, ly = tm === 0 ? ty - 1 : ty;
+  var users = accounts.filter(function(a){ return a.role !== 'admin'; });
+  function cnt(m, y) {
+    return users.filter(function(u) {
+      if (!u.created) return false;
+      var d; try { d = new Date(u.created); } catch(e){ return false; }
+      return !isNaN(d) && d.getMonth() === m && d.getFullYear() === y;
+    }).length;
+  }
+  var cur = cnt(tm,ty), prev = cnt(lm,ly);
+  if (prev===0 && cur===0) return null;
+  if (prev===0) return { pct:'100.0', up:true };
+  var p = ((cur-prev)/prev*100).toFixed(1);
+  return { pct: Math.abs(parseFloat(p)).toFixed(1), up: parseFloat(p)>=0 };
+}
+function _pctBadge(r) {
+  if (!r) return '';
+  return '<span class="stat-pct-badge ' + (r.up ? 'stat-pct-up' : 'stat-pct-down') + '">' +
+    (r.up ? '\u2197' : '\u2198') + ' ' + r.pct + '%</span>';
+}
+
+/* ── 1. Override renderStats with date range + % badges ── */
+function renderStats() {
+  var isAdmin = currentUser.role === 'admin';
+  var myDocs  = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id; });
+  var total    = myDocs.length;
+  var released = myDocs.filter(function(d){ return d.status === 'Released'; }).length;
+  var pending  = myDocs.filter(function(d){ return ['Received','Processing','For Approval','Pending'].includes(d.status); }).length;
+  var rejected = myDocs.filter(function(d){ return d.status === 'Rejected'; }).length;
+
+  var dr = _statDateRange();
+  var totalBadge    = _pctBadge(_pctChange(myDocs, null));
+  var relBadge      = _pctBadge(_pctChange(myDocs, ['Released']));
+  var pendBadge     = _pctBadge(_pctChange(myDocs, ['Received','Processing','For Approval','Pending']));
+  var rejBadge      = _pctBadge(_pctChange(myDocs, ['Rejected']));
+  var usersBadge    = isAdmin ? _pctBadge(_pctChangeUsers()) : '';
+  var totalUsers    = accounts.filter(function(a){ return a.role !== 'admin'; }).length;
+
+  document.getElementById('stats-row').innerHTML = isAdmin
+    ? '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Total Documents</span>' + totalBadge + '</div><div class="stat-card-num">' + total + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Released</span>' + relBadge + '</div><div class="stat-card-num green">' + released + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Pending / Stuck</span>' + pendBadge + '</div><div class="stat-card-num yellow">' + pending + '</div><div class="stat-card-sub">Needs attention</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Total Users</span>' + usersBadge + '</div><div class="stat-card-num">' + totalUsers + '</div><div class="stat-card-sub">Active accounts</div></div>'
+    : '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">My Docs</span>' + totalBadge + '</div><div class="stat-card-num">' + total + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Released</span>' + relBadge + '</div><div class="stat-card-num green">' + released + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">In Progress</span>' + pendBadge + '</div><div class="stat-card-num yellow">' + pending + '</div><div class="stat-card-sub">Needs attention</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Rejected</span>' + rejBadge + '</div><div class="stat-card-num red">' + rejected + '</div><div class="stat-card-sub">' + dr + '</div></div>';
+
+  document.getElementById('dash-title').textContent    = isAdmin ? 'Admin Dashboard' : 'My Dashboard';
+  document.getElementById('dash-subtitle').textContent = isAdmin
+    ? 'Welcome back, Admin! Here\'s what\'s happening today.'
+    : 'Welcome back, ' + (currentUser.name || currentUser.username);
+}
+
+/* ── 2. Swap right card to Pending/Urgent for admin ── */
+function _renderUrgentInDashCard() {
+  var titleEl = document.getElementById('my-activity-title');
+  if (titleEl) titleEl.textContent = 'Pending / Urgent Docs';
+
+  var listEl = document.getElementById('activity-list');
+  if (!listEl) return;
+
+  var staluses = ['Pending','Processing','Received','For Approval'];
+  var nowMs = Date.now();
+  var pool = docs;
+
+  var urgentDocs = pool
+    .filter(function(d){ return staluses.includes(d.status); })
+    .map(function(d) {
+      var last = _getDocLastUpdated(d);
+      var daysAgo = last ? Math.floor((nowMs - last.getTime()) / 86400000) : 0;
+      return { doc: d, daysAgo: daysAgo, last: last };
+    })
+    .filter(function(x){ return x.daysAgo >= 1; })
+    .sort(function(a,b){ return b.daysAgo - a.daysAgo; })
+    .slice(0, 6);
+
+  if (!urgentDocs.length) {
+    listEl.style.padding = '';
+    listEl.innerHTML = '<div class="urgent-empty" style="padding:20px 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 8px;opacity:.3"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><p>No delayed documents!</p></div>';
+    return;
+  }
+
+  listEl.style.padding = '0';
+  listEl.innerHTML = urgentDocs.map(function(x) {
+    var d = x.doc;
+    var isUrgent = x.daysAgo >= 3;
+    var docKey = d.internalId || d.id;
+    var lastStr = x.last ? x.last.toLocaleDateString('en-PH',{month:'short',day:'numeric'}) : '-';
+    return '<div class="urgent-doc-item ' + (isUrgent?'urgent-red':'urgent-yellow') + '">' +
+      '<div class="urgent-doc-main">' +
+        '<div class="urgent-doc-name">' + d.name + '</div>' +
+        '<div class="urgent-doc-id">' + (d.fullDisplayId||d.displayId||d.id) + '</div>' +
+        '<div class="urgent-doc-meta">' + statusBadge(d.status) +
+          '<span class="urgent-since">Since ' + lastStr + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="urgent-doc-right">' +
+        '<span class="urgent-days ' + (isUrgent?'urgent-days-red':'urgent-days-yellow') + '">' + x.daysAgo + 'd</span>' +
+        '<button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px" ' +
+          'onclick="closeAllActionMenus();showPage(\'vault\',document.getElementById(\'nav-vault\'));setTimeout(function(){openHistory(\'' + docKey + '\')},160)">View</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── 3. Fixed renderUserOverview — accurate active count ── */
+function renderUserOverview() {
+  var el   = document.getElementById('user-overview-body');
+  var card = document.getElementById('card-user-overview');
+  if (!el || !card) return;
+
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  card.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  var users = accounts.filter(function(a){ return a.role !== 'admin'; });
+  var total = users.length;
+
+  /* Active = user has at least one activity log entry (has ever logged in/acted) */
+  var active = users.filter(function(u) {
+    var logs = activityLogs[u.id] || [];
+    return logs.length > 0;
+  }).length;
+
+  /* New = created this calendar month */
+  var now = new Date();
+  var newThisMonth = users.filter(function(u) {
+    if (!u.created) return false;
+    try { var d = new Date(u.created); return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear(); } catch(e){ return false; }
+  }).length;
+
+  var recentUsers = users.slice().reverse().slice(0, 5);
+
+  el.innerHTML =
+    '<div class="user-ov-stats">' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num">' + total + '</div><div class="user-ov-stat-label">TOTAL</div></div>' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num" style="color:#4ade80">' + active + '</div><div class="user-ov-stat-label">ACTIVE</div></div>' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num" style="color:#60a5fa">' + newThisMonth + '</div><div class="user-ov-stat-label">NEW</div></div>' +
+    '</div>' +
+    (recentUsers.length
+      ? '<div class="user-ov-section-label">RECENTLY ADDED</div>' +
+        '<div class="user-ov-list">' +
+          recentUsers.map(function(u,i){
+            return '<div class="user-ov-item">' +
+              '<div class="user-avatar" style="background:'+(u.color||avatarColor(i))+';width:32px;height:32px;min-width:32px;font-size:11px">'+initials(u.name||u.username)+'</div>' +
+              '<div class="user-ov-info">' +
+                '<div class="user-ov-name">'+(u.name||u.username)+'</div>' +
+                '<div class="user-ov-meta">'+(u.userId||u.id||'')+' &nbsp;&middot;&nbsp; '+(u.created||'-')+'</div>' +
+              '</div></div>';
+          }).join('') +
+        '</div>'
+      : '<p style="font-size:13px;color:var(--muted);padding:12px 0">No users registered yet.</p>');
+}
+
+/* ── 4. renderUrgentDocs: now admin-only, renders into dash-grid-2 left card ── */
+function renderUrgentDocs() {
+  var el = document.getElementById('urgent-docs-list');
+  if (!el) return;
+  /* Hide card for non-admins */
+  var card = document.getElementById('card-urgent-docs');
+  if (card) card.style.display = (currentUser && currentUser.role === 'admin') ? 'none' : 'none';
+  /* Urgent is now rendered in the dash-grid right card for admin via _renderUrgentInDashCard */
+}
+
+/* ── 5. dash-grid-2 visibility: admin = User Overview only; user = hidden ── */
+function _updateDashGrid2() {
+  var grid2 = document.getElementById('dash-grid-2');
+  if (!grid2) return;
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  /* Hide the urgent-docs card (it's now in the main dash-grid right card for admin) */
+  var urgentCard = document.getElementById('card-urgent-docs');
+  if (urgentCard) urgentCard.style.display = 'none';
+  /* Show grid2 only for admin (for User Overview) */
+  grid2.style.display = isAdmin ? '' : 'none';
+  /* Make grid2 single-column since only User Overview is visible */
+  if (isAdmin) grid2.style.gridTemplateColumns = '1fr';
+}
+
+/* ── Final override: wire everything together ── */
+(function() {
+  var _prev_renderAll = renderAll;
+  renderAll = function() {
+    _prev_renderAll.apply(this, arguments);
+    if (!currentUser) return;
+    if (currentUser.role === 'admin') _renderUrgentInDashCard();
+    renderUserOverview();
+    renderUrgentDocs();
+    _updateDashGrid2();
+  };
+})();
