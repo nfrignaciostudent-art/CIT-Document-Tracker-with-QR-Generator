@@ -56,33 +56,71 @@
   </section>
 
   <section class="result-section" id="result-section" style="display:none">
-    <div class="status-banner" id="status-banner"></div>
-    <div class="result-body">
-      <div class="rcard">
-        <div class="rcard-title">Document Progress</div>
-        <div class="workflow-row" id="workflow-row"></div>
+
+    <!-- ── Doc Header Card ── -->
+    <div class="res-header-card">
+      <div class="res-header-inner">
+        <div class="res-header-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="res-header-text">
+          <div id="res-doc-name" class="res-doc-name">—</div>
+          <div id="res-doc-meta" class="res-doc-meta">—</div>
+        </div>
+        <div id="res-status-badge" class="res-status-pill">—</div>
       </div>
-      <div class="rcard">
-        <div class="rcard-title">Document Details</div>
-        <div class="detail-list" id="detail-list"></div>
-      </div>
-      <div class="rcard" id="download-card">
-        <div class="rcard-title">Download</div>
-        <div id="download-zone"></div>
-      </div>
-      <div class="rcard">
-        <div class="rcard-title">QR Code — Scan to track anytime</div>
-        <div class="qr-center">
-          <div class="qr-box" id="pub-qr-box"></div>
-          <p class="qr-hint">Point any phone camera at this code</p>
-          <div class="qr-url-tag" id="qr-url-tag"></div>
+      <div id="res-location-row" class="res-location-row" style="display:none"></div>
+    </div>
+
+    <!-- ── Main Body Grid ── -->
+    <div class="res-body-grid">
+
+      <!-- Left col: Details + Activity -->
+      <div class="res-col-left">
+        <div class="res-card">
+          <div class="res-card-title">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Document Details
+          </div>
+          <div id="detail-list" class="res-fields"></div>
+        </div>
+        <div class="res-card">
+          <div class="res-card-title">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Activity History
+          </div>
+          <div id="pub-timeline" class="res-timeline"></div>
         </div>
       </div>
-      <div class="rcard">
-        <div class="rcard-title">Activity History</div>
-        <div id="pub-timeline"></div>
+
+      <!-- Right col: QR + Download -->
+      <div class="res-col-right">
+        <div class="res-card res-qr-card">
+          <div class="res-card-title">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/></svg>
+            QR Code — Scan to Track
+          </div>
+          <div class="qr-center">
+            <div class="qr-box" id="pub-qr-box"></div>
+            <p class="qr-hint">Point any phone camera at this code</p>
+            <div class="qr-url-tag" id="qr-url-tag"></div>
+            <button onclick="downloadPublicQR()" class="res-dl-qr-btn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download QR
+            </button>
+          </div>
+        </div>
+        <div class="res-card" id="download-card">
+          <div class="res-card-title">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </div>
+          <div id="download-zone"></div>
+        </div>
       </div>
+
     </div>
+
     <div class="back-row">
       <button class="btn-back" onclick="goBack()">← Search Another Document</button>
     </div>

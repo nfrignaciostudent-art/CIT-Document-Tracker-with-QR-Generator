@@ -568,3 +568,208 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
   #app-view .main{padding:0;}
   .app-mode #app-view{display:block;}
 }
+/* ════════════════════════════════════════════════════════
+   REDESIGNED PUBLIC RESULT PAGE — Card Layout
+   Matches the clean form-card aesthetic
+════════════════════════════════════════════════════════ */
+
+/* Override result-section to be wider and centered */
+.result-section {
+  max-width: 900px !important;
+  margin: 0 auto !important;
+  padding: 24px 20px 60px !important;
+}
+
+/* ── Header Card (replaces status-banner) ── */
+.res-header-card {
+  background: linear-gradient(135deg, #0d2318 0%, #112b1a 100%);
+  border: 1px solid rgba(52,199,90,.2);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.res-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+}
+.res-header-icon {
+  width: 44px;
+  height: 44px;
+  background: rgba(52,199,90,.15);
+  border: 1px solid rgba(52,199,90,.3);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #4ade80;
+  flex-shrink: 0;
+}
+.res-header-text {
+  flex: 1;
+  min-width: 0;
+}
+.res-doc-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #e6edf3;
+  letter-spacing: -.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.res-doc-meta {
+  font-size: 11px;
+  color: rgba(255,255,255,.35);
+  font-family: 'DM Mono', monospace;
+  margin-top: 3px;
+}
+.res-status-pill {
+  flex-shrink: 0;
+}
+.res-location-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  border-top: 1px solid rgba(255,255,255,.06);
+  background: rgba(0,0,0,.15);
+}
+.res-loc-item {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+}
+.res-loc-item strong {
+  color: rgba(255,255,255,.82);
+}
+
+/* ── Main two-column grid ── */
+.res-body-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 14px;
+  align-items: start;
+}
+.res-col-left,
+.res-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Card ── */
+.res-card {
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.res-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,.4);
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  background: rgba(255,255,255,.02);
+}
+
+/* ── Detail fields ── */
+.res-fields {
+  padding: 14px 16px;
+  display: grid;
+  gap: 0;
+}
+.res-field-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.res-field-row:last-child {
+  border-bottom: none;
+}
+.res-field-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,.28);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  width: 110px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.res-field-value {
+  font-size: 13px;
+  color: rgba(255,255,255,.82);
+  font-weight: 500;
+  flex: 1;
+  line-height: 1.5;
+}
+
+/* ── QR card centered ── */
+.res-qr-card .qr-center {
+  padding: 16px 14px 18px;
+}
+.res-qr-card .qr-box {
+  margin-bottom: 10px;
+}
+.res-dl-qr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 9px 20px;
+  background: rgba(52,199,90,.12);
+  border: 1px solid rgba(52,199,90,.3);
+  border-radius: 8px;
+  color: #4ade80;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  width: 100%;
+  justify-content: center;
+}
+.res-dl-qr-btn:hover {
+  background: rgba(52,199,90,.22);
+  border-color: rgba(52,199,90,.5);
+}
+
+/* ── Timeline inside card ── */
+.res-timeline {
+  padding: 14px 16px 14px 38px;
+  position: relative;
+}
+.res-timeline::before {
+  content: '';
+  position: absolute;
+  left: 25px;
+  top: 14px;
+  bottom: 14px;
+  width: 1px;
+  background: rgba(255,255,255,.07);
+}
+
+/* ── Responsive ── */
+@media (max-width: 720px) {
+  .res-body-grid {
+    grid-template-columns: 1fr;
+  }
+  .res-col-right {
+    order: -1;
+  }
+  .res-header-inner {
+    flex-wrap: wrap;
+  }
+  .res-doc-name {
+    font-size: 15px;
+    white-space: normal;
+  }
+}

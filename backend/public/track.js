@@ -307,42 +307,26 @@ function renderPublicTrackResult(d) {
   const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
 
-  /* Status Banner — compact receipt-style */
-  document.getElementById('status-banner').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div>
-        <h2 style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:3px">${d.name}</h2>
-        <p style="font-size:11px;color:rgba(255,255,255,.4);font-family:'DM Mono',monospace">${dispId} &nbsp;·&nbsp; ${d.type}</p>
-      </div>
-      <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;
-                  font-size:12px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
-        <span style="width:6px;height:6px;border-radius:50%;background:${sc};display:inline-block${
-          !isRejected && !isReleased ? ';animation:pulse 1.5s infinite' : ''
-        }"></span>
-        ${d.status}
-      </div>
-    </div>
-    ${(lastLoc.location || lastLoc.handler) ? `
-    <div style="margin-top:8px;display:flex;gap:16px;flex-wrap:wrap;padding:8px 0;border-top:1px solid rgba(255,255,255,.07)">
-      ${lastLoc.location ? `<span style="font-size:11px;color:rgba(255,255,255,.6)">Location: <strong style="color:rgba(255,255,255,.85)">${lastLoc.location}</strong></span>` : ''}
-      ${lastLoc.handler  ? `<span style="font-size:11px;color:rgba(255,255,255,.6)">Handler: <strong style="color:rgba(255,255,255,.85)">${lastLoc.handler}</strong></span>`  : ''}
-    </div>` : ''}`;
+  /* ── Populate new compact header card ── */
+  document.getElementById('res-doc-name').textContent = d.name;
+  document.getElementById('res-doc-meta').textContent = dispId + ' · ' + d.type;
+  document.getElementById('res-status-badge').innerHTML = `
+    <span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;font-size:12px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
+      <span style="width:6px;height:6px;border-radius:50%;background:${sc};display:inline-block${!isRejected&&!isReleased?';animation:pulse 1.5s infinite':''}"></span>
+      ${d.status}
+    </span>`;
 
-  /* Workflow progress */
-  const wfHtml = isRejected
-    ? `<div style="text-align:center;width:100%;padding:8px 0">
-         <span style="font-size:13px;color:#f87171;font-weight:600">Document was Rejected</span>
-       </div>`
-    : workflow.map(function(step, i){
-        const done = curIdx > i, curr = curIdx === i;
-        const cls  = done ? 'done' : curr ? 'current' : '';
-        return (i > 0 ? '<div class="twf-arrow">›</div>' : '') +
-          `<div class="twf-step">
-             <div class="twf-dot ${cls}">${done ? '✓' : i + 1}</div>
-             <div class="twf-label ${cls}">${step}</div>
-           </div>`;
-      }).join('');
-  document.getElementById('workflow-row').innerHTML = wfHtml;
+  const locRow = document.getElementById('res-location-row');
+  if (lastLoc.location || lastLoc.handler) {
+    locRow.style.display = '';
+    locRow.innerHTML =
+      (lastLoc.location ? `<span class="res-loc-item">📍 <strong>${lastLoc.location}</strong></span>` : '') +
+      (lastLoc.handler  ? `<span class="res-loc-item">👤 <strong>${lastLoc.handler}</strong></span>`  : '');
+  } else {
+    locRow.style.display = 'none';
+  }
+
+
 
   /* Document Details */
   const relEntry    = [...(d.history || [])].reverse().find(function(h){ return h.status === 'Released'; });
@@ -350,22 +334,22 @@ function renderPublicTrackResult(d) {
   const office      = docOfficeMap[d.type] || 'Document Control Office';
 
   document.getElementById('detail-list').innerHTML = [
-    ['Submitted By',   d.by],
-    ['Purpose',        d.purpose],
+    ['Submitted By',    d.by],
+    ['Purpose',         d.purpose],
     ['Assigned Office', office],
-    ['Priority',       d.priority || 'Normal'],
-    ['Date Filed',     d.date],
-    ['Release Date',   releaseDate
-      ? `<span style="color:#4ade80">${releaseDate}</span>`
+    ['Priority',        d.priority || 'Normal'],
+    ['Date Filed',      d.date],
+    ['Release Date',    releaseDate
+      ? `<span style="color:#4ade80;font-weight:600">${releaseDate}</span>`
       : `<span style="color:rgba(255,255,255,.25)">Pending</span>`]
   ].map(function(row){
-    return `<div class="detail-row" style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start">
-      <span class="detail-label" style="font-size:10px;font-weight:600;color:rgba(255,255,255,.28);letter-spacing:.5px;text-transform:uppercase;width:100px;flex-shrink:0;padding-top:1px">${row[0]}</span>
-      <span class="detail-value" style="font-size:12px;color:rgba(255,255,255,.82);flex:1;line-height:1.4">${row[1]}</span>
+    return `<div class="res-field-row">
+      <span class="res-field-label">${row[0]}</span>
+      <span class="res-field-value">${row[1]}</span>
     </div>`;
   }).join('');
 
-  /* Download zone — no inline preview */
+  /* Download zone */
   document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
 
   /* QR code — FIX: use full page URL so QR works on GitHub Pages, Render, etc. */
@@ -651,4 +635,24 @@ function buildInternalFileSection(d, sc) {
 
   html += '</div></div>';
   return html;
+}
+/* ── Download the public QR code as PNG ── */
+function downloadPublicQR() {
+  const qrBox = document.getElementById('pub-qr-box');
+  if (!qrBox) return;
+  const canvas = qrBox.querySelector('canvas');
+  const img    = qrBox.querySelector('img');
+  if (canvas) {
+    const link = document.createElement('a');
+    link.download = 'document-qr-code.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } else if (img) {
+    const link = document.createElement('a');
+    link.download = 'document-qr-code.png';
+    link.href = img.src;
+    link.click();
+  } else {
+    alert('QR code not ready yet. Please wait a moment and try again.');
+  }
 }

@@ -77,7 +77,7 @@ function buildPublicFileSection(d) {
                     cursor:pointer;transition:opacity .15s"
              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Final File
+            Download file
           </button>
           <p style="font-size:10px;color:rgba(255,255,255,.2);margin-top:10px">Decrypted locally with IDEA-128 · File never stored unencrypted on server</p>
         </div>
