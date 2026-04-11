@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CIT Document Tracker — Group 6</title>
+<title>CIT Document Tracker - Group 6</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="public-mode">
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ==============================================================
      TOP NAV
-     ══════════════════════════════════════════════════════════════ -->
+     ============================================================== -->
 <nav class="topnav" id="topnav">
   <div class="nav-brand" id="nav-brand">
     <div class="brand-icon">
@@ -27,9 +27,9 @@
   </div>
 </nav>
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ==============================================================
      PUBLIC VIEW
-     ══════════════════════════════════════════════════════════════ -->
+     ============================================================== -->
 <div id="public-view">
 
   <section class="hero" id="hero">
@@ -57,22 +57,22 @@
 
   <section class="result-section" id="result-section" style="display:none">
 
-    <!-- ── Doc Header Card ── -->
+    <!-- -- Doc Header Card -- -->
     <div class="res-header-card">
       <div class="res-header-inner">
         <div class="res-header-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
         <div class="res-header-text">
-          <div id="res-doc-name" class="res-doc-name">—</div>
-          <div id="res-doc-meta" class="res-doc-meta">—</div>
+          <div id="res-doc-name" class="res-doc-name">-</div>
+          <div id="res-doc-meta" class="res-doc-meta">-</div>
         </div>
-        <div id="res-status-badge" class="res-status-pill">—</div>
+        <div id="res-status-badge" class="res-status-pill">-</div>
       </div>
       <div id="res-location-row" class="res-location-row" style="display:none"></div>
     </div>
 
-    <!-- ── Main Body Grid ── -->
+    <!-- -- Main Body Grid -- -->
     <div class="res-body-grid">
 
       <!-- Left col: Details + Activity -->
@@ -98,7 +98,7 @@
         <div class="res-card res-qr-card">
           <div class="res-card-title">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/></svg>
-            QR Code — Scan to Track
+            QR Code - Scan to Track
           </div>
           <div class="qr-center">
             <div class="qr-box" id="pub-qr-box"></div>
@@ -127,15 +127,15 @@
   </section>
 
   <div class="public-footer">
-    <p>CIT Document Tracker · IDEA-128 Encryption · Group 6</p>
+    <p>CIT Document Tracker - IDEA-128 Encryption - Group 6</p>
   </div>
 
 </div><!-- /#public-view -->
 
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ==============================================================
      APP VIEW
-     ══════════════════════════════════════════════════════════════ -->
+     ============================================================== -->
 <div id="app-view" style="display:none">
 
   <button id="sidebar-toggle" aria-label="Open navigation" onclick="toggleSidebar()">
@@ -179,6 +179,9 @@
     <button class="nav-item admin-only" id="nav-movements" onclick="showPage('movements',this)" style="display:none">
       <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span>Movement Logs
     </button>
+    <button class="nav-item admin-only" id="nav-scanlogs" onclick="showPage('scanlogs',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><line x1="21" y1="21" x2="21" y2="21"/></svg></span>Scan Logs
+    </button>
     <div class="nav-section-label">Tools</div>
     <button class="nav-item" id="nav-demo" onclick="showPage('demo',this)">
       <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>IDEA Demo
@@ -203,7 +206,7 @@
         <h2 id="dash-title">Dashboard</h2>
         <p id="dash-subtitle"></p>
       </div>
-      <div class="stats" id="stats-row"></div>
+      <div class="stats-grid" id="stats-row"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="dash-grid">
         <div class="card">
           <div class="card-head"><div><h3>Recent Documents</h3><p></p></div></div>
@@ -256,7 +259,7 @@
             <div class="field"><label>Expected Date (optional)</label><input type="date" id="new-due"></div>
           </div>
           <div class="field" style="margin-bottom:16px">
-            <label>Attach File <span style="font-weight:400;color:var(--muted)">(PDF, JPG, PNG — max 5 MB, optional)</span></label>
+            <label>Attach File <span style="font-weight:400;color:var(--muted)">(PDF, JPG, PNG - max 5 MB, optional)</span></label>
             <div class="file-upload">
               <input type="file" id="fileUpload" accept=".pdf,image/jpeg,image/png" onchange="previewFile(this)">
               <label for="fileUpload" class="file-upload-control">
@@ -277,12 +280,12 @@
           <div style="width:36px;height:36px;background:#22c55e;border-radius:50%;display:grid;place-items:center;flex-shrink:0;color:#0d1117;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
           <div>
             <div style="font-size:15px;font-weight:700;color:#15803d">Document Registered Successfully</div>
-            <div style="font-size:12px;color:#16a34a;margin-top:2px">Encrypted with IDEA · Permanent QR generated</div>
+            <div style="font-size:12px;color:#16a34a;margin-top:2px">Encrypted with IDEA - Permanent QR generated</div>
           </div>
         </div>
         <div class="card" id="receipt-card">
           <div class="card-head" style="background:#fafafa">
-            <div><h3>Receipt &amp; Routing Tag</h3><p>Permanent QR — always shows latest status when scanned</p></div>
+            <div><h3>Receipt &amp; Routing Tag</h3><p>Permanent QR - always shows latest status when scanned</p></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn btn-ghost btn-sm" onclick="window.print()">Print</button>
               <button class="btn btn-primary btn-sm" onclick="registerAnother()">+ Register Another</button>
@@ -398,10 +401,10 @@
     <!-- MOVEMENT LOGS -->
     <div class="page" id="page-movements">
       <div class="page-header"><h2>Movement Logs</h2><p></p></div>
-      <div class="stats" id="movement-stats-row" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div class="stats-grid stats-grid-3" id="movement-stats-row"></div>
       <div class="card">
         <div class="card-head">
-          <div><h3>Scan Movement History</h3><p>Every QR scan by any staff member — read-only audit trail</p></div>
+          <div><h3>Admin Movement History</h3><p>Movement entries logged by admin - authoritative document flow record</p></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input class="search-input" id="movement-search" placeholder="  Filter by doc or handler…" oninput="renderMovementLogs()">
             <button class="btn btn-sm btn-red-soft" onclick="clearMovementLogs()">Clear All</button>
@@ -414,6 +417,33 @@
               <th>Handled By</th><th>Location</th><th>Action</th>
             </tr></thead>
             <tbody id="movement-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCAN LOGS (ADMIN ONLY) -->
+    <div class="page" id="page-scanlogs">
+      <div class="page-header"><h2>Scan Logs</h2><p>Auto-generated QR scan events - separate from movement logs</p></div>
+      <div class="stats-grid stats-grid-3" id="scanlogs-stats-row"></div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>QR Scan Events</h3>
+            <p>Every QR code scan from any device - system-generated only, read-only</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input class="search-input" id="scanlogs-search" placeholder="  Filter by doc, device or location..." oninput="renderScanLogs()">
+            <button class="btn btn-sm btn-ghost" onclick="refreshScanLogs()">Refresh</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Timestamp (Manila)</th><th>Doc ID</th><th>Document Name</th>
+              <th>Location</th><th>Status at Scan</th><th>Note</th>
+            </tr></thead>
+            <tbody id="scanlogs-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -472,9 +502,9 @@
 </div><!-- /app-view -->
 
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ==============================================================
      AUTH MODAL
-     ══════════════════════════════════════════════════════════════ -->
+     ============================================================== -->
 <div class="auth-overlay" id="auth-overlay" style="display:none" onclick="handleOverlayClick(event)">
   <div class="auth-modal">
     <button class="auth-close" onclick="closeAuth()">&#x2715;</button>
@@ -554,11 +584,11 @@
         <div id="upd-file-existing" style="display:none;margin-bottom:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;font-size:12px;color:#15803d;display:flex;align-items:center;gap:7px">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span id="upd-file-existing-label">Processed file already attached</span>
-          <span style="margin-left:auto;font-size:11px;color:#16a34a;font-weight:600">✓ Uploaded</span>
+          <span style="margin-left:auto;font-size:11px;color:#16a34a;font-weight:600">OK Uploaded</span>
         </div>
         <label style="font-size:12px;font-weight:500;color:var(--text);display:block;margin-bottom:6px">
           <span id="upd-file-action-label">Attach Processed File</span>
-          <span style="font-weight:400;color:var(--muted)"> (PDF, JPG, PNG — max 5 MB)</span>
+          <span style="font-weight:400;color:var(--muted)"> (PDF, JPG, PNG - max 5 MB)</span>
         </label>
         <div class="file-upload">
           <input type="file" id="upd-processed-file" accept=".pdf,image/jpeg,image/png"
@@ -717,9 +747,9 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ==============================================================
      FILE VIEW / PREVIEW MODAL  ← updated with live preview
-     ══════════════════════════════════════════════════════════════ -->
+     ============================================================== -->
 <div class="overlay" id="file-modal">
   <div class="modal" style="width:600px;max-width:95vw">
     <div class="modal-head">
@@ -746,7 +776,7 @@
         <span id="file-modal-filename-text"></span>
       </p>
 
-      <!-- ── Preview injected here by viewFile() ── -->
+      <!-- -- Preview injected here by viewFile() -- -->
 
       <!-- Action buttons -->
       <div style="display:flex;gap:8px;justify-content:center;margin-top:4px;flex-wrap:wrap">
@@ -764,7 +794,7 @@
       </div>
 
       <p style="font-size:10px;color:var(--muted);text-align:center;margin-top:10px">
-        Decrypted in-browser using IDEA-128 · File never leaves your device
+        Decrypted in-browser using IDEA-128 - File never leaves your device
       </p>
     </div>
   </div>
@@ -773,9 +803,9 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<!-- ══════════════════════════════════════════════════════════════
+<!-- ==============================================================
      SCRIPTS
-     ══════════════════════════════════════════════════════════════ -->
+     ============================================================== -->
 <script src="api.js"></script>
 <script src="auth.js"></script>
 <script src="qr.js"></script>

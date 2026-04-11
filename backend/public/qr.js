@@ -1,18 +1,16 @@
 /* ══════════════════════════════════════════════════════════════════════
-   qr.js — QR Code Generation & Handling
-   CIT Document Tracker · Group 6
+   qr.js - QR Code Generation & Handling
+   CIT Document Tracker - Group 6
 
    RULE: QR always encodes a STATIC permanent URL using the Internal ID:
          baseUrl + "?track=" + doc.internalId (ULID)
          The QR never changes even after status updates.
-         The ULID is not predictable — it is not an incrementing sequence.
 
-   CHANGES (v2):
-     • confirmScanLog now calls apiAddMovementLog() (admin-only, JWT)
-       instead of the public apiLogScan(). This enforces backend role
-       validation for manual movement log entries.
-     • simulateScan already enforces admin-only on the frontend.
-       Backend now enforces it too via the /movement route.
+   SCAN vs MOVEMENT:
+     - QR scans are auto-logged to scan_logs collection (public, no form)
+     - Admin movements are logged to doc.history via /movement endpoint
+     - confirmScanLog() calls apiAddMovementLog() (admin, JWT protected)
+     - simulateScan() is admin-only (frontend + backend enforced)
 ══════════════════════════════════════════════════════════════════════ */
 
 function encodeSnapshot(snap) {
@@ -24,8 +22,6 @@ function decodeSnapshot(str) {
 }
 
 function getSavedBaseUrl() {
-  /* Use full current page URL (origin + pathname) so QR works
-     on GitHub Pages, Render, localhost — anywhere. */
   return window.location.href.split('?')[0].replace(/\/+$/, '');
 }
 
@@ -88,7 +84,7 @@ function openQR(docKey) {
   localStorage.setItem('cit_qr_base_url', saved);
   document.getElementById('qr-base-url').value = saved;
 
-  /* ── Hide "Simulate QR Scan" button for non-admins ── */
+  /* Hide "Simulate QR Scan" button for non-admins */
   const simBtn = document.getElementById('qr-simulate-btn');
   if (simBtn) {
     simBtn.style.display = (currentUser && currentUser.role === 'admin') ? '' : 'none';
@@ -98,15 +94,13 @@ function openQR(docKey) {
   setTimeout(function(){ buildQR(docKey, saved); }, 150);
 }
 
-/* ── simulateScan — ADMIN ONLY ─────────────────────────────────────
+/* ── simulateScan - ADMIN ONLY ─────────────────────────────────────
    Opens the manual movement log modal from within the app.
-   Only admins can see this button (enforced in openQR above).
    Backend further enforces admin role on the /movement endpoint.
-─────────────────────────────────────────────────────────────────── */
+───────────────────────────────────────────────────────────────────── */
 function simulateScan() {
   if (!_currentQRDocId) { toast('Open a QR code first.'); return; }
 
-  /* Frontend admin check */
   if (!currentUser || currentUser.role !== 'admin') {
     toast('Only admins can log movement from within the app.');
     return;
@@ -146,14 +140,13 @@ function buildReceiptQR(doc) {
   return trackUrl;
 }
 
-/* ── confirmScanLog — ADMIN ONLY ───────────────────────────────────
+/* ── confirmScanLog - ADMIN ONLY ───────────────────────────────────
    Called when admin submits the manual movement log form.
-   Uses apiAddMovementLog() which hits the admin-protected backend
-   endpoint POST /api/documents/:id/movement.
-   Backend enforces: protect() + adminOnly middleware.
-─────────────────────────────────────────────────────────────────── */
+   Calls apiAddMovementLog() which hits POST /api/documents/:id/movement.
+   This saves to doc.history with action='Movement'.
+   NOT the same as a QR scan (which goes to scan_logs collection).
+───────────────────────────────────────────────────────────────────── */
 async function confirmScanLog() {
-  /* Frontend admin check — belt and suspenders */
   if (!currentUser || currentUser.role !== 'admin') {
     toast('Only admins can log movement.');
     closeModal('scan-log-modal');
@@ -174,13 +167,10 @@ async function confirmScanLog() {
   const d = docs.find(function(x){ return (x.internalId||x.id) === _currentQRDocId; });
   if (!d) { toast('Document not found.'); return; }
 
-  /* Record locally first */
+  /* Record locally first — use action 'Movement' not 'Scanned' */
   logMovement(d.internalId || d.id, handler, location);
 
-  /* ── Persist to backend via ADMIN-ONLY endpoint ──────────────────
-     POST /api/documents/:id/movement requires JWT + admin role.
-     The backend controller (addMovementLog) validates both.
-  ─────────────────────────────────────────────────────────────────── */
+  /* Persist to backend via admin-only /movement endpoint */
   try {
     if (typeof apiAddMovementLog === 'function') {
       const result = await apiAddMovementLog(
@@ -195,7 +185,6 @@ async function confirmScanLog() {
 
       if (result && result._error) {
         console.warn('[confirmScanLog] Backend sync failed:', result.message);
-        /* Don't block the UI — local log was already saved */
       }
     }
   } catch(e) {

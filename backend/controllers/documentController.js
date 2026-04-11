@@ -1,28 +1,38 @@
 /* ══════════════════════════════════════════════════════════════════════
    controllers/documentController.js
-   CIT Document Tracker · Group 6
+   CIT Document Tracker - Group 6
 
    ID Standard:
-     internalId  — ULID (primary key, used in QR, not predictable)
-     displayId   — DOC-YYYYMMDD-XXXX (user-facing, incremental per day)
-     verifyCode  — 4-char alphanumeric HMAC-based suffix
-     fullDisplayId — displayId-verifyCode (on receipts)
+     internalId    - ULID (primary key, used in QR, not predictable)
+     displayId     - DOC-YYYYMMDD-XXXX (user-facing, incremental per day)
+     verifyCode    - 4-char alphanumeric HMAC-based suffix
+     fullDisplayId - displayId-verifyCode (on receipts)
 
-   CHANGES (v2):
-     • logScan       — handledBy & location are now OPTIONAL.
-                       Auto-logs with defaults when called by system
-                       (QR scan auto-logging requires no user input).
-     • addMovementLog — NEW, admin-only. Called from within the app
-                       when an admin manually logs a movement event.
-                       Enforced at route level (protect + adminOnly).
+   TIMEZONE: All timestamps stored as ISO UTC, displayed as Asia/Manila (UTC+8)
+
+   SCAN vs MOVEMENT separation:
+     - scan_logs  : separate MongoDB collection, auto-created on QR scan (public)
+     - movement   : entries in doc.history with action='Movement', admin only
+     - doc.history: contains only Status Updates and admin Movement entries
 ══════════════════════════════════════════════════════════════════════ */
 
 const path     = require('path');
 const QRCode   = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const Document = require('../models/Document');
+const ScanLog  = require('../models/ScanLog');
 
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
+
+/* ── Manila timezone helper (UTC+8) ── */
+function manilaTimestamp() {
+  return new Date().toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: true
+  });
+}
 
 /* ── ULID Generator ── */
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -43,10 +53,10 @@ function generateULID() {
 
 /* ── Daily sequential Display ID: DOC-YYYYMMDD-XXXX ── */
 async function genDisplayId() {
-  const now     = new Date();
-  const yyyy    = now.getFullYear();
-  const mm      = String(now.getMonth() + 1).padStart(2, '0');
-  const dd      = String(now.getDate()).padStart(2, '0');
+  const manilaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const yyyy    = manilaNow.getFullYear();
+  const mm      = String(manilaNow.getMonth() + 1).padStart(2, '0');
+  const dd      = String(manilaNow.getDate()).padStart(2, '0');
   const dateStr = `${yyyy}${mm}${dd}`;
   const prefix  = `DOC-${dateStr}-`;
 
@@ -82,7 +92,6 @@ function genVerifyCode(displayId, internalId) {
   return code;
 }
 
-/* ── Tracking URL uses internalId (ULID) — not predictable ── */
 const trackUrl = (internalId) => `${APP_BASE_URL}?track=${internalId}`;
 
 /* ── POST /api/documents/register ── */
@@ -112,7 +121,7 @@ const registerDocument = async (req, res) => {
     : (fileData || null);
 
   const resolvedFileExt = req.file ? (fileExt || '') : (fileExt || null);
-
+  const nowManila = manilaTimestamp();
   const MAX_RETRIES = 5;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -148,12 +157,12 @@ const registerDocument = async (req, res) => {
         hasProcessedFile: false,
         history: history || [{
           action: 'Status Update', status: 'Received',
-          date:   date || new Date().toLocaleString('en-PH'),
+          date:   nowManila,
           note:   'Document submitted & encrypted with IDEA-128',
           by:     ownerName || ownerId,
           location: '', handler: ''
         }],
-        date: date || new Date().toLocaleString('en-PH')
+        date: nowManila
       });
 
       return res.status(201).json({
@@ -171,7 +180,7 @@ const registerDocument = async (req, res) => {
 
     } catch (err) {
       if (err.code === 11000 && attempt < MAX_RETRIES) {
-        console.warn(`[registerDocument] Duplicate key on attempt ${attempt}, retrying…`);
+        console.warn(`[registerDocument] Duplicate key on attempt ${attempt}, retrying...`);
         await new Promise(r => setTimeout(r, attempt * 20));
         continue;
       }
@@ -183,7 +192,7 @@ const registerDocument = async (req, res) => {
   return res.status(500).json({ message: 'Could not generate a unique document ID after several attempts. Please try again.' });
 };
 
-/* ── GET /api/documents/track/:id (PUBLIC — no auth) ── */
+/* ── GET /api/documents/track/:id (PUBLIC - no auth) ── */
 const trackDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -229,7 +238,7 @@ const trackDocument = async (req, res) => {
   }
 };
 
-/* ── GET /api/documents/download/:id (PUBLIC — only if Released) ── */
+/* ── GET /api/documents/download/:id (PUBLIC - only if Released) ── */
 const downloadDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -309,20 +318,21 @@ const updateDocumentStatus = async (req, res) => {
       });
     }
 
+    const nowManila = manilaTimestamp();
     doc.status = status;
 
     if (resolvedProcessedFile) {
       doc.processedFile    = resolvedProcessedFile;
       doc.processedFileExt = resolvedProcessedFileExt || null;
       doc.processedBy      = by || 'admin';
-      doc.processedAt      = new Date().toLocaleString('en-PH');
+      doc.processedAt      = nowManila;
       doc.hasProcessedFile = true;
     }
 
     doc.history.push({
       action:   'Status Update',
       status,
-      date:     new Date().toLocaleString('en-PH'),
+      date:     nowManila,
       note:     note     || '',
       by:       by       || 'admin',
       location: location || '',
@@ -418,6 +428,7 @@ const deleteDocument = async (req, res) => {
       ]
     });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
+    await ScanLog.deleteMany({ documentId: doc.internalId });
     res.json({ message: `Document "${doc.name}" deleted.`, internalId: doc.internalId });
   } catch (err) {
     console.error('[deleteDocument]', err);
@@ -425,17 +436,13 @@ const deleteDocument = async (req, res) => {
   }
 };
 
-/* ── POST /api/documents/:id/scan-log (PUBLIC — no auth) ──────────
-   AUTO-LOG endpoint: called automatically when a QR code is scanned.
-   Does NOT change document status.
-   handledBy and location are OPTIONAL — defaults are used if absent.
-   No manual form or user input required on the frontend.
-─────────────────────────────────────────────────────────────────── */
+/* ── POST /api/documents/:id/scan-log (PUBLIC - no auth) ──────────
+   Saves to scan_logs collection ONLY. Does NOT touch doc.history.
+───────────────────────────────────────────────────────────────────── */
 const logScan = async (req, res) => {
   try {
     const query = req.params.documentId;
 
-    /* ── Fields are now optional for auto-scan logging ── */
     const handledBy = req.body.handledBy || 'QR Visitor';
     const location  = req.body.location  || 'QR Scan';
     const note      = req.body.note      || 'Auto-logged on QR scan';
@@ -446,21 +453,24 @@ const logScan = async (req, res) => {
         { displayId:     query },
         { fullDisplayId: query },
       ]
-    });
+    }).select('internalId displayId fullDisplayId name status');
 
     if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
 
-    doc.history.push({
-      action:   'Scanned',
-      status:   doc.status,
-      date:     new Date().toLocaleString('en-PH'),
-      note,
-      by:       handledBy,
-      location,
-      handler:  handledBy,
-    });
+    const nowISO    = new Date().toISOString();
+    const nowManila = manilaTimestamp();
 
-    await doc.save();
+    await ScanLog.create({
+      documentId:   doc.internalId,
+      displayId:    doc.fullDisplayId || doc.displayId,
+      documentName: doc.name,
+      handledBy,
+      location,
+      note,
+      docStatus:    doc.status,
+      timestamp:    nowISO,
+      displayDate:  nowManila,
+    });
 
     res.json({
       message:    'Scan logged successfully.',
@@ -474,11 +484,8 @@ const logScan = async (req, res) => {
 };
 
 /* ── POST /api/documents/:id/movement (Auth + Admin only) ─────────
-   MANUAL movement log entry — only admins can call this.
-   Called from within the app (qr.js confirmScanLog).
-   Requires handledBy and location (validated here).
-   Does NOT change document status.
-─────────────────────────────────────────────────────────────────── */
+   Saves to doc.history with action='Movement'. Admin only.
+───────────────────────────────────────────────────────────────────── */
 const addMovementLog = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -498,13 +505,13 @@ const addMovementLog = async (req, res) => {
 
     if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
 
-    /* Record who added this log (must be an authenticated admin) */
     const adminUsername = req.user ? (req.user.username || req.user.name || 'admin') : 'admin';
+    const nowManila = manilaTimestamp();
 
     doc.history.push({
-      action:   'Scanned',
+      action:   'Movement',
       status:   doc.status,
-      date:     new Date().toLocaleString('en-PH'),
+      date:     nowManila,
       note:     note || `Movement logged by admin: ${adminUsername}`,
       by:       handledBy,
       location,
@@ -525,27 +532,56 @@ const addMovementLog = async (req, res) => {
   }
 };
 
-/* ── GET /api/scan-logs (Auth + Admin only) ───────────────────────
-   Returns ALL Scanned entries from all document histories.
-   Used by the Movement Logs page to show cross-device scan data. */
+/* ── GET /api/documents/scan-logs (Auth + Admin only) ───────────────
+   Returns entries from the scan_logs collection (QR auto-scans only). */
 const getAllScanLogs = async (req, res) => {
   try {
+    const { search, docId } = req.query;
+    let filter = {};
+    if (docId) filter.documentId = docId;
+    if (search) {
+      const re = new RegExp(search, 'i');
+      filter.$or = [
+        { documentId:   re },
+        { displayId:    re },
+        { documentName: re },
+        { handledBy:    re },
+        { location:     re },
+      ];
+    }
+
+    const scanLogs = await ScanLog.find(filter)
+      .sort({ timestamp: -1 })
+      .lean();
+
+    res.json(scanLogs);
+  } catch (err) {
+    console.error('[getAllScanLogs]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ── GET /api/documents/movement-logs (Auth + Admin only) ───────────
+   Returns Movement entries from document histories (admin-created). */
+const getAllMovementLogs = async (req, res) => {
+  try {
     const docs = await Document.find(
-      { 'history.action': 'Scanned' },
+      { 'history.action': 'Movement' },
       { internalId: 1, displayId: 1, fullDisplayId: 1, name: 1, history: 1 }
     ).lean();
 
-    const scanLogs = [];
+    const movementLogs = [];
     docs.forEach(doc => {
       (doc.history || []).forEach(h => {
-        if (h.action === 'Scanned') {
-          scanLogs.push({
+        if (h.action === 'Movement') {
+          movementLogs.push({
             documentId:   doc.internalId,
             displayId:    doc.fullDisplayId || doc.displayId,
             documentName: doc.name,
-            handledBy:    h.by       || h.handler || '—',
-            location:     h.location || '—',
-            action:       'Scanned',
+            handledBy:    h.by       || h.handler || '-',
+            location:     h.location || '-',
+            action:       'Movement',
+            note:         h.note     || '',
             timestamp:    h.date,
             displayDate:  h.date,
           });
@@ -553,12 +589,10 @@ const getAllScanLogs = async (req, res) => {
       });
     });
 
-    /* Sort newest first */
-    scanLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    res.json(scanLogs);
+    movementLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    res.json(movementLogs);
   } catch (err) {
-    console.error('[getAllScanLogs]', err);
+    console.error('[getAllMovementLogs]', err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -574,4 +608,5 @@ module.exports = {
   logScan,
   addMovementLog,
   getAllScanLogs,
+  getAllMovementLogs,
 };

@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
-   middleware/authMiddleware.js — JWT Authentication Guard
-   CIT Document Tracker · Group 6
+   middleware/authMiddleware.js - JWT Authentication Guard
+   CIT Document Tracker - Group 6
 ══════════════════════════════════════════════════════════════════════ */
 
 const jwt  = require('jsonwebtoken');

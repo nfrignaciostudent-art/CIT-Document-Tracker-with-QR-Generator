@@ -1,16 +1,16 @@
-/* ══════════════════════════════════════════════════════════════════════
-   script.js — Main Initialization & Core App Logic
-   CIT Document Tracker · Group 6
+/* ======================================================================
+   script.js - Main Initialization & Core App Logic
+   CIT Document Tracker - Group 6
 
    Contains: IDEA encryption, ULID + Display ID generation,
              global state, save/load, render functions,
              document CRUD, history, movement logs,
              notifications, settings, demo
-══════════════════════════════════════════════════════════════════════ */
+====================================================================== */
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    IDEA ENCRYPTION (128-bit block cipher)
-════════════════════════════════════════════════════════ */
+======================================================== */
 const IDEA = (() => {
   function mu(a,b){a&=0xFFFF;b&=0xFFFF;if(!a)a=65536;if(!b)b=65536;const r=Number(BigInt(a)*BigInt(b)%65537n);return r===65536?0:r;}
   function mi(a){if(!a)return 0;if(a===1)return 1;let t=0n,nt=1n,r=65537n,nr=BigInt(a);while(nr){const q=r/nr;[t,nt]=[nt,t-q*nt];[r,nr]=[nr,r%nr];}return Number(t<0n?t+65537n:t);}
@@ -68,9 +68,9 @@ const IDEA = (() => {
   return{encrypt,decrypt};
 })();
 
-/* ════════════════════════════════════════════════════════
-   FILE ENCRYPTION — IDEA at Rest
-════════════════════════════════════════════════════════ */
+/* ========================================================
+   FILE ENCRYPTION - IDEA at Rest
+======================================================== */
 
 function encryptFile(dataURI, ext) {
   const commaIdx = dataURI.indexOf(',');
@@ -89,7 +89,7 @@ function decryptFile(stored) {
       const b64 = IDEA.decrypt(parsed.data, KEY);
       return { dataURI: parsed.prefix + b64, ext: parsed.ext || '' };
     }
-  } catch(e) { /* not JSON — treat as legacy plain data URI */ }
+  } catch(e) { /* not JSON - treat as legacy plain data URI */ }
   return { dataURI: stored, ext: '' };
 }
 
@@ -170,7 +170,7 @@ async function decryptAndDownload(docKey, btnEl) {
     a.click();
     document.body.removeChild(a);
 
-    _dlToast('Download started — Final/Processed file.');
+    _dlToast('Download started - Final/Processed file.');
   } catch(err) {
     console.error('[decryptAndDownload]', err);
     _dlToast('Decryption failed. File may be corrupted.');
@@ -184,9 +184,9 @@ function _dlToast(msg) {
   else alert(msg);
 }
 
-/* ════════════════════════════════════════════════════════
-   VIEW FILE — decrypt and preview/download in modal
-════════════════════════════════════════════════════════ */
+/* ========================================================
+   VIEW FILE - decrypt and preview/download in modal
+======================================================== */
 async function viewFile(docKey, fileType, btnEl) {
   fileType = fileType || 'original';
   const d = docs.find(x => (x.internalId || x.id) === docKey);
@@ -200,7 +200,7 @@ async function viewFile(docKey, fileType, btnEl) {
       ? (d.processedFile || null)
       : (d.originalFile || d.fileData || null);
 
-    /* ── Backend fallback: file blob not in memory (e.g. after page refresh) ── */
+    /* -- Backend fallback: file blob not in memory (e.g. after page refresh) -- */
     if (!source) {
       if (btnEl) btnEl.textContent = 'Fetching…';
       const docId = d.internalId || d.id;
@@ -242,7 +242,7 @@ async function viewFile(docKey, fileType, btnEl) {
     /* Populate modal header */
     const docnameEl = document.getElementById('file-modal-docname');
     if (docnameEl) docnameEl.textContent =
-      d.name + ' — ' + (fileType === 'processed' ? 'Final / Processed File' : 'Original File');
+      d.name + ' - ' + (fileType === 'processed' ? 'Final / Processed File' : 'Original File');
 
     const statusBadgeEl = document.getElementById('file-modal-status-badge');
     if (statusBadgeEl) statusBadgeEl.innerHTML = statusBadge(d.status);
@@ -303,9 +303,9 @@ async function viewFile(docKey, fileType, btnEl) {
   if (btnEl) { btnEl.disabled = false; btnEl.textContent = origText; }
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    DOCUMENT ID SYSTEM
-════════════════════════════════════════════════════════ */
+======================================================== */
 
 function generateULID() {
   const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -378,9 +378,9 @@ function findDoc(query) {
   ) || null;
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    CONSTANTS & GLOBAL STATE
-════════════════════════════════════════════════════════ */
+======================================================== */
 const KEY = 'Group6CITKey2024';
 
 let accounts      = [];
@@ -407,12 +407,17 @@ const docOfficeMap = {
   Other:'Document Control Office'
 };
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    HELPERS
-════════════════════════════════════════════════════════ */
+======================================================== */
 const genId  = () => 'DOC-' + Date.now().toString(36).toUpperCase().slice(-5);
 const genUID = () => 'USR-' + Date.now().toString(36).toUpperCase();
-const nowStr = () => new Date().toLocaleString('en-PH');
+const nowStr = () => new Date().toLocaleString('en-PH', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  hour12: true
+});
 const colors = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399','#f87171','#fbbf24'];
 function avatarColor(idx){ return colors[idx % colors.length]; }
 
@@ -424,9 +429,9 @@ function initials(name){ return (name||'?').split(' ').map(w=>w[0]).join('').sli
 function statusColor(s){ return statusColorMap[s] || '#94a3b8'; }
 function docOffice(type){ return docOfficeMap[type] || 'Document Control Office'; }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    STORAGE
-════════════════════════════════════════════════════════ */
+======================================================== */
 function save(){
   const docsLite = docs.map(d => {
     const c = Object.assign({}, d);
@@ -489,9 +494,9 @@ function logActivity(userId, message, color){
   save();
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    NAVIGATION
-════════════════════════════════════════════════════════ */
+======================================================== */
 function showPage(id, btn){
   document.querySelectorAll('#app-view .page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -502,11 +507,12 @@ function showPage(id, btn){
   if(id==='users')     renderUsers();
   if(id==='actlogs')   renderActivityLogs();
   if(id==='movements') renderMovementLogs();
+  if(id==='scanlogs')  renderScanLogs();
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    RENDER ALL
-════════════════════════════════════════════════════════ */
+======================================================== */
 function renderAll(){ renderStats(); renderDash(); renderVault(); renderNotifCount(); }
 
 /* Stats */
@@ -518,10 +524,22 @@ function renderStats(){
   const pending = myDocs.filter(d=>['Received','Processing','For Approval','Pending'].includes(d.status)).length;
   const rejected= myDocs.filter(d=>d.status==='Rejected').length;
   document.getElementById('stats-row').innerHTML=`
-    <div class="stat"><div class="stat-label">${isAdmin?'Total Docs':'My Docs'}</div><div class="stat-num">${total}</div></div>
-    <div class="stat"><div class="stat-label">Released</div><div class="stat-num green">${released}</div></div>
-    <div class="stat"><div class="stat-label">In Progress</div><div class="stat-num yellow">${pending}</div></div>
-    <div class="stat"><div class="stat-label">Rejected</div><div class="stat-num red">${rejected}</div></div>`;
+    <div class="stat-card">
+      <div class="stat-card-label">${isAdmin?'Total Docs':'My Docs'}</div>
+      <div class="stat-card-num">${total}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Released</div>
+      <div class="stat-card-num green">${released}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">In Progress</div>
+      <div class="stat-card-num yellow">${pending}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Rejected</div>
+      <div class="stat-card-num red">${rejected}</div>
+    </div>`;
   document.getElementById('dash-title').textContent    = isAdmin?'Admin Dashboard':'My Dashboard';
   document.getElementById('dash-subtitle').textContent = isAdmin?'':`Welcome back, ${currentUser.name||currentUser.username}`;
 }
@@ -638,9 +656,9 @@ function downloadDocFile(docKey, btnEl) {
   decryptAndDownload(docKey, btnEl || null);
 }
 
-/* ════════════════════════════════════════════════════════
-   VAULT — with clickable file badges
-════════════════════════════════════════════════════════ */
+/* ========================================================
+   VAULT - with clickable file badges
+======================================================== */
 function renderVault(){
   const isAdmin=currentUser.role==='admin';
   const term=(document.getElementById('vault-search')?.value||'').toLowerCase();
@@ -667,13 +685,13 @@ function renderVault(){
   if(!rows.length){tb.innerHTML=`<tr><td colspan="10"><div class="empty-msg">No documents found.</div></td></tr>`;return;}
   tb.innerHTML=rows.map(d=>{
     const lastLoc=getLatestLocation(d);
-    const locHtml=lastLoc.location?`<span class="loc-badge">${lastLoc.location}</span>`:`<span style="font-size:11px;color:#94a3b8">—</span>`;
+    const locHtml=lastLoc.location?`<span class="loc-badge">${lastLoc.location}</span>`:`<span style="font-size:11px;color:#94a3b8">-</span>`;
     const docKey = d.internalId || d.id;
     const hasOrig = docHasOriginalFile(d);
     const hasProc = docHasProcessedFile(d);
     const canView = isAdmin || d.ownerId === currentUser.id;
 
-    /* ── File badges are now clickable buttons ── */
+    /* -- File badges are now clickable buttons -- */
     const fileHtml = hasProc
       ? `<button
            onclick="viewFile('${docKey}','processed',this)"
@@ -704,7 +722,7 @@ function renderVault(){
              <polyline points="14 2 14 8 20 8"/>
            </svg>Original
          </button>`
-      : `<span style="font-size:11px;color:#94a3b8">—</span>`;
+      : `<span style="font-size:11px;color:#94a3b8">-</span>`;
 
     return `<tr>
       <td class="doc-id-cell" title="Internal: ${d.internalId||d.id}">${d.fullDisplayId||d.displayId||d.id}</td>
@@ -742,7 +760,7 @@ function renderUsers(){
       <div class="user-avatar" style="background:${u.color||avatarColor(i)}">${initials(u.name||u.username)}</div>
       <div style="flex:1">
         <div style="font-weight:600;font-size:14px">${u.name||u.username}</div>
-        <div style="font-size:12px;color:var(--muted)">@${u.username} &nbsp;·&nbsp; ${cnt} doc${cnt!==1?'s':''} &nbsp;·&nbsp; ${logCnt} activities</div>
+        <div style="font-size:12px;color:var(--muted)">@${u.username} &nbsp;-&nbsp; ${cnt} doc${cnt!==1?'s':''} &nbsp;-&nbsp; ${logCnt} activities</div>
       </div>
       <button class="btn btn-sm btn-blue" onclick="openUserVault('${u.id}')">View Docs</button>
     </div>`;
@@ -810,9 +828,9 @@ function clearActivityLogs(){
   save(); renderActivityLogs(); toast('Activity logs cleared.');
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    DOCUMENT CRUD
-════════════════════════════════════════════════════════ */
+======================================================== */
 let _newFileData = null;
 let _newFileExt  = null;
 let _newFileReady = false;
@@ -934,7 +952,7 @@ async function addDocument(){
       let result;
 
       if (encryptedFileData) {
-        // ── FIX: use FormData so large files bypass Express body-limit ──
+        // -- FIX: use FormData so large files bypass Express body-limit --
         result = await apiUploadDocumentWithFile(
           jsonPayload,
           encryptedFileData,   // already IDEA-encrypted base64 JSON string
@@ -942,14 +960,14 @@ async function addDocument(){
           currentUser.token
         );
       } else {
-        // No file — plain JSON is fine
+        // No file - plain JSON is fine
         result = await apiRegisterDocument(jsonPayload, currentUser.token);
       }
 
       if (result && result.internalId) {
-        // ── FIX: backend may assign a different internalId; update doc and
+        // -- FIX: backend may assign a different internalId; update doc and
         //    immediately persist the file under the FINAL key so localStorage
-        //    never ends up with an orphaned / mismatched key ──
+        //    never ends up with an orphaned / mismatched key --
         const oldKey = doc.internalId;
         doc.internalId    = result.internalId;
         doc.id            = result.internalId;
@@ -968,7 +986,7 @@ async function addDocument(){
         console.warn('[addDocument] Backend error:', result.message);
         toast('Server error: ' + (result.message || 'Could not save to server.') + ' Saved locally.');
       } else if (result === null) {
-        toast('Server unreachable — saved locally only.');
+        toast('Server unreachable - saved locally only.');
       }
     } catch(e) {
       console.error('[addDocument] API call failed:', e);
@@ -976,8 +994,8 @@ async function addDocument(){
     }
   }
 
-  // ── FIX: force-save file under the FINAL internalId BEFORE save() runs,
-  //    so there is never a window where the key is wrong ──
+  // -- FIX: force-save file under the FINAL internalId BEFORE save() runs,
+  //    so there is never a window where the key is wrong --
   if (encryptedFileData) {
     const finalKey = doc.internalId || doc.id;
     try {
@@ -1021,7 +1039,7 @@ function showReceipt(doc){
   document.getElementById('receipt-date').textContent    = doc.date;
   document.getElementById('receipt-status').textContent  = doc.status;
   document.getElementById('receipt-file').textContent    = doc.originalFile || doc.fileData
-    ? doc.name+(doc.originalFileExt||doc.fileExt||'') + ' [Original · IDEA-128 encrypted]'
+    ? doc.name+(doc.originalFileExt||doc.fileExt||'') + ' [Original - IDEA-128 encrypted]'
     : 'None';
   const encProof=document.getElementById('receipt-enc-proof');
   encProof.textContent=[
@@ -1029,7 +1047,7 @@ function showReceipt(doc){
     'IDEA   : '+doc.enc.slice(0,32)+'…',
     'ID     : '+doc.fullDisplayId,
     'Verify : '+doc.verifyCode,
-    (doc.originalFile||doc.fileData) ? 'File   : Original uploaded · IDEA-128 encrypted at rest' : 'File   : No attachment',
+    (doc.originalFile||doc.fileData) ? 'File   : Original uploaded - IDEA-128 encrypted at rest' : 'File   : No attachment',
     'Final  : Awaiting admin upload (required for Release)'
   ].join('\n');
   if(doc.originalFile || doc.fileData){
@@ -1075,9 +1093,9 @@ async function deleteDoc(docKey){
   save(); renderAll(); toast(`Document "${d.name}" deleted.`);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    UPDATE STATUS MODAL
-════════════════════════════════════════════════════════ */
+======================================================== */
 function openUpdate(docKey){
   const d=docs.find(x=>(x.internalId||x.id)===docKey);
   if(!d)return;
@@ -1097,7 +1115,7 @@ function openUpdate(docKey){
   if(d.processedFile){
     existingEl.style.display = 'flex';
     document.getElementById('upd-file-existing-label').textContent =
-      'Processed file already attached' + (d.processedBy ? ' by ' + d.processedBy : '') + (d.processedAt ? ' · ' + d.processedAt : '');
+      'Processed file already attached' + (d.processedBy ? ' by ' + d.processedBy : '') + (d.processedAt ? ' - ' + d.processedAt : '');
     document.getElementById('upd-file-action-label').textContent = 'Replace Processed File (optional)';
   } else {
     existingEl.style.display = 'none';
@@ -1209,7 +1227,7 @@ async function applyUpdate(){
 
       let result;
       if (encFile) {
-        // ── FIX: use FormData for processed file to bypass body-parser limit ──
+        // -- FIX: use FormData for processed file to bypass body-parser limit --
         result = await apiUpdateStatusWithFile(
           d.internalId || d.id,
           jsonPayload,
@@ -1235,7 +1253,7 @@ async function applyUpdate(){
     }
   }
 
-  // ── FIX: force-save processed file under the correct key immediately ──
+  // -- FIX: force-save processed file under the correct key immediately --
   if (encFile) {
     const key = d.internalId || d.id;
     try {
@@ -1250,8 +1268,8 @@ async function applyUpdate(){
 
   addNotification(d.ownerId,
     `Your document "${d.name}" status changed to <strong>${newStatus}</strong>` +
-    (_updProcessedFileData ? ' — <strong>Final file attached</strong>' : '') +
-    (location?' · '+location:'')+(handler?' · '+handler:'')+(note?' — '+note:''),
+    (_updProcessedFileData ? ' - <strong>Final file attached</strong>' : '') +
+    (location?' - '+location:'')+(handler?' - '+handler:'')+(note?' - '+note:''),
     d.internalId||d.id);
   logActivity(currentUser.id,
     `Updated "${d.name}" to ${newStatus}${_updProcessedFileData?' + processed file':''}${location?' @ '+location:''}${handler?' ('+handler+')':''}`,
@@ -1262,16 +1280,16 @@ async function applyUpdate(){
   _updProcessedFileData = null;
   _updProcessedFileExt  = null;
   save();renderAll();closeModal('update-modal');
-  toast(`Status updated to "${newStatus}"${d.processedFile?' — Final file stored.':''}`);
+  toast(`Status updated to "${newStatus}"${d.processedFile?' - Final file stored.':''}`);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    MOVEMENT LOGS
-════════════════════════════════════════════════════════ */
+======================================================== */
 function logMovement(documentId, handledBy, location){
   const entry={
     documentId, handledBy, location,
-    action:'Scanned',
+    action:'Movement',
     timestamp:   new Date().toISOString(),
     displayDate: nowStr()
   };
@@ -1279,7 +1297,7 @@ function logMovement(documentId, handledBy, location){
   if(movementLogs.length>500) movementLogs=movementLogs.slice(-500);
   save();
   const d = docs.find(x=>(x.internalId||x.id)===documentId);
-  if(currentUser){ logActivity(currentUser.id,`QR scanned "${d?.name||documentId}" at ${location}`,'#4ade80'); }
+  if(currentUser){ logActivity(currentUser.id,`Movement logged for "${d?.name||documentId}" at ${location}`,'#f59e0b'); }
 }
 
 function renderMovementLogs(){
@@ -1292,16 +1310,16 @@ function renderMovementLogs(){
   );
   const statEl=document.getElementById('movement-stats-row');
   if(statEl){
-    const totalScans=movementLogs.length;
+    const totalMoves=movementLogs.length;
     const uniqueHandlers=new Set(movementLogs.map(m=>m.handledBy)).size;
     const uniqueDocs=new Set(movementLogs.map(m=>m.documentId)).size;
     statEl.innerHTML=`
-      <div class="stat"><div class="stat-label">Total Scans</div><div class="stat-num blue">${totalScans}</div></div>
-      <div class="stat"><div class="stat-label">Unique Handlers</div><div class="stat-num green">${uniqueHandlers}</div></div>
-      <div class="stat"><div class="stat-label">Docs Tracked</div><div class="stat-num">${uniqueDocs}</div></div>`;
+      <div class="stat-card"><div class="stat-card-label">Total Movements</div><div class="stat-card-num blue">${totalMoves}</div></div>
+      <div class="stat-card"><div class="stat-card-label">Unique Handlers</div><div class="stat-card-num green">${uniqueHandlers}</div></div>
+      <div class="stat-card"><div class="stat-card-label">Docs Tracked</div><div class="stat-card-num">${uniqueDocs}</div></div>`;
   }
   const tb=document.getElementById('movement-tbody');
-  if(!entries.length){tb.innerHTML=`<tr><td colspan="6"><div class="empty-msg">No movement logs yet.</div></td></tr>`;return;}
+  if(!entries.length){tb.innerHTML=`<tr><td colspan="6"><div class="empty-msg">No movement logs yet. Admin movements are logged here when QR scans are confirmed.</div></td></tr>`;return;}
   tb.innerHTML=entries.map(m=>{
     const doc=docs.find(d=>(d.internalId||d.id)===m.documentId);
     const docName=doc?doc.name:`<span style="color:var(--muted);font-style:italic">Unknown</span>`;
@@ -1310,9 +1328,9 @@ function renderMovementLogs(){
       <td style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted)">${m.displayDate||m.timestamp}</td>
       <td class="doc-id-cell">${dispId}</td>
       <td class="doc-name-cell">${docName}</td>
-      <td style="font-size:13px;font-weight:500">${m.handledBy||'—'}</td>
-      <td><span style="font-size:12px;color:#16a34a">${m.location||'—'}</span></td>
-      <td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;font-size:11px;font-weight:700;color:#15803d">${m.action||'Scanned'}</span></td>
+      <td style="font-size:13px;font-weight:500">${m.handledBy||'-'}</td>
+      <td><span style="font-size:12px;color:#16a34a">${m.location||'-'}</span></td>
+      <td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:20px;font-size:11px;font-weight:700;color:#92400e">${m.action||'Movement'}</span></td>
     </tr>`;
   }).join('');
 }
@@ -1322,9 +1340,89 @@ function clearMovementLogs(){
   movementLogs=[];save();renderMovementLogs();toast('Movement logs cleared.');
 }
 
-/* ════════════════════════════════════════════════════════
+/* ==================================================================
+   SCAN LOGS (Admin only - auto-generated QR scan events)
+   Separate from movement logs. Source: scan_logs MongoDB collection.
+================================================================== */
+let _scanLogsCache = [];
+
+async function renderScanLogs(){
+  const term=(document.getElementById('scanlogs-search')?.value||'').toLowerCase();
+  const tb=document.getElementById('scanlogs-tbody');
+  if(!tb) return;
+
+  _renderScanLogsTable(term);
+
+  const token = (typeof getSavedToken === 'function') ? getSavedToken() : null;
+  if(token && typeof apiGetAllScanLogs === 'function'){
+    try{
+      const result = await apiGetAllScanLogs(token);
+      if(Array.isArray(result)){
+        _scanLogsCache = result;
+        _renderScanLogsTable(term);
+        _renderScanLogsStats();
+      }
+    } catch(e){
+      console.warn('[renderScanLogs] fetch failed:', e);
+    }
+  }
+}
+
+function _renderScanLogsStats(){
+  const statEl = document.getElementById('scanlogs-stats-row');
+  if(!statEl) return;
+  const total = _scanLogsCache.length;
+  const uniqueDocs = new Set(_scanLogsCache.map(s => s.documentId)).size;
+  statEl.innerHTML =
+    '<div class="stat-card"><div class="stat-card-label">Total Scans</div><div class="stat-card-num blue">'+total+'</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">Docs Scanned</div><div class="stat-card-num green">'+uniqueDocs+'</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">Collection</div><div class="stat-card-num">scan_logs</div></div>';
+}
+
+function _renderScanLogsTable(term){
+  const tb = document.getElementById('scanlogs-tbody');
+  if(!tb) return;
+  let entries = [..._scanLogsCache];
+  if(term) entries = entries.filter(function(s){
+    return (s.documentId||'').toLowerCase().includes(term)||
+      (s.displayId||'').toLowerCase().includes(term)||
+      (s.documentName||'').toLowerCase().includes(term)||
+      (s.location||'').toLowerCase().includes(term)||
+      (s.handledBy||'').toLowerCase().includes(term);
+  });
+  if(!entries.length){
+    tb.innerHTML = '<tr><td colspan="6"><div class="empty-msg">No QR scan events found. Scans are auto-logged when a QR code is scanned from any device.</div></td></tr>';
+    return;
+  }
+  tb.innerHTML = entries.map(function(s){
+    const doc = docs.find(function(d){ return (d.internalId||d.id) === s.documentId; });
+    const dispId = s.displayId || (doc ? (doc.fullDisplayId||doc.displayId||doc.id) : s.documentId);
+    const docName = s.documentName || (doc ? doc.name : '<span style="color:var(--muted);font-style:italic">Unknown</span>');
+    const displayTime = s.displayDate || s.timestamp || '-';
+    const statusLabel = s.docStatus || '';
+    const statusHtml = statusLabel
+      ? '<span class="badge badge-'+statusLabel.toLowerCase().replace(/\s+/g,'')+'" >'+statusLabel+'</span>'
+      : '<span style="color:var(--muted)">-</span>';
+    return '<tr>' +
+      '<td style="font-size:11px;font-family:DM Mono,monospace;color:var(--muted);white-space:nowrap">'+displayTime+'</td>' +
+      '<td class="doc-id-cell" title="'+s.documentId+'">'+dispId+'</td>' +
+      '<td class="doc-name-cell">'+docName+'</td>' +
+      '<td style="font-size:12px">'+(s.location||'-')+'</td>' +
+      '<td>'+statusHtml+'</td>' +
+      '<td style="font-size:11px;color:var(--muted)">'+(s.note||'Auto-logged')+'</td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function refreshScanLogs(){
+  toast('Refreshing scan logs...');
+  await renderScanLogs();
+  toast('Scan logs refreshed.');
+}
+
+/* ========================================================
    SCAN RESULT
-════════════════════════════════════════════════════════ */
+======================================================== */
 function renderScanResult(d){
   const sc=statusColorMap[d.status]||'#64748b';
   const office=docOffice(d.type);
@@ -1341,31 +1439,31 @@ function renderScanResult(d){
         const bg=curr?sc:done?'#22c55e22':'rgba(255,255,255,.04)';
         const bc=curr?sc:done?'#22c55e55':'rgba(255,255,255,.08)';
         const tc=curr?'#fff':done?'#22c55e':'rgba(255,255,255,.2)';
-        const icon=done?'✓':curr?'●':i+1;
+        const icon=done?'OK':curr?'*':i+1;
         return `${i>0?`<div style="flex:1;height:2px;background:${done?'#22c55e33':'rgba(255,255,255,.06)'};margin-top:13px;min-width:8px"></div>`:''}<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:44px"><div style="width:26px;height:26px;border-radius:50%;background:${bg};border:2px solid ${bc};color:${tc};display:grid;place-items:center;font-size:11px;font-weight:700${curr?';box-shadow:0 0 10px '+sc+'66':''}">${icon}</div><span style="font-size:9px;color:${done||curr?tc:'rgba(255,255,255,.2)'};font-weight:${curr?700:500};white-space:nowrap;text-align:center">${s}</span></div>`;
       }).join('');
 
   const relEntry=[...(d.history||[])].reverse().find(h=>h.status==='Released');
-  const statusEntries=[...(d.history||[])].map(h=>({_type:h.action==='Scanned'?'scan':'status',status:h.status||'',by:h.by||'—',date:h.date||'',location:h.location||'',handler:h.handler||'',note:h.note||''}));
-  const scanMovements=movementLogs.filter(m=>m.documentId===(d.internalId||d.id)).map(m=>({_type:'scan',status:'',by:m.handledBy||'—',date:m.displayDate||m.timestamp,location:m.location||'',handler:'',note:''}));
+  const statusEntries=[...(d.history||[])].filter(h=>h.action==='Status Update'||h.action==='Movement'||!h.action).map(h=>({_type:h.action==='Movement'?'movement':'status',status:h.status||'',by:h.by||'-',date:h.date||'',location:h.location||'',handler:h.handler||'',note:h.note||''}));
+  const scanMovements=movementLogs.filter(m=>m.documentId===(d.internalId||d.id)).map(m=>({_type:'movement',status:'',by:m.handledBy||'-',date:m.displayDate||m.timestamp,location:m.location||'',handler:'',note:''}));
   const allHist=[...statusEntries,...scanMovements].sort((a,b)=>{const da=new Date(a.date),db=new Date(b.date);if(isNaN(da)||isNaN(db))return 0;return da-db;});
   const hist=[...allHist].reverse();
 
   const histHtml=hist.length===0?'<p style="font-size:12px;color:rgba(255,255,255,.3)">No history recorded.</p>'
     :hist.map(h=>{
-        const isScan=h._type==='scan';
+        const isMovement=h._type==='movement';
         const dc=statusColorMap[h.status]||'#4ade80';
-        const aLabel=isScan?'QR Scanned':'Status Update';
-        const aBg=isScan?'rgba(74,222,128,.12)':'rgba(59,130,246,.12)';
-        const aColor=isScan?'#4ade80':'#93c5fd';
-        const aBorder=isScan?'rgba(74,222,128,.25)':'rgba(59,130,246,.25)';
+        const aLabel=isMovement?'Movement':'Status Update';
+        const aBg=isMovement?'rgba(245,158,11,.12)':'rgba(59,130,246,.12)';
+        const aColor=isMovement?'#f59e0b':'#93c5fd';
+        const aBorder=isMovement?'rgba(245,158,11,.25)':'rgba(59,130,246,.25)';
         return `<div style="display:flex;gap:10px;margin-bottom:14px;align-items:flex-start">
-          <div style="width:10px;height:10px;border-radius:50%;background:${isScan?'#4ade80':dc};flex-shrink:0;margin-top:4px"></div>
+          <div style="width:10px;height:10px;border-radius:50%;background:${isMovement?'#f59e0b':dc};flex-shrink:0;margin-top:4px"></div>
           <div style="flex:1">
             <div style="display:inline-flex;align-items:center;padding:2px 8px;background:${aBg};border:1px solid ${aBorder};border-radius:20px;font-size:9px;font-weight:700;color:${aColor};letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px">${aLabel}</div>
-            <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.85)">${isScan?'Handled by '+h.by:(h.status||'—')}</div>
-            <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px">${isScan?'':('By '+h.by+' · ')}${h.date}</div>
-            ${h.location?`<div style="font-size:10px;color:rgba(74,222,128,.6);margin-top:2px">${h.location}${h.handler?' · '+h.handler:''}</div>`:''}
+            <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.85)">${isMovement?'Handled by '+h.by:(h.status||'-')}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px">${isMovement?'':('By '+h.by+' - ')}${h.date}</div>
+            ${h.location?`<div style="font-size:10px;color:rgba(74,222,128,.6);margin-top:2px">${h.location}${h.handler?' - '+h.handler:''}</div>`:''}
             ${h.note?`<div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:4px;padding:6px 10px;background:rgba(255,255,255,.04);border-radius:5px;font-style:italic">"${h.note}"</div>`:''}
           </div>
         </div>`;
@@ -1376,7 +1474,7 @@ function renderScanResult(d){
     const cipher=IDEA.encrypt(entry,KEY);
     return `<div style="background:rgba(0,0,0,.25);border:1px solid rgba(74,222,128,.08);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div style="font-family:'DM Mono',monospace;font-size:10px;color:rgba(74,222,128,.5);word-break:break-all;line-height:1.6">${cipher}</div>
-      <div style="font-size:10px;color:rgba(255,255,255,.2);margin-top:5px">${h.date} · ${h.action||'Status Update'} · IDEA-128</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.2);margin-top:5px">${h.date} - ${h.action||'Status Update'} - IDEA-128</div>
     </div>`;
   }).join('');
 
@@ -1386,7 +1484,7 @@ function renderScanResult(d){
 
   if (hasOriginal || hasProcessed) {
     fileSection = `<div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
-      <div style="font-size:9px;font-weight:700;color:rgba(74,222,128,.35);letter-spacing:.8px;text-transform:uppercase;margin-bottom:12px">Document Files · IDEA-128 Encrypted at Rest</div>`;
+      <div style="font-size:9px;font-weight:700;color:rgba(74,222,128,.35);letter-spacing:.8px;text-transform:uppercase;margin-bottom:12px">Document Files - IDEA-128 Encrypted at Rest</div>`;
 
     if (hasOriginal) {
       fileSection += `
@@ -1396,7 +1494,7 @@ function renderScanResult(d){
           </div>
           <div style="flex:1">
             <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.6)">Original File <span style="font-weight:400;font-size:10px;color:rgba(255,255,255,.3)">(Submitted by user)</span></div>
-            <div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:2px">IDEA-128 encrypted · Reference copy · Not downloadable</div>
+            <div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:2px">IDEA-128 encrypted - Reference copy - Not downloadable</div>
           </div>
           <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,.3);padding:2px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px">Reference</span>
         </div>`;
@@ -1411,9 +1509,9 @@ function renderScanResult(d){
             </div>
             <div style="flex:1;text-align:left">
               <div style="font-size:12px;font-weight:700;color:#22c55e">Final File <span style="font-weight:400;font-size:10px">(Admin-approved)</span></div>
-              <div style="font-size:10px;color:rgba(74,222,128,.5);margin-top:1px">Processed by ${d.processedBy||'Admin'}${d.processedAt?' · '+d.processedAt:''}</div>
+              <div style="font-size:10px;color:rgba(74,222,128,.5);margin-top:1px">Processed by ${d.processedBy||'Admin'}${d.processedAt?' - '+d.processedAt:''}</div>
             </div>
-            <span style="font-size:9px;font-weight:700;color:#22c55e;padding:2px 8px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:20px">Released ✓</span>
+            <span style="font-size:9px;font-weight:700;color:#22c55e;padding:2px 8px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:20px">Released OK</span>
           </div>
           <button onclick="decryptAndDownload('${d.internalId||d.id}',this)"
              style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;background:#22c55e;color:#0d1117;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s">
@@ -1425,7 +1523,7 @@ function renderScanResult(d){
     } else if (hasProcessed && !isReleased) {
       fileSection += `
         <div style="margin-top:10px;padding:14px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:8px;text-align:center">
-          <p style="font-size:12px;font-weight:600;color:rgba(74,222,128,.7);margin-bottom:4px">Final File Attached — Awaiting Release</p>
+          <p style="font-size:12px;font-weight:600;color:rgba(74,222,128,.7);margin-bottom:4px">Final File Attached - Awaiting Release</p>
           <p style="font-size:11px;color:rgba(255,255,255,.3)">Admin has uploaded the processed file. Download available once status is <strong style="color:rgba(74,222,128,.6)">Released</strong>.</p>
         </div>`;
     } else {
@@ -1448,7 +1546,7 @@ function renderScanResult(d){
   document.getElementById('scan-result-body').innerHTML=`
     <div style="background:radial-gradient(ellipse at 50% 0%,#1a3d22,#0d1a10 70%);padding:22px 20px 18px;text-align:center;border-bottom:1px solid rgba(255,255,255,.06)">
       <div style="font-size:20px;font-weight:700;color:#e6edf3;margin-bottom:3px">${d.name}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.35);font-family:'DM Mono',monospace;margin-bottom:12px">${d.fullDisplayId||d.displayId||d.id} · ${d.type}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.35);font-family:'DM Mono',monospace;margin-bottom:12px">${d.fullDisplayId||d.displayId||d.id} - ${d.type}</div>
       <div style="display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border-radius:99px;font-size:13px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
         <span style="width:7px;height:7px;border-radius:50%;background:${sc}"></span>${d.status}
       </div>
@@ -1478,19 +1576,19 @@ function renderScanResult(d){
     <div style="padding:16px 18px">
       <div style="font-size:9px;font-weight:700;color:rgba(74,222,128,.35);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">IDEA Encryption Proof</div>
       <div style="background:rgba(0,0,0,.3);border:1px solid rgba(74,222,128,.1);border-radius:8px;padding:12px 14px">
-        ${[['Key','Group6CITKey2024'],['Algorithm','IDEA · 128-bit · 8 Rounds'],['Encrypted',d.enc.slice(0,28)+'…'],['Decrypted',IDEA.decrypt(d.enc,KEY)]].map(([l,v])=>`
+        ${[['Key','Group6CITKey2024'],['Algorithm','IDEA - 128-bit - 8 Rounds'],['Encrypted',d.enc.slice(0,28)+'…'],['Decrypted',IDEA.decrypt(d.enc,KEY)]].map(([l,v])=>`
           <div style="display:flex;gap:8px;margin-bottom:7px;font-size:10px;font-family:'DM Mono',monospace">
             <span style="color:rgba(74,222,128,.35);width:68px;flex-shrink:0">${l}</span>
             <span style="color:rgba(74,222,128,.7);word-break:break-all">${v}</span>
           </div>`).join('')}
       </div>
-      <p style="font-size:10px;color:rgba(255,255,255,.2);text-align:center;margin-top:16px">CIT Document Tracker · IDEA Encryption · Group 6</p>
+      <p style="font-size:10px;color:rgba(255,255,255,.2);text-align:center;margin-top:16px">CIT Document Tracker - IDEA Encryption - Group 6</p>
     </div>`;
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    HISTORY MODAL
-════════════════════════════════════════════════════════ */
+======================================================== */
 function openHistory(docKey){
   const d=docs.find(x=>(x.internalId||x.id)===docKey);
   if(!d)return;
@@ -1515,7 +1613,7 @@ function openHistory(docKey){
           </div>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:600;color:var(--text)">Original File <span style="font-size:10px;font-weight:400;color:var(--muted)">(submitted at registration)</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Encrypted with IDEA-128 · Stored securely · Reference copy</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Encrypted with IDEA-128 - Stored securely - Reference copy</div>
           </div>
           <button onclick="closeModal('history-modal');viewFile('${d.internalId||d.id}','original',this)"
             style="padding:5px 12px;background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;border-radius:7px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;">
@@ -1532,7 +1630,7 @@ function openHistory(docKey){
           </div>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:600;color:var(--text)">Final File <span style="font-size:10px;font-weight:400;color:var(--muted)">(processed by ${d.processedBy||'admin'})</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${isReleased ? 'Ready to view & download' : 'Awaiting release'} · IDEA-128 encrypted</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${isReleased ? 'Ready to view & download' : 'Awaiting release'} - IDEA-128 encrypted</div>
           </div>
           <div style="display:flex;gap:6px;">
             <button onclick="closeModal('history-modal');viewFile('${d.internalId||d.id}','processed',this)"
@@ -1563,15 +1661,15 @@ function openHistory(docKey){
   }
 
   const tl=document.getElementById('hist-timeline');
-  const statusEntries=(d.history||[]).map(h=>({type:h.action==='Scanned'?'scan':'status',action:h.action||'Status Update',status:h.status||'',by:h.by||'—',date:h.date||'',location:h.location||'',handler:h.handler||'',note:h.note||''}));
-  const scanEntries=movementLogs.filter(m=>m.documentId===(d.internalId||d.id)).map(m=>({type:'scan',action:'Scanned',status:'',by:m.handledBy||'—',date:m.displayDate||m.timestamp,location:m.location||'',handler:'',note:''}));
+  const statusEntries=(d.history||[]).filter(h=>h.action==='Status Update'||h.action==='Movement'||!h.action).map(h=>({type:h.action==='Movement'?'movement':'status',action:h.action||'Status Update',status:h.status||'',by:h.by||'-',date:h.date||'',location:h.location||'',handler:h.handler||'',note:h.note||''}));
+  const scanEntries=movementLogs.filter(m=>m.documentId===(d.internalId||d.id)).map(m=>({type:'movement',action:'Movement',status:'',by:m.handledBy||'-',date:m.displayDate||m.timestamp,location:m.location||'',handler:'',note:''}));
   const allEntries=[...statusEntries,...scanEntries].sort((a,b)=>{const da=new Date(a.date),db=new Date(b.date);if(isNaN(da)||isNaN(db))return 0;return da-db;});
   if(!allEntries.length){tl.innerHTML='<p style="font-size:13px;color:var(--muted)">No history yet.</p>';}
   else tl.innerHTML=allEntries.map((e,i)=>{
-    const isScan=e.type==='scan';
-    const actionClass=isScan?'hist-action-scan':'hist-action-status';
-    const iconClass=isScan?'scan':'status';
-    const actionLabel=isScan?'QR Scanned':'Status Update';
+    const isScan=e.type==='movement';
+    const actionClass=isScan?'hist-action-movement':'hist-action-status';
+    const iconClass=isScan?'movement':'status';
+    const actionLabel=isScan?'Movement':'Status Update';
     const hasLine=i<allEntries.length-1;
     return `<div class="hist-entry">
       ${hasLine?'<div class="hist-entry-line"></div>':''}
@@ -1580,9 +1678,9 @@ function openHistory(docKey){
         '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'}</div>
       <div class="hist-entry-content">
         <div class="hist-entry-action ${actionClass}">${actionLabel}</div>
-        <div class="hist-entry-title">${isScan?`Handled by <strong>${e.by}</strong>`:`Status → ${statusBadge(e.status)}`}</div>
-        <div class="hist-entry-meta">${isScan?'':'By '+e.by+' &nbsp;·&nbsp; '}${e.date}</div>
-        ${e.location?`<div class="hist-entry-loc">${e.location}${e.handler?' &nbsp;·&nbsp; '+e.handler:''}</div>`:''}
+        <div class="hist-entry-title">${isScan?`Handled by <strong>${e.by}</strong>`:`Status &rarr; ${statusBadge(e.status)}`}</div>
+        <div class="hist-entry-meta">${isScan?'':'By '+e.by+' &nbsp;-&nbsp; '}${e.date}</div>
+        ${e.location?`<div class="hist-entry-loc">${e.location}${e.handler?' &nbsp;-&nbsp; '+e.handler:''}</div>`:''}
         ${!isScan&&e.handler&&!e.location?`<div class="hist-entry-loc">${e.handler}</div>`:''}
         ${e.note?`<div class="hist-entry-note">"${e.note}"</div>`:''}
       </div>
@@ -1591,9 +1689,9 @@ function openHistory(docKey){
   openModal('history-modal');
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    NOTIFICATIONS
-════════════════════════════════════════════════════════ */
+======================================================== */
 function addNotification(userId,msg,documentId){
   if(!notifications[userId]) notifications[userId]=[];
   notifications[userId].push({id:Date.now(),msg,date:nowStr(),read:false,documentId:documentId||null});
@@ -1616,7 +1714,7 @@ function openNotifModal(){
       <div>
         <div class="notif-item-text">${n.msg}</div>
         <div class="notif-item-time">${n.date}</div>
-        ${n.documentId?`<div class="notif-item-link">→ View Document</div>`:''}
+        ${n.documentId?`<div class="notif-item-link">-> View Document</div>`:''}
       </div>
     </div>`).join('');
   openModal('notif-modal');
@@ -1643,9 +1741,9 @@ function openDocumentFromNotif(documentId){
   setTimeout(()=>openHistory(documentId),150);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    SETTINGS
-════════════════════════════════════════════════════════ */
+======================================================== */
 function changePassword(){
   const cur=document.getElementById('cur-pass').value;
   const np=document.getElementById('new-pass').value;
@@ -1664,9 +1762,9 @@ function changePassword(){
   setTimeout(()=>logout(),1500);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    IDEA DEMO
-════════════════════════════════════════════════════════ */
+======================================================== */
 function runDemo(){
   const key=document.getElementById('demo-key').value||KEY;
   const msg=document.getElementById('demo-msg').value||'Hello CIT!';
@@ -1678,9 +1776,9 @@ function runDemo(){
   toast('Encryption demo complete.');
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    MODAL HELPERS
-════════════════════════════════════════════════════════ */
+======================================================== */
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
@@ -1694,9 +1792,9 @@ function closeModal(id){
 }
 document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    TOAST
-════════════════════════════════════════════════════════ */
+======================================================== */
 let toastTimer;
 function toast(msg){
   const el=document.getElementById('toast');
@@ -1705,9 +1803,9 @@ function toast(msg){
   toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
 }
 
-/* ════════════════════════════════════════════════════════
+/* ========================================================
    INIT
-════════════════════════════════════════════════════════ */
+======================================================== */
 load();
 
 const styleEl=document.createElement('style');
@@ -1744,7 +1842,7 @@ async function _appInit() {
           if(localIdx >= 0){
             const local = docs[localIdx];
 
-            // ── FIX: determine file presence from LOCAL state first.
+            // -- FIX: determine file presence from LOCAL state first.
             //    The backend list endpoint never returns raw fileData (too large),
             //    so we MUST trust what is already in localStorage / memory.
             const hasLocalOrig = !!(local.originalFile || local.fileData);
@@ -1761,7 +1859,7 @@ async function _appInit() {
               processedFileExt: local.processedFileExt|| bd.processedFileExt|| null,
               processedBy:      bd.processedBy        || local.processedBy  || null,
               processedAt:      bd.processedAt        || local.processedAt  || null,
-              // ── KEY FIX: once we know a file exists locally, never downgrade to false ──
+              // -- KEY FIX: once we know a file exists locally, never downgrade to false --
               hasOriginalFile:  hasLocalOrig
                                   ? true
                                   : (bd.hasOriginalFile ?? local.hasOriginalFile ?? false),
@@ -1778,37 +1876,34 @@ async function _appInit() {
         save();
       }
 
-      /* ── Fetch scan logs from backend so Movement Logs page shows
-         scans from ALL devices, not just this browser's localStorage ── */
+      /* Fetch admin movement logs from backend so Movement Logs page
+         shows entries from ALL sessions/devices */
       if (isAdmin) {
         try {
-          const scanLogs = await apiGetAllScanLogs(token);
-          if (Array.isArray(scanLogs) && scanLogs.length > 0) {
-            /* Merge: add backend entries that aren't already in local movementLogs.
-               Use timestamp+documentId as a dedup key. */
+          const backendMovements = await apiGetAllMovementLogs(token);
+          if (Array.isArray(backendMovements) && backendMovements.length > 0) {
             const localKeys = new Set(
               movementLogs.map(m => (m.documentId || '') + '|' + (m.timestamp || m.displayDate || ''))
             );
-            scanLogs.forEach(s => {
+            backendMovements.forEach(s => {
               const key = (s.documentId || '') + '|' + (s.timestamp || s.displayDate || '');
               if (!localKeys.has(key)) {
                 movementLogs.push({
                   documentId:  s.documentId,
                   handledBy:   s.handledBy,
                   location:    s.location,
-                  action:      'Scanned',
+                  action:      'Movement',
                   timestamp:   s.timestamp,
                   displayDate: s.displayDate || s.timestamp,
                 });
                 localKeys.add(key);
               }
             });
-            /* Sort newest first */
             movementLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             save();
           }
         } catch(e) {
-          console.warn('[_appInit] Could not fetch backend scan logs:', e);
+          console.warn('[_appInit] Could not fetch backend movement logs:', e);
         }
       }
     } else if(!token) {

@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
-   download.js — File Download Logic
-   CIT Document Tracker · Group 6
+   download.js - File Download Logic
+   CIT Document Tracker - Group 6
 
    Rule: Download button ONLY appears when document status === 'Released'
    Rule: No inline file preview (PDF embed / image preview removed)
@@ -8,12 +8,12 @@
 ══════════════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════════════════════
-   download.js — File Download Logic (Updated for Dual-File System)
-   CIT Document Tracker · Group 6
+   download.js - File Download Logic (Updated for Dual-File System)
+   CIT Document Tracker - Group 6
 
    TWO FILE TYPES:
-     originalFile  — uploaded by user at registration (reference copy)
-     processedFile — uploaded by admin when approving/releasing (final copy)
+     originalFile  - uploaded by user at registration (reference copy)
+     processedFile - uploaded by admin when approving/releasing (final copy)
 
    RULE: Only processedFile is downloadable, and ONLY when status === 'Released'
    RULE: Download button ONLY appears when processedFile exists AND status === 'Released'
@@ -37,7 +37,7 @@ function buildPublicFileSection(d) {
 
   let html = '<div style="padding:4px 0">';
 
-  /* ── Original File row (always shown if exists) ── */
+  /* -- Original File row (always shown if exists) -- */
   if (hasOriginal) {
     html += `
       <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
@@ -46,13 +46,13 @@ function buildPublicFileSection(d) {
         </div>
         <div style="flex:1">
           <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.7);margin-bottom:2px">Original File (Submitted)</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.3)">Submitted by ${d.by || d.ownerName || 'user'} · IDEA-128 encrypted at rest · Not downloadable</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.3)">Submitted by ${d.by || d.ownerName || 'user'} - IDEA-128 encrypted at rest - Not downloadable</div>
         </div>
         <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.25);padding:3px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px">Reference Only</div>
       </div>`;
   }
 
-  /* ── Processed/Final File row ── */
+  /* -- Processed/Final File row -- */
   if (hasProcessed && isReleased) {
     /* Released + processed file = show download button */
     html += `
@@ -63,7 +63,7 @@ function buildPublicFileSection(d) {
           </div>
           <div style="flex:1">
             <div style="font-size:12px;font-weight:700;color:#22c55e;margin-bottom:2px">Final File (Approved)</div>
-            <div style="font-size:11px;color:rgba(255,255,255,.35)">Processed by ${processedBy}${processedAt ? ' · ' + processedAt : ''} · IDEA-128 encrypted</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.35)">Processed by ${processedBy}${processedAt ? ' - ' + processedAt : ''} - IDEA-128 encrypted</div>
           </div>
           <div style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#22c55e;padding:3px 10px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:20px">
             <span style="width:5px;height:5px;border-radius:50%;background:#22c55e;display:inline-block"></span>Released
@@ -79,7 +79,7 @@ function buildPublicFileSection(d) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download file
           </button>
-          <p style="font-size:10px;color:rgba(255,255,255,.2);margin-top:10px">Decrypted locally with IDEA-128 · File never stored unencrypted on server</p>
+          <p style="font-size:10px;color:rgba(255,255,255,.2);margin-top:10px">Decrypted locally with IDEA-128 - File never stored unencrypted on server</p>
         </div>
       </div>`;
   } else if (!hasProcessed && isReleased) {
@@ -90,7 +90,7 @@ function buildPublicFileSection(d) {
         <p style="font-size:12px;color:rgba(255,255,255,.3);line-height:1.6">The admin has not yet uploaded the processed/final file.</p>
       </div>`;
   } else {
-    /* Not yet released — file is locked */
+    /* Not yet released - file is locked */
     html += `
       <div style="text-align:center;padding:28px 18px">
         <div style="width:52px;height:52px;margin:0 auto 14px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.1);border-radius:50%;display:grid;place-items:center">

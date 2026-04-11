@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
    controllers/authController.js
-   CIT Document Tracker · Group 6
+   CIT Document Tracker - Group 6
 ══════════════════════════════════════════════════════════════════════ */
 
 const jwt  = require('jsonwebtoken');
@@ -29,7 +29,6 @@ const registerUser = async (req, res) => {
     const exists = await User.findOne({ username });
     if (exists) return res.status(409).json({ message: 'Username already taken.' });
 
-    /* ✅ Use new User + .save() to ensure bcrypt pre('save') hook fires */
     const user = new User({
       userId:   userId || ('USR-' + Date.now().toString(36).toUpperCase()),
       username, name, password,

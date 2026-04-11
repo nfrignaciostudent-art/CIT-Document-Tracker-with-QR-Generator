@@ -1,31 +1,21 @@
 /* ══════════════════════════════════════════════════════════════════════
-   api.js — Centralized API Requests
-   CIT Document Tracker · Group 6
-
-   CHANGES (v2):
-     • Added apiAddMovementLog() — admin-only endpoint for manual
-       movement log entries from within the app (qr.js confirmScanLog).
-       Requires JWT. Distinct from apiLogScan (which is public/auto).
-   ─────────────────────────────────────────────────────────────────────
+   api.js - Centralized API Requests
+   CIT Document Tracker - Group 6
 
    TWO SCAN LOG FUNCTIONS:
-     apiLogScan()        — public, auto, no auth. Called on QR scan.
-     apiAddMovementLog() — protected, admin only. Called manually.
+     apiLogScan()           - public, auto, no auth. Saves to scan_logs collection.
+     apiAddMovementLog()    - protected, admin only. Saves to doc.history.
+
+   TWO LOG FETCH FUNCTIONS:
+     apiGetAllScanLogs()    - fetches from scan_logs collection (QR auto events)
+     apiGetAllMovementLogs()- fetches admin movement entries from doc.history
 
    Returns:
      - Response JSON  if request succeeded (2xx)
      - { _error, status, message }  if server returned an error (4xx/5xx)
-     - null           ONLY if the server is completely unreachable (offline)
+     - null           ONLY if the server is completely unreachable
 ══════════════════════════════════════════════════════════════════════ */
 
-/* ── API Base URL ──────────────────────────────────────────────────────
-   IMPORTANT: If your frontend (GitHub Pages) is separate from your
-   backend (Render), set window.CIT_API_BASE to your Render URL.
-   Add this in index.html BEFORE api.js loads:
-     <script>window.CIT_API_BASE = 'https://your-app.onrender.com';</script>
-   If frontend + backend are on the SAME server (Render serving both),
-   leave it as '' (relative URLs will work automatically).
-──────────────────────────────────────────────────────────────────── */
 const API_BASE = window.CIT_API_BASE || '';
 
 /* ── Core JSON helper ── */
@@ -51,7 +41,7 @@ async function apiRequest(method, path, body = null, token = null) {
   }
 }
 
-/* ── Core FormData helper (no Content-Type header — browser sets boundary) ── */
+/* ── Core FormData helper ── */
 async function apiFormRequest(method, path, formData, token = null) {
   try {
     const opts = { method, headers: {}, body: formData };
@@ -70,7 +60,6 @@ async function apiFormRequest(method, path, formData, token = null) {
   }
 }
 
-/* Helper: get stored JWT */
 function _jwt() {
   try { return localStorage.getItem('cit_jwt') || null; } catch(e) { return null; }
 }
@@ -79,15 +68,11 @@ function _jwt() {
    AUTH ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */
 async function apiRegisterUser(payload) {
-  const r = await apiRequest('POST', '/api/auth/register', payload);
-  if (r && r._error) return r;
-  return r;
+  return await apiRequest('POST', '/api/auth/register', payload);
 }
 
 async function apiLoginUser(payload) {
-  const r = await apiRequest('POST', '/api/auth/login', payload);
-  if (r && r._error) return r;
-  return r;
+  return await apiRequest('POST', '/api/auth/login', payload);
 }
 
 async function apiGetMe(token) {
@@ -98,12 +83,10 @@ async function apiGetMe(token) {
    DOCUMENT ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */
 
-/* Plain JSON registration — used when there is NO file attachment */
 async function apiRegisterDocument(payload, token) {
   return await apiRequest('POST', '/api/documents/register', payload, token || _jwt());
 }
 
-/* FormData registration — used when a file IS attached */
 async function apiUploadDocumentWithFile(jsonPayload, encryptedFileString, fileExt, token) {
   try {
     const form = new FormData();
@@ -122,7 +105,6 @@ async function apiUploadDocumentWithFile(jsonPayload, encryptedFileString, fileE
   }
 }
 
-/* Fetch all documents (no file blobs — too large for list) */
 async function apiGetAllDocuments(token, ownerId, role) {
   let path = '/api/documents';
   const params = [];
@@ -132,27 +114,22 @@ async function apiGetAllDocuments(token, ownerId, role) {
   return await apiRequest('GET', path, null, token || _jwt());
 }
 
-/* Public track endpoint — no auth needed */
 async function apiTrackDocument(documentId) {
   return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}`);
 }
 
-/* Fetch the original file blob (auth required) */
 async function apiGetOriginalFile(documentId) {
   return await apiRequest('GET', `/api/documents/${encodeURIComponent(documentId)}/original-file`, null, _jwt());
 }
 
-/* Download the processed/final file — returns { fileData, fileExt } */
 async function apiDownloadDocument(documentId) {
   return await apiRequest('GET', `/api/documents/download/${encodeURIComponent(documentId)}`, null, _jwt());
 }
 
-/* Plain JSON status update — used when there is NO processed file */
 async function apiUpdateDocumentStatus(documentId, payload, token) {
   return await apiRequest('PATCH', `/api/documents/${encodeURIComponent(documentId)}/status`, payload, token || _jwt());
 }
 
-/* FormData status update — used when admin attaches a processed file */
 async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileString, fileExt, token) {
   try {
     const form = new FormData();
@@ -176,24 +153,21 @@ async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileStr
   }
 }
 
-/* Delete a document */
 async function apiDeleteDocument(documentId, token) {
   return await apiRequest('DELETE', `/api/documents/${encodeURIComponent(documentId)}`, null, token || _jwt());
 }
 
-/* ── POST /api/documents/:id/scan-log (PUBLIC — no auth) ──────────
-   Auto-log when a QR code is scanned. System-generated only.
-   No user form or input required. handledBy/location are optional
-   (the backend sets safe defaults if absent). */
+/* ── POST /api/documents/:id/scan-log (PUBLIC - no auth) ──────────
+   Auto-log when a QR code is scanned.
+   Saves to the scan_logs collection ONLY.
+   Does NOT touch doc.history. */
 async function apiLogScan(documentId, payload) {
   return await apiRequest('POST', `/api/documents/${encodeURIComponent(documentId)}/scan-log`, payload);
 }
 
-/* ── POST /api/documents/:id/movement (Admin only — JWT required) ──
-   Manual movement log entry, added by admin from within the app.
-   Requires a valid JWT token with admin role.
-   This is the ONLY way to manually add a movement log entry.
-   Users cannot call this endpoint (403 Forbidden from backend). */
+/* ── POST /api/documents/:id/movement (Admin only - JWT required) ──
+   Manual movement log, added by admin. Saves to doc.history.
+   Users cannot call this endpoint. */
 async function apiAddMovementLog(documentId, payload, token) {
   return await apiRequest(
     'POST',
@@ -203,9 +177,15 @@ async function apiAddMovementLog(documentId, payload, token) {
   );
 }
 
-/* ── GET /api/scan-logs (admin only) ──────────────────────────────
-   Fetches all QR scan logs from MongoDB so Movement Logs page
-   shows scans from ALL devices, not just the current browser. */
+/* ── GET /api/documents/scan-logs (admin only) ────────────────────
+   Fetches from the scan_logs collection.
+   These are auto-generated QR scan events only. */
 async function apiGetAllScanLogs(token) {
   return await apiRequest('GET', '/api/documents/scan-logs', null, token || _jwt());
+}
+
+/* ── GET /api/documents/movement-logs (admin only) ────────────────
+   Fetches admin-created movement entries from document histories. */
+async function apiGetAllMovementLogs(token) {
+  return await apiRequest('GET', '/api/documents/movement-logs', null, token || _jwt());
 }

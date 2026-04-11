@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
    routes/authRoutes.js
-   CIT Document Tracker · Group 6
+   CIT Document Tracker - Group 6
 ══════════════════════════════════════════════════════════════════════ */
 
 const express  = require('express');

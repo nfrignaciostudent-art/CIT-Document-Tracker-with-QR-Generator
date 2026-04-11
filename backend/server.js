@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
-   server.js — Main Server Entry Point
-   CIT Document Tracker · Group 6
+   server.js - Main Server Entry Point
+   CIT Document Tracker - Group 6
 ══════════════════════════════════════════════════════════════════════ */
 
 require('dotenv').config();
@@ -31,12 +31,8 @@ app.get('/api/health', (req, res) => {
 });
 
 /* ── Serve Frontend Static Files ────────────────────────────────── */
-// All your frontend files (index.html, style.css, script.js, etc.)
-// must be placed inside a folder called "public" at the project root.
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Catch-all: return index.html for any non-API route
-// This must come AFTER all API routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -49,7 +45,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log('CIT DocTracker API running on port ' + PORT);
-  console.log('Group 6 · IDEA Encryption · MongoDB');
+  console.log('Group 6 - IDEA Encryption - MongoDB');
 });
 
 module.exports = app;

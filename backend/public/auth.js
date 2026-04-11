@@ -1,11 +1,11 @@
-/* ══════════════════════════════════════════════════════════════════════
-   auth.js — Authentication & Session Logic
-   CIT Document Tracker · Group 6
+/* ======================================================================
+   auth.js - Authentication & Session Logic
+   CIT Document Tracker - Group 6
 
    MODE DETECTION:
      - If backend API responds → use JWT-based auth (MongoDB)
      - If backend is offline   → fall back to localStorage accounts[]
-══════════════════════════════════════════════════════════════════════ */
+====================================================================== */
 
 function openAuth(tab) {
   switchAuthTab(tab || 'login');
@@ -47,7 +47,7 @@ function showAuthError(el, msg) {
   el.style.display = 'block';
 }
 
-/* ── JWT / session helpers ── */
+/* -- JWT / session helpers -- */
 function saveSession(userObj, token) {
   try {
     if (token) localStorage.setItem('cit_jwt', token);
@@ -90,7 +90,7 @@ async function tryRestoreSession() {
       return true;
     }
   }
-  /* Backend offline — use saved session */
+  /* Backend offline - use saved session */
   if (saved) {
     const local = accounts.find(a => a.username === saved.username);
     currentUser = local || saved;
@@ -99,7 +99,7 @@ async function tryRestoreSession() {
   return false;
 }
 
-/* ── Sign In ── */
+/* -- Sign In -- */
 async function doLogin() {
   const u   = document.getElementById('l-user').value.trim().toLowerCase();
   const p   = document.getElementById('l-pass').value;
@@ -157,7 +157,7 @@ async function doLogin() {
   }
 }
 
-/* ── Create Account ── */
+/* -- Create Account -- */
 async function doRegister() {
   const name = document.getElementById('r-name').value.trim();
   const u    = document.getElementById('r-user').value.trim().toLowerCase();
@@ -204,7 +204,7 @@ async function doRegister() {
   clearAuthFields(); closeAuth(); enterApp();
 }
 
-/* ── Enter app ── */
+/* -- Enter app -- */
 function enterApp() {
   document.getElementById('public-view').style.display = 'none';
   document.getElementById('app-view').style.display    = 'flex';
@@ -216,7 +216,7 @@ function enterApp() {
   renderNotifCount();
 }
 
-/* ── Log out ── */
+/* -- Log out -- */
 function logout() {
   if (currentUser) logActivity(currentUser.id, 'Logged out', '#94a3b8');
   save(); clearSession(); currentUser = null;
@@ -231,7 +231,7 @@ function logout() {
   document.getElementById('search-error').style.display   = 'none';
 }
 
-/* ── Setup sidebar ── */
+/* -- Setup sidebar -- */
 function setupSidebar() {
   const isAdmin = currentUser.role === 'admin';
 
@@ -245,6 +245,8 @@ function setupSidebar() {
   document.getElementById('nav-users').style.display     = isAdmin ? '' : 'none';
   document.getElementById('nav-actlogs').style.display   = isAdmin ? '' : 'none';
   document.getElementById('nav-movements').style.display = isAdmin ? '' : 'none';
+  const scanlogsNav = document.getElementById('nav-scanlogs');
+  if (scanlogsNav) scanlogsNav.style.display = isAdmin ? '' : 'none';
   const adminCard = document.getElementById('admin-settings-card');
   if (adminCard) adminCard.style.display = isAdmin ? '' : 'none';
 }

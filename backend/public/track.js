@@ -1,20 +1,20 @@
 /* ══════════════════════════════════════════════════════════════════════
-   track.js — Public Document Tracking Logic
-   CIT Document Tracker · Group 6
+   track.js - Public Document Tracking Logic
+   CIT Document Tracker - Group 6
 
-   SCAN LOGGING RULE (UPDATED):
+   SCAN LOGGING RULE:
      QR scan logging is FULLY AUTOMATIC.
      No form, no manual input, no banner.
      When ?track= is detected, the system silently logs the scan event
-     to the backend with a timestamp and document ID.
+     to the backend scan_logs collection (separate from doc.history).
      Users cannot manually add or edit movement logs.
+
+   TIMEZONE: Displays timestamps in Asia/Manila (UTC+8).
 ══════════════════════════════════════════════════════════════════════ */
 
-let _pubTrackDocId = null; // holds current tracked doc internal ID
+let _pubTrackDocId = null;
 
-/* ─────────────────────────────────────────────────────────────────────
-   Spam prevention — prevent duplicate scan logs within 30 seconds
-───────────────────────────────────────────────────────────────────── */
+/* ── Spam prevention: no duplicate scan logs within 30 seconds ── */
 const SCAN_COOLDOWN_MS = 30000;
 function _getScanKey(docId) { return 'cit_lastscan_' + docId; }
 function _canLog(docId) {
@@ -27,37 +27,28 @@ function _markScanned(docId) {
   try { localStorage.setItem(_getScanKey(docId), String(Date.now())); } catch(e) {}
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   _autoLogQRScan — AUTOMATIC, SILENT scan log on QR detection
+/* ── Manila timestamp helper ── */
+function _manilaDisplayDate() {
+  return new Date().toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: true
+  });
+}
+
+/* ── _autoLogQRScan - AUTOMATIC, SILENT scan log on QR detection ──
    No form. No manual input. System-generated only.
-   Users see no prompt — just a small toast confirmation.
+   Saves to scan_logs collection via POST /api/documents/:id/scan-log.
+   Does NOT touch doc.history. Does NOT change document status.
 ───────────────────────────────────────────────────────────────────── */
 function _autoLogQRScan(d) {
   const docId = d.internalId || d.id;
 
-  /* Cooldown check to prevent duplicate logs from re-renders */
   if (!_canLog(docId)) return;
   _markScanned(docId);
 
-  /* Auto-generated scan entry — no user input required */
-  const entry = {
-    documentId:  docId,
-    handledBy:   'QR Visitor',
-    location:    'QR Scan',
-    action:      'Scanned',
-    timestamp:   new Date().toISOString(),
-    displayDate: new Date().toLocaleString('en-PH')
-  };
-
-  /* Save to local movement log for this session */
-  try {
-    const raw  = localStorage.getItem('cit_movements');
-    const logs = raw ? JSON.parse(raw) : [];
-    logs.push(entry);
-    localStorage.setItem('cit_movements', JSON.stringify(logs));
-  } catch(e) { console.warn('[_autoLogQRScan] Could not save to localStorage:', e); }
-
-  /* Persist to backend — fire and forget, do NOT await */
+  /* Persist to backend scan_logs collection - fire and forget */
   if (typeof apiLogScan === 'function') {
     apiLogScan(docId, {
       handledBy: 'QR Visitor',
@@ -66,7 +57,6 @@ function _autoLogQRScan(d) {
     }).catch(e => console.warn('[_autoLogQRScan] Backend sync failed:', e));
   }
 
-  /* Non-intrusive confirmation toast */
   _showScanToast('QR scan logged automatically.');
 }
 
@@ -85,16 +75,12 @@ function _showScanToast(msg) {
   setTimeout(() => el.remove(), 3000);
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   initTrackingPage — called on page load
-   Checks URL params for ?track= or ?apply=
-───────────────────────────────────────────────────────────────────── */
+/* ── initTrackingPage - called on page load ── */
 function initTrackingPage() {
   const params      = new URLSearchParams(window.location.search);
   const trackParam  = params.get('track');
   const applyParam  = params.get('apply');
 
-  /* Handle ?apply= admin update link */
   if (applyParam) {
     load();
     try {
@@ -118,8 +104,8 @@ function initTrackingPage() {
       window.history.replaceState({}, '', window.location.pathname);
       alert('Update applied!\n\nDocument: ' + d.name +
             '\nNew status: ' + update.status +
-            '\nLocation: '  + (update.location || '—') +
-            '\nHandler: '   + (update.handler  || '—'));
+            '\nLocation: '  + (update.location || '-') +
+            '\nHandler: '   + (update.handler  || '-'));
     } catch (e) { alert('Could not apply update. Invalid link.'); }
     return false;
   }
@@ -128,19 +114,16 @@ function initTrackingPage() {
 
   load();
 
-  /* Try local first */
   const localDoc = findDoc(trackParam) ||
     docs.find(x => x.id === trackParam) ||
     docs.find(x => x.id && x.id.toUpperCase() === trackParam.toUpperCase());
 
   if (localDoc) {
     renderPublicTrackResult(localDoc);
-    /* Auto-log silently — no manual prompt */
     setTimeout(() => _autoLogQRScan(localDoc), 800);
     return true;
   }
 
-  /* Not found locally — fetch from backend API */
   _fetchAndRenderPublicDoc(trackParam);
   return true;
 }
@@ -148,7 +131,7 @@ function initTrackingPage() {
 async function _fetchAndRenderPublicDoc(trackParam) {
   const errEl = document.getElementById('search-error');
   if (errEl) {
-    errEl.innerHTML = '<span style="color:rgba(255,255,255,.5)">Looking up document…</span>';
+    errEl.innerHTML = '<span style="color:rgba(255,255,255,.5)">Looking up document...</span>';
     errEl.style.display = 'block';
   }
 
@@ -163,14 +146,12 @@ async function _fetchAndRenderPublicDoc(trackParam) {
       return;
     }
 
-    /* Normalize backend response to match local doc shape */
     const d = {
       ...result,
       id:            result.internalId,
       fullDisplayId: result.fullDisplayId || result.displayId,
     };
 
-    /* Cache in local docs array for this session */
     const existing = docs.findIndex(x => (x.internalId||x.id) === d.internalId);
     if (existing >= 0) {
       docs[existing] = { ...docs[existing], ...d };
@@ -181,20 +162,15 @@ async function _fetchAndRenderPublicDoc(trackParam) {
     if (errEl) errEl.style.display = 'none';
     renderPublicTrackResult(d);
 
-    /* Auto-log silently — no manual prompt */
     setTimeout(() => _autoLogQRScan(d), 800);
 
   } catch(e) {
     console.error('[_fetchAndRenderPublicDoc]', e);
-    showPublicError(
-      'Could not reach the server. Please check your connection and try again.'
-    );
+    showPublicError('Could not reach the server. Please check your connection and try again.');
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   handleTrack — user clicks "Track Document" in hero
-───────────────────────────────────────────────────────────────────── */
+/* ── handleTrack - user clicks "Track Document" in hero ── */
 async function handleTrack() {
   const raw   = (document.getElementById('doc-input').value || '').trim().toUpperCase();
   const errEl = document.getElementById('search-error');
@@ -212,15 +188,12 @@ async function handleTrack() {
 
   try {
     load();
-    /* Search locally first */
     let d = findDoc(raw) || docs.find(x => x.id && x.id.toUpperCase() === raw);
 
-    /* Not found locally — try backend API */
     if (!d) {
       const result = await apiTrackDocument(raw);
       if (result && !result._error && !result.message) {
         d = { ...result, id: result.internalId, fullDisplayId: result.fullDisplayId || result.displayId };
-        /* Cache for this session */
         const existing = docs.findIndex(x => (x.internalId||x.id) === d.internalId);
         if (existing >= 0) { docs[existing] = { ...docs[existing], ...d }; }
         else { docs.push(d); }
@@ -234,8 +207,8 @@ async function handleTrack() {
     }
 
     renderPublicTrackResult(d);
-    /* NOTE: manual "Track" search does NOT auto-log a scan —
-       only an actual QR scan (via URL ?track= param) triggers auto-logging. */
+    /* Manual "Track" search does NOT auto-log a scan -
+       only an actual QR scan (via URL ?track= param) triggers logging. */
   } catch(e) {
     console.error('[handleTrack]', e);
     errEl.innerHTML = 'Error searching for document. Please try again.';
@@ -253,10 +226,7 @@ function showPublicError(msg) {
   errEl.style.display = 'block';
 }
 
-/* ─────────────────────────────────────────────────────────────────────
-   Render full public tracking result
-   READ-ONLY for all users — no "add movement" buttons shown
-───────────────────────────────────────────────────────────────────── */
+/* ── Render full public tracking result - READ-ONLY ── */
 function renderPublicTrackResult(d) {
   _pubTrackDocId = d.internalId || d.id;
 
@@ -268,7 +238,6 @@ function renderPublicTrackResult(d) {
   const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
 
-  /* ── Populate header card ── */
   document.getElementById('res-doc-name').textContent = d.name;
   document.getElementById('res-doc-meta').textContent = dispId + ' · ' + d.type;
   document.getElementById('res-status-badge').innerHTML = `
@@ -281,13 +250,12 @@ function renderPublicTrackResult(d) {
   if (lastLoc.location || lastLoc.handler) {
     locRow.style.display = '';
     locRow.innerHTML =
-      (lastLoc.location ? `<span class="res-loc-item">📍 <strong>${lastLoc.location}</strong></span>` : '') +
-      (lastLoc.handler  ? `<span class="res-loc-item">👤 <strong>${lastLoc.handler}</strong></span>`  : '');
+      (lastLoc.location ? `<span class="res-loc-item"><strong>${lastLoc.location}</strong></span>` : '') +
+      (lastLoc.handler  ? `<span class="res-loc-item"><strong>${lastLoc.handler}</strong></span>`  : '');
   } else {
     locRow.style.display = 'none';
   }
 
-  /* Document Details */
   const relEntry    = [...(d.history || [])].reverse().find(function(h){ return h.status === 'Released'; });
   const releaseDate = relEntry ? relEntry.date : null;
   const office      = docOfficeMap[d.type] || 'Document Control Office';
@@ -308,10 +276,8 @@ function renderPublicTrackResult(d) {
     </div>`;
   }).join('');
 
-  /* Download zone */
   document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
 
-  /* QR code */
   const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
   const qrBox    = document.getElementById('pub-qr-box');
   qrBox.innerHTML = '';
@@ -320,23 +286,22 @@ function renderPublicTrackResult(d) {
   new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
   document.getElementById('qr-url-tag').textContent = trackUrl;
 
-  /* Activity History — READ-ONLY timeline, no add-movement buttons */
-  const hist  = d.history || [];
-  let moves = [];
-  try {
-    const raw = localStorage.getItem('cit_movements');
-    if (raw) {
-      moves = JSON.parse(raw).filter(function(m){ return m.documentId === (d.internalId || d.id); });
-    }
-  } catch(e) {}
-  if (typeof movementLogs !== 'undefined') {
-    moves = moves.concat(movementLogs.filter(function(m){ return m.documentId === (d.internalId || d.id); }));
-  }
+  /* Activity History - READ-ONLY timeline
+     Shows Status Updates and admin Movement entries from doc.history only.
+     QR scan events (scan_logs) are NOT shown here - they are admin-only. */
+  const hist = (d.history || []).filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action);
 
-  const combined = [
-    ...hist.map(function(h){ return { _type: h.action === 'Scanned' ? 'scan' : 'status', status: h.status || '', by: h.by || '—', date: h.date || '', location: h.location || '', handler: h.handler || '', note: h.note || '' }; }),
-    ...moves.map(function(m){ return { _type: 'scan', status: '', by: m.handledBy || '—', date: m.displayDate || m.timestamp, location: m.location || '', handler: '', note: '' }; })
-  ].sort(function(a, b){
+  const combined = hist.map(function(h){
+    return {
+      _type:    h.action === 'Movement' ? 'movement' : 'status',
+      status:   h.status   || '',
+      by:       h.by       || '-',
+      date:     h.date     || '',
+      location: h.location || '',
+      handler:  h.handler  || '',
+      note:     h.note     || ''
+    };
+  }).sort(function(a, b){
     const da = new Date(a.date), db = new Date(b.date);
     return (isNaN(da) || isNaN(db)) ? 0 : da - db;
   });
@@ -344,20 +309,19 @@ function renderPublicTrackResult(d) {
   const timelineHtml = combined.length === 0
     ? '<p style="font-size:13px;color:rgba(255,255,255,.3)">No history recorded.</p>'
     : [...combined].reverse().map(function(h){
-        const isScan    = h._type === 'scan';
-        const dotCls    = isScan ? '' : (h.status || '').toLowerCase().replace(/\s+/g, '');
-        const dotStyle  = isScan ? 'style="background:#4ade80;border-color:rgba(74,222,128,.5)"' : '';
-        const aLabel    = isScan ? 'QR Scanned' : 'Status Update';
-        const aBg       = isScan ? 'rgba(74,222,128,.12)' : 'rgba(59,130,246,.12)';
-        const aColor    = isScan ? '#4ade80' : '#93c5fd';
-        const aBorder   = isScan ? 'rgba(74,222,128,.25)' : 'rgba(59,130,246,.25)';
+        const isMovement = h._type === 'movement';
+        const dotStyle   = isMovement ? 'style="background:#f59e0b;border-color:rgba(245,158,11,.5)"' : '';
+        const aLabel     = isMovement ? 'Movement' : 'Status Update';
+        const aBg        = isMovement ? 'rgba(245,158,11,.12)' : 'rgba(59,130,246,.12)';
+        const aColor     = isMovement ? '#f59e0b' : '#93c5fd';
+        const aBorder    = isMovement ? 'rgba(245,158,11,.25)' : 'rgba(59,130,246,.25)';
         return `<div class="ttl-item">
-          <div class="ttl-dot ${isScan ? '' : dotCls}" ${dotStyle}></div>
+          <div class="ttl-dot" ${dotStyle}></div>
           <div style="margin-bottom:3px">
             <span style="display:inline-flex;align-items:center;padding:2px 8px;background:${aBg};border:1px solid ${aBorder};border-radius:20px;font-size:9px;font-weight:700;color:${aColor};letter-spacing:.4px;text-transform:uppercase">${aLabel}</span>
           </div>
-          <div class="ttl-status-label">${isScan ? 'Handled by ' + h.by : (h.status || '—')}</div>
-          <div class="ttl-meta">${isScan ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
+          <div class="ttl-status-label">${isMovement ? 'Handled by ' + h.by : (h.status || '-')}</div>
+          <div class="ttl-meta">${isMovement ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
           ${(h.location || h.handler) ? `<div class="ttl-loc">${h.location ? h.location : ''}${h.location && h.handler ? ' &nbsp;·&nbsp; ' : ''}${h.handler ? h.handler : ''}</div>` : ''}
           ${h.note ? `<div class="ttl-note">"${h.note}"</div>` : ''}
         </div>`;
@@ -365,7 +329,6 @@ function renderPublicTrackResult(d) {
 
   document.getElementById('pub-timeline').innerHTML = timelineHtml;
 
-  /* Show result, hide hero */
   document.getElementById('hero').style.display           = 'none';
   document.getElementById('result-section').style.display = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -397,12 +360,10 @@ async function searchByTrackingId() {
 
   if (!raw) { toast('Please enter a Tracking ID.'); return; }
 
-  /* Search locally first */
   let d = findDoc(raw) || docs.find(x => x.id && x.id.toUpperCase() === raw);
 
-  /* Fall back to backend */
   if (!d) {
-    toast('Searching server…');
+    toast('Searching server...');
     const apiResult = await apiTrackDocument(raw);
     if (apiResult && !apiResult._error && !apiResult.message) {
       d = { ...apiResult, id: apiResult.internalId, fullDisplayId: apiResult.fullDisplayId || apiResult.displayId };
@@ -437,23 +398,27 @@ async function searchByTrackingId() {
     : workflow.map(function(step, i){
         const done = curIdx > i, curr = curIdx === i;
         const cls  = done ? 'done' : curr ? 'current' : '';
-        return (i > 0 ? '<div class="twf-arrow">›</div>' : '') +
+        return (i > 0 ? '<div class="twf-arrow">&rsaquo;</div>' : '') +
           `<div class="twf-step">
-             <div class="twf-dot ${cls}">${done ? '✓' : i + 1}</div>
+             <div class="twf-dot ${cls}">${done ? '&#10003;' : i + 1}</div>
              <div class="twf-label ${cls}">${step}</div>
            </div>`;
       }).join('');
 
-  const _sEntries = (d.history || []).map(function(h){ return {
-    _type: h.action === 'Scanned' ? 'scan' : 'status',
-    status: h.status || '', by: h.by || '—',
-    date: h.date || '', location: h.location || '', handler: h.handler || '', note: h.note || ''
-  }; });
-  const _mEntries = movementLogs.filter(function(m){ return m.documentId === (d.internalId||d.id); }).map(function(m){ return {
-    _type: 'scan', status: '', by: m.handledBy || '—',
-    date: m.displayDate || m.timestamp, location: m.location || '', handler: '', note: ''
-  }; });
-  const _combined = [..._sEntries, ..._mEntries].sort(function(a, b){
+  /* Show only Status Update and Movement entries from history */
+  const _sEntries = (d.history || [])
+    .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
+    .map(function(h){ return {
+      _type:    h.action === 'Movement' ? 'movement' : 'status',
+      status:   h.status   || '',
+      by:       h.by       || '-',
+      date:     h.date     || '',
+      location: h.location || '',
+      handler:  h.handler  || '',
+      note:     h.note     || ''
+    }; });
+
+  const _combined = _sEntries.sort(function(a, b){
     const da = new Date(a.date), db = new Date(b.date);
     return (isNaN(da) || isNaN(db)) ? 0 : da - db;
   });
@@ -461,19 +426,19 @@ async function searchByTrackingId() {
   const histHtml = _combined.length === 0
     ? '<p style="font-size:13px;color:var(--muted)">No history recorded.</p>'
     : [..._combined].reverse().map(function(h){
-        const isScan  = h._type === 'scan';
-        const dotCls  = isScan ? 'received' : (h.status || '').toLowerCase().replace(/\s+/g, '');
-        const aLabel  = isScan ? 'QR Scanned' : 'Status Update';
-        const aBg     = isScan ? '#f0fdf4' : '#eff6ff';
-        const aColor  = isScan ? '#15803d' : '#1d4ed8';
-        const aBorder = isScan ? '#bbf7d0' : '#bfdbfe';
+        const isMovement = h._type === 'movement';
+        const dotCls  = isMovement ? 'received' : (h.status || '').toLowerCase().replace(/\s+/g, '');
+        const aLabel  = isMovement ? 'Movement' : 'Status Update';
+        const aBg     = isMovement ? '#fffbeb' : '#eff6ff';
+        const aColor  = isMovement ? '#92400e' : '#1d4ed8';
+        const aBorder = isMovement ? '#fde68a' : '#bfdbfe';
         return `<div class="ttl-item">
-          <div class="ttl-dot ${isScan ? '' : dotCls}" ${isScan ? 'style="background:#4ade80;border-color:#22c55e"' : ''}></div>
+          <div class="ttl-dot ${dotCls}" ${isMovement ? 'style="background:#f59e0b;border-color:#d97706"' : ''}></div>
           <div style="margin-bottom:3px">
             <span style="display:inline-flex;align-items:center;padding:2px 8px;background:${aBg};border:1px solid ${aBorder};border-radius:20px;font-size:9px;font-weight:700;color:${aColor};letter-spacing:.4px;text-transform:uppercase">${aLabel}</span>
           </div>
-          <div class="ttl-status-label">${isScan ? 'Handled by ' + h.by : h.status}</div>
-          <div class="ttl-meta">${isScan ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
+          <div class="ttl-status-label">${isMovement ? 'Handled by ' + h.by : h.status}</div>
+          <div class="ttl-meta">${isMovement ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
           ${(h.location || h.handler) ? `<div class="ttl-loc">${h.location ? h.location : ''}${h.location && h.handler ? ' &nbsp;·&nbsp; ' : ''}${h.handler ? h.handler : ''}</div>` : ''}
           ${h.note ? `<div class="ttl-note">"${h.note}"</div>` : ''}
         </div>`;
@@ -483,7 +448,6 @@ async function searchByTrackingId() {
                      .replace(/\/+$/, '').split('?')[0];
   const trackUrl = baseUrl + '?track=' + (d.internalId || d.id);
 
-  /* File section — no preview, clean download button */
   const fileSection = buildInternalFileSection(d, sc);
 
   result.style.display = 'block';
@@ -523,7 +487,7 @@ async function searchByTrackingId() {
   toast('Document found. QR code generated.');
 }
 
-/* File section for internal app view — shows both originalFile and processedFile */
+/* File section for internal app view */
 function buildInternalFileSection(d, sc) {
   const isReleased   = d.status === 'Released';
   const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
@@ -534,7 +498,6 @@ function buildInternalFileSection(d, sc) {
 
   let html = `<div class="card" style="margin-top:14px"><div class="card-head"><h3>Document Files</h3></div><div class="card-body" style="padding:0">`;
 
-  /* Original file row */
   if (hasOriginal) {
     html += `
       <div style="display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)">
@@ -549,7 +512,6 @@ function buildInternalFileSection(d, sc) {
       </div>`;
   }
 
-  /* Processed file row */
   if (hasProcessed && isReleased) {
     html += `
       <div style="padding:20px;text-align:center">
@@ -561,7 +523,7 @@ function buildInternalFileSection(d, sc) {
             <div style="font-size:13px;font-weight:700;color:#15803d">Final File <span style="font-weight:500">(Approved)</span></div>
             <div style="font-size:11px;color:#16a34a;margin-top:1px">Processed by ${d.processedBy||'Admin'}${d.processedAt?' · '+d.processedAt:''}</div>
           </div>
-          <span style="font-size:10px;font-weight:700;color:#16a34a;padding:3px 10px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:20px">Released ✓</span>
+          <span style="font-size:10px;font-weight:700;color:#16a34a;padding:3px 10px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:20px">Released</span>
         </div>
         <button onclick="decryptAndDownload('${docKey}',this)"
            class="btn btn-primary"
@@ -574,7 +536,7 @@ function buildInternalFileSection(d, sc) {
   } else if (hasProcessed && !isReleased) {
     html += `
       <div style="padding:20px;text-align:center">
-        <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Final File Attached — Pending Release</p>
+        <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Final File Attached - Pending Release</p>
         <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Admin has uploaded the processed file. It will be downloadable once status is <strong>Released</strong>.</p>
         <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--muted)">
           Current status: <strong style="color:${sc};margin-left:4px">${d.status}</strong>
