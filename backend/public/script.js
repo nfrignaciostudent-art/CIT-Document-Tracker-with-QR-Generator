@@ -1373,10 +1373,15 @@ function _renderScanLogsStats(){
   if(!statEl) return;
   const total = _scanLogsCache.length;
   const uniqueDocs = new Set(_scanLogsCache.map(s => s.documentId)).size;
+  const todayStr = new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' });
+  const todayCount = _scanLogsCache.filter(function(s){
+    if(!s.timestamp) return false;
+    return new Date(s.timestamp).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }) === todayStr;
+  }).length;
   statEl.innerHTML =
     '<div class="stat-card"><div class="stat-card-label">Total Scans</div><div class="stat-card-num blue">'+total+'</div></div>' +
     '<div class="stat-card"><div class="stat-card-label">Docs Scanned</div><div class="stat-card-num green">'+uniqueDocs+'</div></div>' +
-    '<div class="stat-card"><div class="stat-card-label">Collection</div><div class="stat-card-num">scan_logs</div></div>';
+    '<div class="stat-card"><div class="stat-card-label">Scans Today</div><div class="stat-card-num">'+todayCount+'</div></div>';
 }
 
 function _renderScanLogsTable(term){
