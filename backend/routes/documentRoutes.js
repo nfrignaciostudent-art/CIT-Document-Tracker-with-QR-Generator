@@ -13,9 +13,19 @@ const {
   getOriginalFile,
   updateDocumentStatus,
   getAllDocuments,
-  deleteDocument
+  deleteDocument,
+  logScan,
 } = require('../controllers/documentController');
 const protect = require('../middleware/authMiddleware');
+
+/* ── Admin-only guard ─────────────────────────────────────────────
+   Must come after protect (req.user already set by that point).   */
+const adminOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required.' });
+  }
+  next();
+};
 
 /* ── Multer: keep uploaded files in memory (no disk writes needed) ── */
 const upload = multer({
@@ -26,12 +36,13 @@ const upload = multer({
 /* Public routes (no login needed) */
 router.get('/track/:documentId',    trackDocument);      // GET /api/documents/track/:id
 router.get('/download/:documentId', downloadDocument);   // GET /api/documents/download/:id
+router.post('/:documentId/scan-log', logScan);           // POST /api/documents/:id/scan-log (public — QR scan)
 
 /* Protected routes (JWT required) */
-router.post('/register',            protect, upload.single('file'),          registerDocument);   // POST /api/documents/register
-router.get('/',                     protect,                                  getAllDocuments);    // GET  /api/documents
-router.get('/:documentId/original-file',  protect, getOriginalFile);       // GET /api/documents/:id/original-file
-router.patch('/:documentId/status', protect, upload.single('processedFile'), updateDocumentStatus); // PATCH /api/documents/:id/status
-router.delete('/:documentId',       protect,                                  deleteDocument);    // DELETE /api/documents/:id
+router.post('/register',            protect, upload.single('file'),          registerDocument);
+router.get('/',                     protect,                                  getAllDocuments);
+router.get('/:documentId/original-file',  protect, getOriginalFile);
+router.patch('/:documentId/status', protect, adminOnly, upload.single('processedFile'), updateDocumentStatus); // ADMIN ONLY
+router.delete('/:documentId',       protect, adminOnly,                       deleteDocument);                 // ADMIN ONLY
 
 module.exports = router;

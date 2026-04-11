@@ -452,6 +452,52 @@ const deleteDocument = async (req, res) => {
   }
 };
 
+/* ── POST /api/documents/:id/scan-log (PUBLIC — no auth needed) ──
+   Called automatically when a QR code is scanned.
+   Appends a Scanned entry to the document's history in MongoDB.
+   Does NOT change document status. ─────────────────────────────── */
+const logScan = async (req, res) => {
+  try {
+    const query      = req.params.documentId;
+    const { handledBy, location, note } = req.body;
+
+    if (!handledBy || !location) {
+      return res.status(400).json({ message: 'handledBy and location are required.' });
+    }
+
+    const doc = await Document.findOne({
+      $or: [
+        { internalId:    query },
+        { displayId:     query },
+        { fullDisplayId: query },
+      ]
+    });
+
+    if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
+
+    doc.history.push({
+      action:   'Scanned',
+      status:   doc.status,          // current status — unchanged
+      date:     new Date().toLocaleString('en-PH'),
+      note:     note     || '',
+      by:       handledBy,
+      location: location || '',
+      handler:  handledBy,
+    });
+
+    await doc.save();
+
+    res.json({
+      message:    'Scan logged successfully.',
+      internalId: doc.internalId,
+      status:     doc.status,
+    });
+  } catch (err) {
+    console.error('[logScan]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   registerDocument,
   trackDocument,
@@ -459,5 +505,6 @@ module.exports = {
   getOriginalFile,
   updateDocumentStatus,
   getAllDocuments,
-  deleteDocument
+  deleteDocument,
+  logScan,
 };

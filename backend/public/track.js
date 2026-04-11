@@ -215,6 +215,11 @@ function confirmAutoScanLog(docId) {
     _markScanned(docId);
   } catch(e) { console.warn('Could not save movement log', e); }
 
+  /* ── Also persist to backend so the log appears across all devices ── */
+  try {
+    apiLogScan(docId, { handledBy: handler, location, note: 'QR scan' });
+  } catch(e) { console.warn('[confirmAutoScanLog] Backend sync failed', e); }
+
   dismissScanBanner();
 
   /* Show confirmation toast */

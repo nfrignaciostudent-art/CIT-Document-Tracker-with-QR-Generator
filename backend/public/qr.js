@@ -89,6 +89,13 @@ function openQR(docKey) {
 
 function simulateScan() {
   if (!_currentQRDocId) { toast('Open a QR code first.'); return; }
+
+  /* ── ADMIN ONLY ── Users can only view documents, not log movement ── */
+  if (!currentUser || currentUser.role !== 'admin') {
+    toast('Only admins can log QR scan movement from within the app.');
+    return;
+  }
+
   const d = docs.find(function(x){ return (x.internalId||x.id) === _currentQRDocId; });
   if (!d) { toast('Document not found.'); return; }
 
@@ -125,6 +132,13 @@ function buildReceiptQR(doc) {
 }
 
 function confirmScanLog() {
+  /* Safety: double-check admin role */
+  if (!currentUser || currentUser.role !== 'admin') {
+    toast('Only admins can log movement.');
+    closeModal('scan-log-modal');
+    return;
+  }
+
   const handler  = document.getElementById('scan-log-handler').value.trim();
   const location = document.getElementById('scan-log-location').value.trim();
   const errEl    = document.getElementById('scan-log-error');
@@ -140,6 +154,12 @@ function confirmScanLog() {
   if (!d) { toast('Document not found.'); return; }
 
   logMovement(d.internalId || d.id, handler, location);
+
+  /* ── Persist scan log to backend so it appears in history on all devices ── */
+  try {
+    apiLogScan(d.internalId || d.id, { handledBy: handler, location, note: 'Admin QR scan (simulated)' });
+  } catch(e) { console.warn('[confirmScanLog] Backend sync failed', e); }
+
   closeModal('scan-log-modal');
   renderScanResult(d);
   openModal('scan-result-modal');

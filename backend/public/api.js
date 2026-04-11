@@ -194,3 +194,10 @@ async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileStr
 async function apiDeleteDocument(documentId, token) {
   return await apiRequest('DELETE', `/api/documents/${encodeURIComponent(documentId)}`, null, token || _jwt());
 }
+
+/* ── POST /api/documents/:id/scan-log (public — no auth needed) ──
+   Called automatically when a QR code is scanned.
+   Saves scan movement log to MongoDB so it persists across devices. */
+async function apiLogScan(documentId, payload) {
+  return await apiRequest('POST', `/api/documents/${encodeURIComponent(documentId)}/scan-log`, payload);
+}
