@@ -734,11 +734,21 @@
         <button id="uv-tab-docs" onclick="switchUVTab('docs')" style="padding:12px 16px;border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);cursor:pointer;">Documents</button>
         <button id="uv-tab-logs" onclick="switchUVTab('logs')" style="padding:12px 16px;border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;">Activity Log</button>
       </div>
-      <div id="uv-docs-panel" style="overflow-x:auto">
-        <table>
-          <thead><tr><th>Doc ID</th><th>Name</th><th>Type</th><th>Priority</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-          <tbody id="uv-tbody"></tbody>
-        </table>
+      <div id="uv-docs-panel">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+          <div style="position:relative;max-width:340px;">
+            <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.4" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="uv-search" type="text" placeholder="Search by ID, name, or status..."
+              oninput="renderUVDocs()"
+              style="width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--sans);outline:none;background:var(--bg);color:var(--text);box-sizing:border-box;">
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Doc ID</th><th>Name</th><th>Type</th><th>Priority</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody id="uv-tbody"></tbody>
+          </table>
+        </div>
       </div>
       <div id="uv-logs-panel" style="display:none;padding:16px 22px">
         <div class="log-table" id="uv-logs-body"></div>

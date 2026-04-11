@@ -573,7 +573,6 @@ function renderDash(){
   if(!acts.length){al.innerHTML=`<p style="font-size:13px;color:var(--muted)">No recent activity.</p>`;return;}
   al.innerHTML=acts.map(a=>`
     <div class="activity-item">
-      <div class="activity-dot" style="background:${a.color||'#94a3b8'}"></div>
       <div>
         <div class="activity-text">${isAdmin&&a.uname?`<strong>@${a.uname}</strong>: `:''}${a.msg}</div>
         <div class="activity-time">${a.date}</div>
@@ -773,6 +772,8 @@ function openUserVault(uid){
   _uvCurrentUid=uid;
   document.getElementById('uv-title').textContent=`${u.name||u.username}'s Documents`;
   document.getElementById('uv-subtitle').textContent=`@${u.username}`;
+  const searchEl=document.getElementById('uv-search');
+  if(searchEl) searchEl.value='';
   switchUVTab('docs');
   openModal('user-vault-modal');
 }
@@ -790,9 +791,23 @@ function switchUVTab(tab){
 }
 
 function renderUVDocs(){
-  const userDocs=docs.filter(d=>d.ownerId===_uvCurrentUid);
+  const term=(document.getElementById('uv-search')?.value||'').toLowerCase();
+  let userDocs=docs.filter(d=>d.ownerId===_uvCurrentUid);
+  if(term){
+    userDocs=userDocs.filter(d=>
+      (d.fullDisplayId||d.displayId||d.id||'').toLowerCase().includes(term)||
+      (d.name||'').toLowerCase().includes(term)||
+      (d.status||'').toLowerCase().includes(term)||
+      (d.type||'').toLowerCase().includes(term)
+    );
+  }
   const tb=document.getElementById('uv-tbody');
-  if(!userDocs.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty-msg">No documents.</div></td></tr>`;return;}
+  if(!docs.filter(d=>d.ownerId===_uvCurrentUid).length){
+    tb.innerHTML=`<tr><td colspan="7"><div class="empty-msg">No documents.</div></td></tr>`;return;
+  }
+  if(!userDocs.length){
+    tb.innerHTML=`<tr><td colspan="7"><div class="empty-msg">No documents match your search.</div></td></tr>`;return;
+  }
   tb.innerHTML=userDocs.map(d=>`<tr>
     <td class="doc-id-cell" title="${d.internalId||d.id}">${d.fullDisplayId||d.displayId||d.id}</td>
     <td>${d.name}</td><td>${d.type}</td>
@@ -806,7 +821,7 @@ function renderUVLogs(){
   const logs=(activityLogs[_uvCurrentUid]||[]).slice().reverse();
   const body=document.getElementById('uv-logs-body');
   if(!logs.length){body.innerHTML='<p style="font-size:13px;color:var(--muted)">No activity yet.</p>';return;}
-  body.innerHTML=logs.map(l=>`<div class="activity-item"><div class="activity-dot" style="background:${l.color||'#94a3b8'}"></div><div><div class="activity-text">${l.msg}</div><div class="activity-time">${l.date}</div></div></div>`).join('');
+  body.innerHTML=logs.map(l=>`<div class="activity-item"><div><div class="activity-text">${l.msg}</div><div class="activity-time">${l.date}</div></div></div>`).join('');
 }
 
 /* Activity Logs */
@@ -819,7 +834,7 @@ function renderActivityLogs(){
   });
   all.sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(!all.length){body.innerHTML='<p style="font-size:13px;color:var(--muted)">No activity yet.</p>';return;}
-  body.innerHTML=all.map(a=>`<div class="activity-item"><div class="activity-dot" style="background:${a.color||'#94a3b8'}"></div><div><div class="activity-text"><strong>@${a.uname}</strong>: ${a.msg}</div><div class="activity-time">${a.date}</div></div></div>`).join('');
+  body.innerHTML=all.map(a=>`<div class="activity-item"><div><div class="activity-text"><strong>@${a.uname}</strong>: ${a.msg}</div><div class="activity-time">${a.date}</div></div></div>`).join('');
 }
 
 function clearActivityLogs(){
@@ -1673,14 +1688,8 @@ function openHistory(docKey){
   else tl.innerHTML=allEntries.map((e,i)=>{
     const isScan=e.type==='movement';
     const actionClass=isScan?'hist-action-movement':'hist-action-status';
-    const iconClass=isScan?'movement':'status';
     const actionLabel=isScan?'Movement':'Status Update';
-    const hasLine=i<allEntries.length-1;
     return `<div class="hist-entry">
-      ${hasLine?'<div class="hist-entry-line"></div>':''}
-      <div class="hist-icon-wrap ${iconClass}">${isScan?
-        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><line x1="21" y1="21" x2="21" y2="21"/></svg>':
-        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'}</div>
       <div class="hist-entry-content">
         <div class="hist-entry-action ${actionClass}">${actionLabel}</div>
         <div class="hist-entry-title">${isScan?`Handled by <strong>${e.by}</strong>`:`Status &rarr; ${statusBadge(e.status)}`}</div>
