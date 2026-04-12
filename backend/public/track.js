@@ -237,35 +237,62 @@ function renderPublicTrackResult(d) {
   const curIdx     = workflow.indexOf(d.status);
   const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
-  const office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
-  const relEntry   = [...(d.history || [])].reverse().find(h => h.status === 'Released');
-  const trackUrl   = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
 
-  /* ── Workflow progress bar ── */
-  const wfHtml = isRejected
-    ? `<div class="pub-wf-rejected">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-        Document Rejected
-       </div>`
-    : workflow.map((step, i) => {
-        const done = curIdx > i;
-        const curr = curIdx === i;
-        return `
-          ${i > 0 ? `<div class="pub-wf-line ${done ? 'done' : ''}"></div>` : ''}
-          <div class="pub-wf-step">
-            <div class="pub-wf-dot ${done ? 'done' : curr ? 'current' : ''}">
-              ${done
-                ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-                : curr ? `<span class="pub-wf-pulse"></span>` : i + 1}
-            </div>
-            <span class="pub-wf-label ${done ? 'done' : curr ? 'current' : ''}">${step}</span>
-          </div>`;
-      }).join('');
+  document.getElementById('res-doc-name').textContent = d.name;
+  document.getElementById('res-doc-meta').textContent = dispId + ' · ' + d.type;
+  document.getElementById('res-status-badge').innerHTML = `
+    <span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;font-size:12px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
+      <span style="width:6px;height:6px;border-radius:50%;background:${sc};display:inline-block${!isRejected&&!isReleased?';animation:pulse 1.5s infinite':''}"></span>
+      ${d.status}
+    </span>`;
 
-  /* ── Activity timeline ── */
-  const hist = (d.history || [])
-    .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
-    .map(h => ({
+  const locRow = document.getElementById('res-location-row');
+  if (lastLoc.location || lastLoc.handler) {
+    locRow.style.display = '';
+    locRow.innerHTML =
+      (lastLoc.location ? `<span class="res-loc-item"><strong>${lastLoc.location}</strong></span>` : '') +
+      (lastLoc.handler  ? `<span class="res-loc-item"><strong>${lastLoc.handler}</strong></span>`  : '');
+  } else {
+    locRow.style.display = 'none';
+  }
+
+  const relEntry    = [...(d.history || [])].reverse().find(function(h){ return h.status === 'Released'; });
+  const releaseDate = relEntry ? relEntry.date : null;
+  const office      = docOfficeMap[d.type] || 'Document Control Office';
+
+  document.getElementById('detail-list').innerHTML = [
+    ['Submitted By',    d.by],
+    ['Purpose',         d.purpose],
+    ['Assigned Office', office],
+    ['Priority',        d.priority || 'Normal'],
+    ['Date Filed',      d.date],
+    ['Release Date',    releaseDate
+      ? `<span style="color:#4ade80;font-weight:600">${releaseDate}</span>`
+      : `<span style="color:rgba(255,255,255,.25)">Pending</span>`]
+  ].map(function(row){
+    return `<div class="res-field-row">
+      <span class="res-field-label">${row[0]}</span>
+      <span class="res-field-value">${row[1]}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
+
+  const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
+  const qrBox    = document.getElementById('pub-qr-box');
+  qrBox.innerHTML = '';
+  const target = document.createElement('div');
+  qrBox.appendChild(target);
+  new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+  document.getElementById('qr-url-tag').textContent = trackUrl;
+
+  /* Activity History - READ-ONLY timeline
+     Shows Status Updates and admin Movement entries from doc.history only.
+     QR scan events (scan_logs) are NOT shown here - they are admin-only. */
+  const hist = (d.history || []).filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action);
+
+  const combined = hist.map(function(h){
+    return {
       _type:    h.action === 'Movement' ? 'movement' : 'status',
       status:   h.status   || '',
       by:       h.by       || '-',
@@ -273,146 +300,34 @@ function renderPublicTrackResult(d) {
       location: h.location || '',
       handler:  h.handler  || '',
       note:     h.note     || ''
-    }))
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .reverse();
+    };
+  }).sort(function(a, b){
+    const da = new Date(a.date), db = new Date(b.date);
+    return (isNaN(da) || isNaN(db)) ? 0 : da - db;
+  });
 
-  const timelineHtml = hist.length === 0
-    ? `<p class="pub-empty">No history recorded yet.</p>`
-    : hist.map(h => {
-        const isMove = h._type === 'movement';
-        const dotBg  = isMove ? '#f59e0b' : sc;
-        const tag    = isMove
-          ? `<span class="pub-tl-tag move">Movement</span>`
-          : `<span class="pub-tl-tag status">Status Update</span>`;
-        return `
-          <div class="pub-tl-item">
-            <div class="pub-tl-dot" style="background:${dotBg};box-shadow:0 0 0 3px ${dotBg}22"></div>
-            <div class="pub-tl-body">
-              ${tag}
-              <div class="pub-tl-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
-              <div class="pub-tl-meta">${isMove ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
-              ${h.location ? `<div class="pub-tl-loc">📍 ${h.location}${h.handler ? ' · ' + h.handler : ''}</div>` : ''}
-              ${h.note ? `<div class="pub-tl-note">"${h.note}"</div>` : ''}
-            </div>
-          </div>`;
+  const timelineHtml = combined.length === 0
+    ? '<p style="font-size:13px;color:rgba(255,255,255,.3)">No history recorded.</p>'
+    : [...combined].reverse().map(function(h){
+        const isMovement = h._type === 'movement';
+        const dotStyle   = isMovement ? 'style="background:#f59e0b;border-color:rgba(245,158,11,.5)"' : '';
+        const aLabel     = isMovement ? 'Movement' : 'Status Update';
+        const aBg        = isMovement ? 'rgba(245,158,11,.12)' : 'rgba(59,130,246,.12)';
+        const aColor     = isMovement ? '#f59e0b' : '#93c5fd';
+        const aBorder    = isMovement ? 'rgba(245,158,11,.25)' : 'rgba(59,130,246,.25)';
+        return `<div class="ttl-item">
+          <div class="ttl-dot" ${dotStyle}></div>
+          <div style="margin-bottom:3px">
+            <span style="display:inline-flex;align-items:center;padding:2px 8px;background:${aBg};border:1px solid ${aBorder};border-radius:20px;font-size:9px;font-weight:700;color:${aColor};letter-spacing:.4px;text-transform:uppercase">${aLabel}</span>
+          </div>
+          <div class="ttl-status-label">${isMovement ? 'Handled by ' + h.by : (h.status || '-')}</div>
+          <div class="ttl-meta">${isMovement ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
+          ${(h.location || h.handler) ? `<div class="ttl-loc">${h.location ? h.location : ''}${h.location && h.handler ? ' &nbsp;·&nbsp; ' : ''}${h.handler ? h.handler : ''}</div>` : ''}
+          ${h.note ? `<div class="ttl-note">"${h.note}"</div>` : ''}
+        </div>`;
       }).join('');
 
-  /* ── File / download section ── */
-  const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
-  const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.processedFile);
-  const docKey       = d.internalId || d.id;
-
-  let fileHtml = '';
-  if (hasOriginal) {
-    fileHtml += `
-      <div class="pub-file-row">
-        <div class="pub-file-icon ref">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        </div>
-        <div class="pub-file-info">
-          <div class="pub-file-name">Original File <span class="pub-file-sub">(Submitted)</span></div>
-          <div class="pub-file-meta">Submitted by ${d.by || 'user'} · IDEA-128 encrypted at rest</div>
-        </div>
-        <span class="pub-file-badge ref">Reference Only</span>
-      </div>`;
-  }
-
-  if (hasProcessed && isReleased) {
-    fileHtml += `
-      <div class="pub-file-row released">
-        <div class="pub-file-icon final">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
-        </div>
-        <div class="pub-file-info">
-          <div class="pub-file-name" style="color:#4ade80">Final File <span class="pub-file-sub">(Approved)</span></div>
-          <div class="pub-file-meta">By ${d.processedBy || 'Admin'}${d.processedAt ? ' · ' + d.processedAt : ''} · IDEA-128 encrypted</div>
-        </div>
-        <span class="pub-file-badge final">Released</span>
-      </div>
-      <div style="padding:18px 20px;text-align:center;border-top:1px solid rgba(255,255,255,.06)">
-        <button onclick="decryptAndDownload('${docKey}',this)" class="pub-dl-btn">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download Final File
-        </button>
-        <p class="pub-dl-hint">Decrypted locally with IDEA-128 · Never stored unencrypted</p>
-      </div>`;
-  } else if (!hasOriginal && !hasProcessed) {
-    fileHtml = `<div class="pub-empty" style="padding:24px">No digital file attached to this document.</div>`;
-  } else {
-    fileHtml += `
-      <div class="pub-file-locked">
-        <div class="pub-file-lock-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        </div>
-        <div class="pub-file-lock-title">Final File Pending</div>
-        <div class="pub-file-lock-desc">Admin will upload the processed version before release.<br>Available for download once status reaches <strong style="color:#4ade80">Released</strong>.</div>
-        <div class="pub-file-status-pill" style="color:${sc};border-color:${sc}44;background:${sc}11">
-          Current: ${d.status}
-        </div>
-      </div>`;
-  }
-
-  /* ── Populate existing HTML elements ── */
-
-  /* Header */
-  document.getElementById('res-doc-name').textContent = d.name;
-  document.getElementById('res-doc-meta').textContent = dispId + ' · ' + (d.type || '');
-  document.getElementById('res-status-badge').innerHTML = `
-    <span class="pub-status-pill" style="background:${sc}18;border-color:${sc}44;color:${sc}">
-      <span class="pub-status-dot" style="background:${sc}${!isRejected && !isReleased ? ';animation:pulse 1.5s infinite' : ''}"></span>
-      ${d.status}
-    </span>`;
-
-  /* Location row */
-  const locRow = document.getElementById('res-location-row');
-  if (lastLoc.location || lastLoc.handler) {
-    locRow.style.display = '';
-    locRow.innerHTML =
-      (lastLoc.location ? `<span class="res-loc-item"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${lastLoc.location}</span>` : '') +
-      (lastLoc.handler  ? `<span class="res-loc-item"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> ${lastLoc.handler}</span>` : '');
-  } else {
-    locRow.style.display = 'none';
-  }
-
-  /* Workflow (inject into detail-list as first block) */
-  const wfBlock = `
-    <div class="pub-wf-wrap">
-      <div class="pub-wf-track">${wfHtml}</div>
-    </div>`;
-
-  /* Details */
-  const detailRows = [
-    ['Submitted By',    d.by],
-    ['Purpose',         d.purpose],
-    ['Assigned Office', office],
-    ['Priority',        d.priority || 'Normal'],
-    ['Date Filed',      d.date],
-    ['Release Date',    relEntry
-      ? `<span style="color:#4ade80;font-weight:600">${relEntry.date}</span>`
-      : `<span style="opacity:.4">Pending</span>`]
-  ].map(([label, val]) => `
-    <div class="pub-detail-row">
-      <span class="pub-detail-label">${label}</span>
-      <span class="pub-detail-value">${val}</span>
-    </div>`).join('');
-
-  document.getElementById('detail-list').innerHTML = wfBlock + detailRows;
-
-  /* Timeline */
   document.getElementById('pub-timeline').innerHTML = timelineHtml;
-
-  /* Download zone */
-  document.getElementById('download-zone').innerHTML = fileHtml;
-
-  /* QR Code */
-  const trackUrlFinal = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
-  const qrBox = document.getElementById('pub-qr-box');
-  qrBox.innerHTML = '';
-  const target = document.createElement('div');
-  qrBox.appendChild(target);
-  new QRCode(target, { text: trackUrlFinal, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
-  document.getElementById('qr-url-tag').textContent = trackUrlFinal;
 
   document.getElementById('hero').style.display           = 'none';
   document.getElementById('result-section').style.display = '';
