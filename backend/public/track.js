@@ -405,15 +405,13 @@ function _injectCompactCardStyles() {
     }
     .cct-hist-item {
       display: flex;
-      align-items: flex-start;
-      gap: 8px;
+      align-items: stretch;
+      gap: 10px;
       margin-bottom: 8px;
     }
-    .cct-h-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      margin-top: 4px;
+    .cct-h-line {
+      width: 2px;
+      border-radius: 2px;
       flex-shrink: 0;
     }
     .cct-h-tag {
@@ -742,8 +740,8 @@ function renderPublicTrackResult(d) {
         const isMove = h._type === 'movement';
         const dotColor = isMove ? '#fbbf24' : (STATUS_DOT_COLORS[h.status] || '#60a5fa');
         return `<div class="cct-hist-item">
-          <div class="cct-h-dot" style="background:${dotColor}"></div>
-          <div style="flex:1;min-width:0">
+          <div class="cct-h-line" style="background:${dotColor}"></div>
+          <div style="flex:1;min-width:0;padding-bottom:4px">
             <span class="cct-h-tag ${isMove ? 'move' : 'stat'}">${isMove ? 'Movement' : 'Status Update'}</span>
             <div class="cct-h-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
             <div class="cct-h-meta">${isMove ? '' : 'By ' + h.by + ' · '}${h.date}</div>
@@ -801,7 +799,7 @@ function renderPublicTrackResult(d) {
           <div class="cct-lock-desc">
             The admin hasn't uploaded the final file yet.<br>
             Download becomes available when status is <strong style="color:#4ade80">Released</strong>.<br>
-            <span style="opacity:.5">Current: <code style="font-size:10px">${d.status}</code></span>
+            <span style="color:rgba(255,255,255,.5);font-size:11px">Current status: <strong style="color:rgba(255,255,255,.85)">${d.status}</strong></span>
           </div>
         </div>`;
     }
