@@ -226,187 +226,761 @@ function showPublicError(msg) {
   errEl.style.display = 'block';
 }
 
-/* ── Render full public tracking result - READ-ONLY ── */
+/* ══════════════════════════════════════════════════════════════════════
+   _injectCompactCardStyles — inject compact card CSS once
+══════════════════════════════════════════════════════════════════════ */
+let _compactStylesInjected = false;
+function _injectCompactCardStyles() {
+  if (_compactStylesInjected) return;
+  _compactStylesInjected = true;
+  const s = document.createElement('style');
+  s.id = 'compact-card-styles';
+  s.textContent = `
+    /* ── Compact tracking card ── */
+    .cct-wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .cct {
+      background: #052e16;
+      border: 1px solid rgba(74,222,128,.18);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    /* Header */
+    .cct-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .cct-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,.9);
+      line-height: 1.3;
+    }
+    .cct-meta {
+      font-size: 11px;
+      color: rgba(255,255,255,.3);
+      margin-top: 2px;
+      letter-spacing: .02em;
+    }
+    .cct-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 20px;
+      padding: 3px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .cct-badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    @keyframes cct-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .cct-badge-dot.pulsing { animation: cct-pulse 1.8s ease-in-out infinite; }
+    /* Progress */
+    .cct-progress {
+      font-size: 11px;
+      color: rgba(255,255,255,.28);
+      margin-bottom: 10px;
+      letter-spacing: .01em;
+    }
+    .cct-progress .p-active {
+      color: #4ade80;
+      font-weight: 600;
+    }
+    .cct-progress .p-done {
+      color: rgba(255,255,255,.55);
+    }
+    .cct-progress .p-rej {
+      color: #ef4444;
+      font-weight: 600;
+    }
+    .cct-divider {
+      border: none;
+      border-top: 1px solid rgba(74,222,128,.13);
+      margin: 0 0 10px;
+    }
+    /* Body two-column */
+    .cct-body {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+    }
+    /* Details grid */
+    .cct-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+    }
+    .cct-field label {
+      display: block;
+      font-size: 10px;
+      color: rgba(255,255,255,.28);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 2px;
+    }
+    .cct-field span {
+      font-size: 12px;
+      color: rgba(255,255,255,.85);
+    }
+    .cct-field span.prio-high   { color: #f97316; }
+    .cct-field span.prio-urgent { color: #ef4444; }
+    .cct-field span.prio-low    { color: rgba(255,255,255,.45); }
+    .cct-field span.val-pending { color: rgba(255,255,255,.3); font-style: italic; }
+    .cct-field span.val-released { color: #4ade80; font-weight: 600; }
+    /* QR column */
+    .cct-qr-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .cct-qr-box {
+      width: 120px;
+      height: 120px;
+      background: #fff;
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .cct-qr-box img,
+    .cct-qr-box canvas {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 108px !important;
+      max-height: 108px !important;
+      display: block;
+      object-fit: contain;
+    }
+    .cct-qr-hint {
+      font-size: 10px;
+      color: rgba(255,255,255,.25);
+      text-align: center;
+    }
+    .cct-qr-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #4ade80;
+      background: transparent;
+      border: 1px solid rgba(74,222,128,.22);
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .cct-qr-btn:hover { background: rgba(74,222,128,.1); }
+    /* History */
+    .cct-hist {
+      margin-top: 10px;
+      border-top: 1px solid rgba(74,222,128,.13);
+      padding-top: 10px;
+    }
+    .cct-sect-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: rgba(255,255,255,.28);
+      margin-bottom: 7px;
+    }
+    .cct-hist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .cct-h-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+    .cct-h-tag {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      border-radius: 4px;
+      padding: 1px 6px;
+      margin-bottom: 2px;
+    }
+    .cct-h-tag.stat {
+      color: #60a5fa;
+      background: rgba(96,165,250,.1);
+      border: 1px solid rgba(96,165,250,.2);
+    }
+    .cct-h-tag.move {
+      color: #fbbf24;
+      background: rgba(251,191,36,.1);
+      border: 1px solid rgba(251,191,36,.2);
+    }
+    .cct-h-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,.82);
+    }
+    .cct-h-meta {
+      font-size: 11px;
+      color: rgba(255,255,255,.35);
+    }
+    .cct-h-loc {
+      font-size: 11px;
+      color: rgba(255,255,255,.45);
+      margin-top: 1px;
+    }
+    .cct-h-note {
+      font-size: 11px;
+      color: rgba(255,255,255,.3);
+      font-style: italic;
+      margin-top: 2px;
+    }
+    /* File section */
+    .cct-files {
+      margin-top: 10px;
+      border-top: 1px solid rgba(74,222,128,.13);
+      padding-top: 10px;
+    }
+    .cct-file-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .cct-file-row:last-child { border-bottom: none; }
+    .cct-file-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.08);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      color: rgba(255,255,255,.35);
+    }
+    .cct-file-icon.final {
+      background: rgba(74,222,128,.1);
+      border-color: rgba(74,222,128,.25);
+      color: #4ade80;
+    }
+    .cct-file-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,.75);
+    }
+    .cct-file-name.final { color: #4ade80; }
+    .cct-file-sub { font-weight: 400; color: rgba(255,255,255,.35); }
+    .cct-file-meta { font-size: 11px; color: rgba(255,255,255,.3); margin-top: 1px; }
+    .cct-file-badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,.3);
+      padding: 2px 8px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 20px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .cct-file-badge.final {
+      color: #4ade80;
+      background: rgba(74,222,128,.1);
+      border-color: rgba(74,222,128,.25);
+    }
+    .cct-lock {
+      text-align: center;
+      padding: 14px 0 6px;
+    }
+    .cct-lock-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255,255,255,.6);
+      margin-bottom: 4px;
+    }
+    .cct-lock-desc {
+      font-size: 11px;
+      color: rgba(255,255,255,.3);
+      line-height: 1.6;
+    }
+    .cct-dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 24px;
+      background: #4ade80;
+      color: #052e16;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Inter', inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity .15s;
+      margin-top: 8px;
+    }
+    .cct-dl-btn:hover { opacity: .85; }
+    .cct-dl-hint { font-size: 10px; color: rgba(255,255,255,.2); margin-top: 6px; }
+    /* Admin panel */
+    .cct-admin {
+      margin-top: 10px;
+      border-top: 1px solid rgba(74,222,128,.18);
+      padding-top: 10px;
+    }
+    .cct-admin-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #4ade80;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .cct-admin-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .cct-admin-select {
+      flex: 1;
+      min-width: 140px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(74,222,128,.25);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: rgba(255,255,255,.8);
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+    }
+    .cct-admin-input {
+      flex: 1;
+      min-width: 120px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: rgba(255,255,255,.8);
+      font-family: 'Inter', inherit;
+    }
+    .cct-admin-input::placeholder { color: rgba(255,255,255,.2); }
+    .cct-admin-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: #4ade80;
+      color: #052e16;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Inter', inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity .15s;
+    }
+    .cct-admin-btn:hover { opacity: .85; }
+    .cct-admin-err { font-size: 11px; color: #f87171; margin-top: 5px; display: none; }
+    /* Back button */
+    .cct-back-row {
+      margin-top: 12px;
+      text-align: center;
+    }
+    .cct-back-btn {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 8px;
+      padding: 8px 20px;
+      font-size: 12px;
+      color: rgba(255,255,255,.45);
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .cct-back-btn:hover {
+      border-color: rgba(255,255,255,.25);
+      color: rgba(255,255,255,.7);
+    }
+    /* Location pills */
+    .cct-loc-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+    .cct-loc-pill {
+      font-size: 10px;
+      color: rgba(255,255,255,.45);
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 20px;
+      padding: 2px 9px;
+    }
+    @media (max-width: 480px) {
+      .cct-body { grid-template-columns: 1fr; }
+      .cct-qr-col { flex-direction: row; align-items: center; }
+      .cct-fields { grid-template-columns: 1fr; }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+/* ── Render full public tracking result - compact dark card ── */
 function renderPublicTrackResult(d) {
   _pubTrackDocId = d.internalId || d.id;
+  _injectCompactCardStyles();
 
-  const sc         = (typeof statusColorMap !== 'undefined' ? statusColorMap[d.status] : null) || '#64748b';
+  const STATUS_COLORS = {
+    'Received':    '#4ade80',
+    'Processing':  '#60a5fa',
+    'For Approval':'#a78bfa',
+    'Approved':    '#34d399',
+    'Signed':      '#34d399',
+    'Released':    '#4ade80',
+    'Rejected':    '#f87171',
+    'Pending':     '#fbbf24',
+  };
+  const sc         = STATUS_COLORS[d.status] || '#94a3b8';
   const isReleased = d.status === 'Released';
   const isRejected = d.status === 'Rejected';
   const workflow   = ['Received', 'Processing', 'For Approval', 'Approved', 'Released'];
   const curIdx     = workflow.indexOf(d.status);
-  const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
   const office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
   const relEntry   = [...(d.history || [])].reverse().find(h => h.status === 'Released');
+  const lastLoc    = getLatestLocationPublic(d);
+  const docKey     = d.internalId || d.id;
+  const trackUrl   = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + docKey;
 
-  /* ── Helper: safe set innerHTML ── */
-  function _set(id, html) {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = html;
-  }
-  function _text(id, txt) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = txt;
-  }
-
-  /* ── Header ── */
-  _text('res-doc-name', d.name);
-  _text('res-doc-meta', dispId + ' · ' + (d.type || ''));
-  _set('res-status-badge',
-    `<span style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:99px;
-      font-size:12px;font-weight:700;background:${sc}18;border:1px solid ${sc}44;color:${sc}">
-      <span style="width:7px;height:7px;border-radius:50%;background:${sc};flex-shrink:0;display:inline-block${
-        !isRejected && !isReleased ? ';animation:pulse 1.5s infinite' : ''}"></span>
-      ${d.status}
-    </span>`);
-
-  /* ── Location row ── */
-  const locRow = document.getElementById('res-location-row');
-  if (locRow) {
-    if (lastLoc.location || lastLoc.handler) {
-      locRow.style.display = '';
-      locRow.innerHTML =
-        (lastLoc.location ? `<span class="rec-loc-pill">${lastLoc.location}</span>` : '') +
-        (lastLoc.handler  ? `<span class="rec-loc-pill">${lastLoc.handler}</span>`  : '');
-    } else {
-      locRow.style.display = 'none';
-    }
-  }
-
-  /* ── Workflow ── */
-  const wfHtml = isRejected
-    ? `<span class="wf-pill rejected">✕ Rejected</span>`
+  /* ── Progress breadcrumb ── */
+  const progressHtml = isRejected
+    ? `<span class="p-rej">✕ Rejected</span>`
     : workflow.map((step, i) => {
         const done = curIdx > i, curr = curIdx === i;
-        const cls  = done ? 'done' : curr ? 'curr' : '';
-        return (i > 0 ? `<span class="wf-sep">›</span>` : '') +
-               `<span class="wf-pill ${cls}">${step}</span>`;
+        const cls  = done ? 'p-done' : curr ? 'p-active' : '';
+        return (i > 0 ? `<span style="margin:0 3px;opacity:.3">›</span>` : '') +
+               `<span class="${cls}">${step}</span>`;
       }).join('');
 
-  _set('receipt-workflow', `<div class="wf-bar">${wfHtml}</div>`);
+  /* ── Priority class ── */
+  function _prioCls(p) {
+    if (!p) return '';
+    const m = { High: 'prio-high', Urgent: 'prio-urgent', Low: 'prio-low' };
+    return m[p] || '';
+  }
 
-  /* ── Details ── */
-  _set('detail-list', [
-    ['Submitted By',    d.by],
-    ['Purpose',         d.purpose],
-    ['Assigned Office', office],
-    ['Priority',        d.priority || 'Normal'],
-    ['Date Filed',      d.date],
-    ['Release Date',    relEntry
-      ? `<span style="color:#4ade80;font-weight:600">${relEntry.date}</span>`
-      : `<span style="opacity:.4">Pending</span>`]
-  ].map(([lbl, val]) =>
-    `<div class="detail-row">
-      <span class="detail-label">${lbl}</span>
-      <span class="detail-value">${val}</span>
-    </div>`
-  ).join(''));
+  /* ── Details rows ── */
+  const fields = [
+    ['Submitted By', `<span>${d.by || '-'}</span>`],
+    ['Purpose',      `<span>${d.purpose || '-'}</span>`],
+    ['Assigned Office', `<span>${office}</span>`],
+    ['Priority',     `<span class="${_prioCls(d.priority)}">${d.priority || 'Normal'}</span>`],
+    ['Date Filed',   `<span>${d.date || '-'}</span>`],
+    ['Release Date', relEntry
+      ? `<span class="val-released">${relEntry.date}</span>`
+      : `<span class="val-pending">Pending</span>`],
+  ];
+  const fieldsHtml = fields.map(([lbl, val]) =>
+    `<div class="cct-field"><label>${lbl}</label>${val}</div>`
+  ).join('');
 
-  /* ── Timeline ── */
+  /* ── History timeline ── */
   const hist = (d.history || [])
     .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
     .map(h => ({
-      _type: h.action === 'Movement' ? 'movement' : 'status',
-      status: h.status || '', by: h.by || '-',
-      date: h.date || '', location: h.location || '',
-      handler: h.handler || '', note: h.note || ''
+      _type:    h.action === 'Movement' ? 'movement' : 'status',
+      status:   h.status   || '',
+      by:       h.by       || '-',
+      date:     h.date     || '',
+      location: h.location || '',
+      handler:  h.handler  || '',
+      note:     h.note     || '',
     }))
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .reverse();
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  _set('pub-timeline', hist.length === 0
-    ? `<p class="rec-empty">No history recorded yet.</p>`
+  const histHtml = hist.length === 0
+    ? `<div class="cct-h-meta">No history recorded yet.</div>`
     : hist.map(h => {
         const isMove = h._type === 'movement';
-        return `<div class="rec-tl-item">
-          <div class="rec-tl-dot" style="background:${isMove ? '#f59e0b' : sc}"></div>
-          <div class="rec-tl-body">
-            <span class="rec-tl-tag ${isMove ? 'move' : 'stat'}">${isMove ? 'Movement' : 'Status Update'}</span>
-            <div class="rec-tl-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
-            <div class="rec-tl-meta">${isMove ? '' : 'By ' + h.by + ' · '}${h.date}</div>
-            ${h.location ? `<div class="rec-tl-loc">${h.location}${h.handler ? ' · ' + h.handler : ''}</div>` : ''}
-            ${h.note ? `<div class="rec-tl-note">"${h.note}"</div>` : ''}
+        const dotColor = isMove ? '#fbbf24' : sc;
+        return `<div class="cct-hist-item">
+          <div class="cct-h-dot" style="background:${dotColor}"></div>
+          <div style="flex:1;min-width:0">
+            <span class="cct-h-tag ${isMove ? 'move' : 'stat'}">${isMove ? 'Movement' : 'Status Update'}</span>
+            <div class="cct-h-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
+            <div class="cct-h-meta">${isMove ? '' : 'By ' + h.by + ' · '}${h.date}</div>
+            ${(h.location || h.handler) ? `<div class="cct-h-loc">${[h.location, h.handler].filter(Boolean).join(' · ')}</div>` : ''}
+            ${h.note ? `<div class="cct-h-note">"${h.note}"</div>` : ''}
           </div>
         </div>`;
-      }).join(''));
+      }).join('');
 
-  /* ── QR ── */
-  const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
-  const qrBox = document.getElementById('pub-qr-box');
-  if (qrBox) {
-    qrBox.innerHTML = '';
-    const target = document.createElement('div');
-    qrBox.appendChild(target);
-    new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
-  }
-  _text('qr-url-tag', trackUrl);
+  /* ── File section ── */
+  const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.hasOriginalFile);
+  const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.hasProcessedFile);
 
-  /* ── Files ── */
-  const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
-  const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.processedFile);
-  const docKey       = d.internalId || d.id;
   let fileHtml = '';
+  if (hasOriginal || hasProcessed) {
+    fileHtml += `<div class="cct-files"><div class="cct-sect-label">Files</div>`;
 
-  if (!hasOriginal && !hasProcessed) {
-    fileHtml = `<p class="rec-empty">No digital file attached.</p>`;
-  } else {
     if (hasOriginal) {
       fileHtml += `
-        <div class="rec-file-row">
-          <div class="rec-file-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div class="cct-file-row">
+          <div class="cct-file-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           </div>
-          <div class="rec-file-info">
-            <div class="rec-file-name">Original File <span class="rec-file-sub">(Submitted)</span></div>
-            <div class="rec-file-meta">By ${d.by || 'user'} · IDEA-128 encrypted · Not downloadable</div>
+          <div style="flex:1;min-width:0">
+            <div class="cct-file-name">Original File <span class="cct-file-sub">(Submitted)</span></div>
+            <div class="cct-file-meta">By ${d.by || 'user'} · IDEA-128 encrypted · Not downloadable</div>
           </div>
-          <span class="rec-file-badge">Reference Only</span>
+          <span class="cct-file-badge">Reference Only</span>
         </div>`;
     }
+
     if (hasProcessed && isReleased) {
       fileHtml += `
-        <div class="rec-file-row final">
-          <div class="rec-file-icon final">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
+        <div class="cct-file-row">
+          <div class="cct-file-icon final">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
           </div>
-          <div class="rec-file-info">
-            <div class="rec-file-name" style="color:#4ade80">Final File <span class="rec-file-sub">(Approved)</span></div>
-            <div class="rec-file-meta">By ${d.processedBy || 'Admin'}${d.processedAt ? ' · ' + d.processedAt : ''}</div>
+          <div style="flex:1;min-width:0">
+            <div class="cct-file-name final">Final File <span class="cct-file-sub">(Approved)</span></div>
+            <div class="cct-file-meta">By ${d.processedBy || 'Admin'}${d.processedAt ? ' · ' + d.processedAt : ''}</div>
           </div>
-          <span class="rec-file-badge final">Released</span>
+          <span class="cct-file-badge final">Released</span>
         </div>
-        <div style="padding:14px 0 4px;text-align:center">
-          <button onclick="decryptAndDownload('${docKey}',this)" class="rec-dl-btn">
+        <div style="text-align:center;padding:10px 0 4px">
+          <button onclick="decryptAndDownload('${docKey}',this)" class="cct-dl-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download Final File
           </button>
-          <p class="rec-dl-hint">Decrypted locally · IDEA-128</p>
+          <div class="cct-dl-hint">Decrypted locally · IDEA-128</div>
         </div>`;
     } else if (!isReleased) {
       fileHtml += `
-        <div class="rec-file-locked">
-          <div class="rec-lock-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <div class="cct-lock">
+          <div class="cct-lock-title">Final File Pending</div>
+          <div class="cct-lock-desc">
+            Available once status reaches <strong style="color:#4ade80">Released</strong>.<br>
+            Current: <strong style="color:${sc}">${d.status}</strong>
           </div>
-          <div class="rec-lock-title">Final File Pending</div>
-          <div class="rec-lock-desc">Available once status reaches <strong style="color:#4ade80">Released</strong>.<br>Current: <strong style="color:${sc}">${d.status}</strong></div>
         </div>`;
     }
-  }
-  _set('download-zone', fileHtml);
 
-  document.getElementById('hero').style.display           = 'none';
-  document.getElementById('result-section').style.display = '';
+    fileHtml += `</div>`;
+  }
+
+  /* ── Admin panel (only if logged-in admin) ── */
+  let adminHtml = '';
+  if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') {
+    const STATUSES = ['Received','Processing','For Approval','Signed','Approved','Released','Rejected'];
+    const opts = STATUSES.map(s =>
+      `<option value="${s}"${s === d.status ? ' selected' : ''}>${s}</option>`
+    ).join('');
+    adminHtml = `
+      <div class="cct-admin">
+        <div class="cct-admin-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Admin — Update Status
+        </div>
+        <div class="cct-admin-row">
+          <select class="cct-admin-select" id="cct-admin-status">${opts}</select>
+          <input  class="cct-admin-input" id="cct-admin-note" placeholder="Note (optional)" />
+          <button class="cct-admin-btn" onclick="_cctAdminUpdate('${docKey}')">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Update
+          </button>
+        </div>
+        <div class="cct-admin-err" id="cct-admin-err"></div>
+      </div>`;
+  }
+
+  /* ── Location pills ── */
+  let locPillsHtml = '';
+  if (lastLoc.location || lastLoc.handler) {
+    locPillsHtml = `<div class="cct-loc-pills">` +
+      (lastLoc.location ? `<span class="cct-loc-pill">${lastLoc.location}</span>` : '') +
+      (lastLoc.handler  ? `<span class="cct-loc-pill">${lastLoc.handler}</span>`  : '') +
+      `</div>`;
+  }
+
+  /* ── Assemble full card ── */
+  const cardHtml = `
+    <div class="cct-wrap">
+      <div class="cct">
+        <div class="cct-header">
+          <div>
+            <div class="cct-title">${d.name}</div>
+            <div class="cct-meta">${dispId} &nbsp;·&nbsp; ${d.type || ''}</div>
+          </div>
+          <span class="cct-badge" style="color:${sc};background:${sc}1a;border:1px solid ${sc}40">
+            <span class="cct-badge-dot${!isRejected && !isReleased ? ' pulsing' : ''}" style="background:${sc}"></span>
+            ${d.status}
+          </span>
+        </div>
+
+        ${locPillsHtml}
+
+        <div class="cct-progress">${progressHtml}</div>
+
+        <hr class="cct-divider">
+
+        <div class="cct-body">
+          <div class="cct-fields">${fieldsHtml}</div>
+
+          <div class="cct-qr-col">
+            <div class="cct-qr-box" id="cct-qr-target"></div>
+            <div class="cct-qr-hint">Scan to track</div>
+            <button class="cct-qr-btn" onclick="_cctDownloadQR()">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download QR
+            </button>
+          </div>
+        </div>
+
+        <div class="cct-hist">
+          <div class="cct-sect-label">Activity History</div>
+          ${histHtml}
+        </div>
+
+        ${fileHtml}
+        ${adminHtml}
+      </div>
+
+      <div class="cct-back-row">
+        <button class="cct-back-btn" onclick="goBack()">← Search Another Document</button>
+      </div>
+    </div>`;
+
+  /* ── Inject into result-section, replacing existing card ── */
+  const resultSection = document.getElementById('result-section');
+  resultSection.innerHTML = cardHtml;
+  resultSection.style.display = '';
+
+  document.getElementById('hero').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  /* ── Build QR ── */
+  const qrTarget = document.getElementById('cct-qr-target');
+  if (qrTarget && typeof QRCode !== 'undefined') {
+    new QRCode(qrTarget, {
+      text:         trackUrl,
+      width:        108,
+      height:       108,
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  }
+}
+
+/* ── _cctDownloadQR — download QR from compact card ── */
+function _cctDownloadQR() {
+  const box = document.getElementById('cct-qr-target');
+  if (!box) return;
+  const canvas = box.querySelector('canvas');
+  const img    = box.querySelector('img');
+  const link   = document.createElement('a');
+  link.download = 'document-qr.png';
+  if (canvas) { link.href = canvas.toDataURL('image/png'); }
+  else if (img) { link.href = img.src; }
+  else { alert('QR not ready. Please wait a moment.'); return; }
+  link.click();
+}
+
+/* ── _cctAdminUpdate — admin status update from compact card ── */
+async function _cctAdminUpdate(docId) {
+  if (typeof currentUser === 'undefined' || !currentUser || currentUser.role !== 'admin') return;
+
+  const statusEl = document.getElementById('cct-admin-status');
+  const noteEl   = document.getElementById('cct-admin-note');
+  const errEl    = document.getElementById('cct-admin-err');
+  const btn      = document.querySelector('.cct-admin-btn');
+
+  const newStatus = statusEl ? statusEl.value : '';
+  const note      = noteEl  ? noteEl.value.trim() : '';
+
+  if (!newStatus) { errEl.textContent = 'Select a status.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+
+  try {
+    const result = await apiUpdateDocumentStatus(docId, {
+      status: newStatus,
+      note:   note || `Status updated to ${newStatus} by admin`,
+      by:     currentUser.name || currentUser.username,
+    }, currentUser.token);
+
+    if (result && result._error) {
+      errEl.textContent = result.message || 'Update failed.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    if (result === null) {
+      errEl.textContent = 'Cannot reach server.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    /* Re-fetch and re-render with fresh data */
+    const fresh = await apiTrackDocument(docId);
+    if (fresh && !fresh._error) {
+      const d = { ...fresh, id: fresh.internalId, fullDisplayId: fresh.fullDisplayId || fresh.displayId };
+      const idx = docs.findIndex(x => (x.internalId||x.id) === d.internalId);
+      if (idx >= 0) { docs[idx] = { ...docs[idx], ...d }; } else { docs.push(d); }
+      renderPublicTrackResult(d);
+    }
+
+    if (typeof toast === 'function') toast('Status updated to ' + newStatus);
+    if (typeof renderAll === 'function') renderAll();
+    if (typeof save    === 'function') save();
+
+  } catch(e) {
+    console.error('[_cctAdminUpdate]', e);
+    errEl.textContent = 'Error updating status.';
+    errEl.style.display = 'block';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Update'; }
+  }
 }
 
 /* ── Go back ── */
 function goBack() {
-  document.getElementById('result-section').style.display = 'none';
-  document.getElementById('hero').style.display           = '';
-  document.getElementById('doc-input').value              = '';
-  document.getElementById('search-error').style.display   = 'none';
+  const rs = document.getElementById('result-section');
+  if (rs) rs.style.display = 'none';
+  const heroEl = document.getElementById('hero');
+  if (heroEl) heroEl.style.display = '';
+  const inp = document.getElementById('doc-input');
+  if (inp) inp.value = '';
+  const errEl = document.getElementById('search-error');
+  if (errEl) errEl.style.display = 'none';
   _pubTrackDocId = null;
   window.history.replaceState({}, '', window.location.pathname);
 }
