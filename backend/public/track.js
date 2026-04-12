@@ -336,9 +336,9 @@ function _injectCompactCardStyles() {
       font-size: 12px;
       color: rgba(255,255,255,.85);
     }
-    .cct-field span.prio-high   { color: #f97316; }
-    .cct-field span.prio-urgent { color: #ef4444; }
-    .cct-field span.prio-low    { color: rgba(255,255,255,.45); }
+    .cct-field span.prio-high   { color: #f97316; background: transparent; border: none; padding: 0; border-radius: 0; }
+    .cct-field span.prio-urgent { color: #ef4444; background: transparent; border: none; padding: 0; border-radius: 0; }
+    .cct-field span.prio-low    { color: rgba(255,255,255,.45); background: transparent; border: none; padding: 0; border-radius: 0; }
     .cct-field span.val-pending { color: rgba(255,255,255,.3); font-style: italic; }
     .cct-field span.val-released { color: #4ade80; font-weight: 600; }
     /* QR column */
@@ -712,6 +712,17 @@ function renderPublicTrackResult(d) {
   ).join('');
 
   /* ── History timeline ── */
+  const STATUS_DOT_COLORS = {
+    'Received':    '#60a5fa',
+    'Processing':  '#a78bfa',
+    'For Approval':'#fbbf24',
+    'Signed':      '#34d399',
+    'Approved':    '#34d399',
+    'Released':    '#4ade80',
+    'Rejected':    '#f87171',
+    'Pending':     '#fbbf24',
+  };
+
   const hist = (d.history || [])
     .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
     .map(h => ({
@@ -729,7 +740,7 @@ function renderPublicTrackResult(d) {
     ? `<div class="cct-h-meta">No history recorded yet.</div>`
     : hist.map(h => {
         const isMove = h._type === 'movement';
-        const dotColor = isMove ? '#fbbf24' : sc;
+        const dotColor = isMove ? '#fbbf24' : (STATUS_DOT_COLORS[h.status] || '#60a5fa');
         return `<div class="cct-hist-item">
           <div class="cct-h-dot" style="background:${dotColor}"></div>
           <div style="flex:1;min-width:0">
@@ -758,7 +769,7 @@ function renderPublicTrackResult(d) {
           </div>
           <div style="flex:1;min-width:0">
             <div class="cct-file-name">Original File <span class="cct-file-sub">(Submitted)</span></div>
-            <div class="cct-file-meta">By ${d.by || 'user'} · IDEA-128 encrypted · Not downloadable</div>
+            <div class="cct-file-meta">Submitted by ${d.by || 'user'}</div>
           </div>
           <span class="cct-file-badge">Reference Only</span>
         </div>`;
@@ -786,10 +797,11 @@ function renderPublicTrackResult(d) {
     } else if (!isReleased) {
       fileHtml += `
         <div class="cct-lock">
-          <div class="cct-lock-title">Final File Pending</div>
+          <div class="cct-lock-title">No processed file attached</div>
           <div class="cct-lock-desc">
-            Available once status reaches <strong style="color:#4ade80">Released</strong>.<br>
-            Current: <strong style="color:${sc}">${d.status}</strong>
+            The admin hasn't uploaded the final file yet.<br>
+            Download becomes available when status is <strong style="color:#4ade80">Released</strong>.<br>
+            <span style="opacity:.5">Current: <code style="font-size:10px">${d.status}</code></span>
           </div>
         </div>`;
     }
