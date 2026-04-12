@@ -1,8 +1,11 @@
-// Authentication & session logic.
-//
-// Mode detection:
-//   Backend responds  → JWT-based auth (MongoDB)
-//   Backend offline   → fall back to localStorage accounts[]
+/* ======================================================================
+   auth.js - Authentication & Session Logic
+   CIT Document Tracker - Group 6
+
+   MODE DETECTION:
+     - If backend API responds → use JWT-based auth (MongoDB)
+     - If backend is offline   → fall back to localStorage accounts[]
+====================================================================== */
 
 function openAuth(tab) {
   switchAuthTab(tab || 'login');
@@ -44,7 +47,7 @@ function showAuthError(el, msg) {
   el.style.display = 'block';
 }
 
-// JWT / session helpers
+/* -- JWT / session helpers -- */
 function saveSession(userObj, token) {
   try {
     if (token) localStorage.setItem('cit_jwt', token);
@@ -61,7 +64,7 @@ function getSavedSession() {
   try { const s = localStorage.getItem('cit_session'); return s ? JSON.parse(s) : null; } catch(e) { return null; }
 }
 
-// Map backend user response → internal app user shape
+/* Map backend user → app user shape */
 function _mapBackendUser(apiUser, token) {
   return {
     id:           apiUser._id || apiUser.userId || apiUser.id,
@@ -75,7 +78,7 @@ function _mapBackendUser(apiUser, token) {
   };
 }
 
-// Attempt to restore a previous session on page load
+/* Try to restore session on page load */
 async function tryRestoreSession() {
   const token = getSavedToken();
   const saved = getSavedSession();
@@ -87,7 +90,7 @@ async function tryRestoreSession() {
       return true;
     }
   }
-  // Backend offline — use saved session
+  /* Backend offline - use saved session */
   if (saved) {
     const local = accounts.find(a => a.username === saved.username);
     currentUser = local || saved;
@@ -96,6 +99,7 @@ async function tryRestoreSession() {
   return false;
 }
 
+/* -- Sign In -- */
 async function doLogin() {
   const u   = document.getElementById('l-user').value.trim().toLowerCase();
   const p   = document.getElementById('l-pass').value;
@@ -133,7 +137,7 @@ async function doLogin() {
       return;
     }
 
-    // Fallback to localStorage when backend is unreachable
+    /* Fallback to localStorage */
     const acc = (accounts || []).find(a => a.username === u && a.password === p);
     if (!acc) {
       showAuthError(err, 'Incorrect username or password.');
@@ -153,6 +157,7 @@ async function doLogin() {
   }
 }
 
+/* -- Create Account -- */
 async function doRegister() {
   const name = document.getElementById('r-name').value.trim();
   const u    = document.getElementById('r-user').value.trim().toLowerCase();
@@ -182,7 +187,7 @@ async function doRegister() {
     save(); enterApp(); return;
   }
 
-  // Fallback localStorage registration
+  /* Fallback localStorage registration */
   btn.disabled = false; btn.textContent = 'Create Account';
   if (apiResult && apiResult.message) { showAuthError(err, apiResult.message); return; }
   if (accounts.find(a => a.username === u)) { showAuthError(err, 'Username already taken.'); return; }
@@ -199,6 +204,7 @@ async function doRegister() {
   clearAuthFields(); closeAuth(); enterApp();
 }
 
+/* -- Enter app -- */
 function enterApp() {
   document.getElementById('public-view').style.display = 'none';
   document.getElementById('app-view').style.display    = 'flex';
@@ -210,6 +216,7 @@ function enterApp() {
   renderNotifCount();
 }
 
+/* -- Log out -- */
 function logout() {
   if (currentUser) logActivity(currentUser.id, 'Logged out', '#94a3b8');
   save(); clearSession(); currentUser = null;
@@ -224,6 +231,7 @@ function logout() {
   document.getElementById('search-error').style.display   = 'none';
 }
 
+/* -- Setup sidebar -- */
 function setupSidebar() {
   const isAdmin = currentUser.role === 'admin';
 
@@ -234,7 +242,6 @@ function setupSidebar() {
       <span class="user-role-badge ${isAdmin ? 'role-admin' : 'role-user'}">${isAdmin ? 'ADMIN' : 'USER'}</span>
     </div>`;
 
-  // Admin-only nav items
   document.getElementById('nav-users').style.display     = isAdmin ? '' : 'none';
   document.getElementById('nav-actlogs').style.display   = isAdmin ? '' : 'none';
   document.getElementById('nav-movements').style.display = isAdmin ? '' : 'none';

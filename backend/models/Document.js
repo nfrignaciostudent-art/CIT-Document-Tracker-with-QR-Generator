@@ -1,15 +1,20 @@
-const mongoose = require('mongoose');
+/* ══════════════════════════════════════════════════════════════════════
+   models/Document.js - Document Schema
+   CIT Document Tracker - Group 6
 
-// Dual-ID standard:
-//   internalId    — ULID, primary DB key, used in QR codes (not user-facing)
-//   displayId     — DOC-YYYYMMDD-XXXX, shown on receipts and UI
-//   verifyCode    — 4-char FNV-1a derived anti-tamper suffix
-//   fullDisplayId — displayId + '-' + verifyCode (what users see)
-//
-// History action types:
-//   'Status Update' — admin changes document status
-//   'Movement'      — admin manually logs a movement event
-//   QR scans go to the separate ScanLog collection, not here
+   Dual-ID Standard:
+     internalId    - ULID, primary key in DB, used in QR codes (not user-facing)
+     displayId     - DOC-YYYYMMDD-XXXX, user-facing on receipts
+     verifyCode    - 4-char alphanumeric anti-tamper suffix
+     fullDisplayId - displayId + '-' + verifyCode (shown on receipts/UI)
+
+   History action types:
+     'Status Update' - admin changes document status
+     'Movement'      - admin manually logs a movement event
+   (QR scans are now stored in the separate ScanLog collection)
+══════════════════════════════════════════════════════════════════════ */
+
+const mongoose = require('mongoose');
 
 const HistoryEntrySchema = new mongoose.Schema({
   action:   { type: String, default: 'Status Update' },
@@ -22,6 +27,7 @@ const HistoryEntrySchema = new mongoose.Schema({
 }, { _id: false });
 
 const DocumentSchema = new mongoose.Schema({
+  /* ── Dual-ID System ── */
   internalId:    { type: String, unique: true, required: true },
   displayId:     { type: String, unique: true, required: true },
   verifyCode:    { type: String, default: '' },

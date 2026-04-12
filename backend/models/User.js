@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════════════
+   models/User.js - User Schema
+   CIT Document Tracker - Group 6
+══════════════════════════════════════════════════════════════════════ */
+
 const mongoose = require('mongoose');
 const bcrypt   = require('bcryptjs');
 
@@ -9,7 +14,7 @@ const UserSchema = new mongoose.Schema({
   role:      { type: String, enum: ['admin', 'user'], default: 'user' },
   color:     { type: String, default: '#4ade80' },
   lastLogin: { type: Date, default: null },
-  lastSeen:  { type: Date, default: null },  // updated by heartbeat every 2 min
+  lastSeen:  { type: Date, default: null },   /* updated by heartbeat every 2min */
   createdAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 

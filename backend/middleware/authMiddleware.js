@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════════════
+   middleware/authMiddleware.js - JWT Authentication Guard
+   CIT Document Tracker - Group 6
+══════════════════════════════════════════════════════════════════════ */
+
 const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
 

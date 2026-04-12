@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════════════
+   server.js - Main Server Entry Point
+   CIT Document Tracker - Group 6
+══════════════════════════════════════════════════════════════════════ */
+
 require('dotenv').config();
 const express    = require('express');
 const cors       = require('cors');
@@ -17,6 +22,7 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+/* ── API Routes ─────────────────────────────────────────────────── */
 app.use('/api/auth',      authRoutes);
 app.use('/api/documents', documentRoutes);
 
@@ -24,12 +30,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'CIT DocTracker API running', group: 'Group 6' });
 });
 
-// Serve the frontend SPA for all non-API routes
+/* ── Serve Frontend Static Files ────────────────────────────────── */
 app.use(express.static(path.join(__dirname, 'public')));
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+/* ── Error Handlers ─────────────────────────────────────────────── */
 app.use((err, req, res, next) => {
   console.error('[Server Error]', err);
   res.status(500).json({ message: err.message || 'Internal server error' });

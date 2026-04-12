@@ -1,11 +1,20 @@
-// Public document tracking logic.
-// QR scan logging is automatic and silent — fired on ?track= URL detection.
-// Manual tracking searches (hero form) do NOT trigger a scan log.
+/* ══════════════════════════════════════════════════════════════════════
+   track.js - Public Document Tracking Logic
+   CIT Document Tracker - Group 6
+
+   SCAN LOGGING RULE:
+     QR scan logging is FULLY AUTOMATIC.
+     No form, no manual input, no banner.
+     When ?track= is detected, the system silently logs the scan event
+     to the backend scan_logs collection (separate from doc.history).
+     Users cannot manually add or edit movement logs.
+
+   TIMEZONE: Displays timestamps in Asia/Manila (UTC+8).
+══════════════════════════════════════════════════════════════════════ */
 
 let _pubTrackDocId = null;
 
-// Spam prevention: no duplicate scan logs within 30 seconds
-
+/* ── Spam prevention: no duplicate scan logs within 30 seconds ── */
 const SCAN_COOLDOWN_MS = 30000;
 function _getScanKey(docId) { return 'cit_lastscan_' + docId; }
 function _canLog(docId) {
@@ -18,8 +27,7 @@ function _markScanned(docId) {
   try { localStorage.setItem(_getScanKey(docId), String(Date.now())); } catch(e) {}
 }
 
-// Manila timestamp helper
-
+/* ── Manila timestamp helper ── */
 function _manilaDisplayDate() {
   return new Date().toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',
@@ -29,10 +37,11 @@ function _manilaDisplayDate() {
   });
 }
 
-// _autoLogQRScan — fires silently on QR URL detection.
-// Saves to scan_logs via POST /api/documents/:id/scan-log.
-// Does NOT touch doc.history or change document status.
-
+/* ── _autoLogQRScan - AUTOMATIC, SILENT scan log on QR detection ──
+   No form. No manual input. System-generated only.
+   Saves to scan_logs collection via POST /api/documents/:id/scan-log.
+   Does NOT touch doc.history. Does NOT change document status.
+───────────────────────────────────────────────────────────────────── */
 function _autoLogQRScan(d) {
   const docId = d.internalId || d.id;
 
@@ -51,7 +60,7 @@ function _autoLogQRScan(d) {
   _showScanToast('QR scan logged automatically.');
 }
 
-// Small non-blocking toast for scan confirmation
+/* Small, non-blocking toast for scan confirmation */
 function _showScanToast(msg) {
   const el = document.createElement('div');
   el.style.cssText = `
@@ -66,8 +75,7 @@ function _showScanToast(msg) {
   setTimeout(() => el.remove(), 3000);
 }
 
-// initTrackingPage - called on page load
-
+/* ── initTrackingPage - called on page load ── */
 function initTrackingPage() {
   const params      = new URLSearchParams(window.location.search);
   const trackParam  = params.get('track');
@@ -162,8 +170,7 @@ async function _fetchAndRenderPublicDoc(trackParam) {
   }
 }
 
-// handleTrack - user clicks "Track Document" in hero
-
+/* ── handleTrack - user clicks "Track Document" in hero ── */
 async function handleTrack() {
   const raw   = (document.getElementById('doc-input').value || '').trim().toUpperCase();
   const errEl = document.getElementById('search-error');
@@ -219,8 +226,9 @@ function showPublicError(msg) {
   errEl.style.display = 'block';
 }
 
-// _injectCompactCardStyles — inject compact card CSS once
-
+/* ══════════════════════════════════════════════════════════════════════
+   _injectCompactCardStyles — inject compact card CSS once
+══════════════════════════════════════════════════════════════════════ */
 let _compactStylesInjected = false;
 function _injectCompactCardStyles() {
   if (_compactStylesInjected) return;
@@ -228,8 +236,7 @@ function _injectCompactCardStyles() {
   const s = document.createElement('style');
   s.id = 'compact-card-styles';
   s.textContent = `
-    // Compact tracking card
-
+    /* ── Compact tracking card ── */
     .cct-wrap {
       max-width: 680px;
       margin: 0 auto;
@@ -643,8 +650,7 @@ function _injectCompactCardStyles() {
   document.head.appendChild(s);
 }
 
-// Render full public tracking result - compact dark card
-
+/* ── Render full public tracking result - compact dark card ── */
 function renderPublicTrackResult(d) {
   _pubTrackDocId = d.internalId || d.id;
   _injectCompactCardStyles();
@@ -671,8 +677,7 @@ function renderPublicTrackResult(d) {
   const docKey     = d.internalId || d.id;
   const trackUrl   = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + docKey;
 
-  // Progress breadcrumb
-
+  /* ── Progress breadcrumb ── */
   const progressHtml = isRejected
     ? `<span class="p-rej">✕ Rejected</span>`
     : workflow.map((step, i) => {
@@ -682,16 +687,14 @@ function renderPublicTrackResult(d) {
                `<span class="${cls}">${step}</span>`;
       }).join('');
 
-  // Priority class
-
+  /* ── Priority class ── */
   function _prioCls(p) {
     if (!p) return '';
     const m = { High: 'prio-high', Urgent: 'prio-urgent', Low: 'prio-low' };
     return m[p] || '';
   }
 
-  // Details rows
-
+  /* ── Details rows ── */
   const fields = [
     ['Submitted By', `<span>${d.by || '-'}</span>`],
     ['Purpose',      `<span>${d.purpose || '-'}</span>`],
@@ -706,8 +709,7 @@ function renderPublicTrackResult(d) {
     `<div class="cct-field"><label>${lbl}</label>${val}</div>`
   ).join('');
 
-  // History timeline
-
+  /* ── History timeline ── */
   const STATUS_DOT_COLORS = {
     'Received':    '#60a5fa',
     'Processing':  '#a78bfa',
@@ -749,8 +751,7 @@ function renderPublicTrackResult(d) {
         </div>`;
       }).join('');
 
-  // File section
-
+  /* ── File section ── */
   const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.hasOriginalFile);
   const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.hasProcessedFile);
 
@@ -806,8 +807,7 @@ function renderPublicTrackResult(d) {
     fileHtml += `</div>`;
   }
 
-  // Admin panel (only if logged-in admin)
-
+  /* ── Admin panel (only if logged-in admin) ── */
   let adminHtml = '';
   if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') {
     const STATUSES = ['Received','Processing','For Approval','Signed','Approved','Released','Rejected'];
@@ -832,8 +832,7 @@ function renderPublicTrackResult(d) {
       </div>`;
   }
 
-  // Location pills
-
+  /* ── Location pills ── */
   let locPillsHtml = '';
   if (lastLoc.location || lastLoc.handler) {
     locPillsHtml = `<div class="cct-loc-pills">` +
@@ -842,8 +841,7 @@ function renderPublicTrackResult(d) {
       `</div>`;
   }
 
-  // Assemble full card
-
+  /* ── Assemble full card ── */
   const cardHtml = `
     <div class="cct-wrap">
       <div class="cct">
@@ -891,8 +889,7 @@ function renderPublicTrackResult(d) {
       </div>
     </div>`;
 
-  // Inject into result-section, replacing existing card
-
+  /* ── Inject into result-section, replacing existing card ── */
   const resultSection = document.getElementById('result-section');
   resultSection.innerHTML = cardHtml;
   resultSection.style.display = '';
@@ -900,8 +897,7 @@ function renderPublicTrackResult(d) {
   document.getElementById('hero').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Build QR
-
+  /* ── Build QR ── */
   const qrTarget = document.getElementById('cct-qr-target');
   if (qrTarget && typeof QRCode !== 'undefined') {
     new QRCode(qrTarget, {
@@ -913,8 +909,7 @@ function renderPublicTrackResult(d) {
   }
 }
 
-// _cctDownloadQR — download QR from compact card
-
+/* ── _cctDownloadQR — download QR from compact card ── */
 function _cctDownloadQR() {
   const box = document.getElementById('cct-qr-target');
   if (!box) return;
@@ -928,8 +923,7 @@ function _cctDownloadQR() {
   link.click();
 }
 
-// _cctAdminUpdate — admin status update from compact card
-
+/* ── _cctAdminUpdate — admin status update from compact card ── */
 async function _cctAdminUpdate(docId) {
   if (typeof currentUser === 'undefined' || !currentUser || currentUser.role !== 'admin') return;
 
@@ -987,8 +981,7 @@ async function _cctAdminUpdate(docId) {
   }
 }
 
-// Go back
-
+/* ── Go back ── */
 function goBack() {
   const rs = document.getElementById('result-section');
   if (rs) rs.style.display = 'none';
@@ -1011,8 +1004,7 @@ function getLatestLocationPublic(d) {
   return { location: '', handler: '' };
 }
 
-// Internal (app) track-by-ID search
-
+/* ── Internal (app) track-by-ID search ── */
 async function searchByTrackingId() {
   const raw    = (document.getElementById('track-id-input').value || '').trim().toUpperCase();
   const result = document.getElementById('track-search-result');
@@ -1146,7 +1138,7 @@ async function searchByTrackingId() {
   toast('Document found. QR code generated.');
 }
 
-// File section for internal app view
+/* File section for internal app view */
 function buildInternalFileSection(d, sc) {
   const isReleased   = d.status === 'Released';
   const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
@@ -1216,8 +1208,7 @@ function buildInternalFileSection(d, sc) {
   return html;
 }
 
-// Download the public QR code as PNG
-
+/* ── Download the public QR code as PNG ── */
 function downloadPublicQR() {
   const qrBox = document.getElementById('pub-qr-box');
   if (!qrBox) return;

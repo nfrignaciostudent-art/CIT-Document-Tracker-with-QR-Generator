@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════════════
+   controllers/authController.js
+   CIT Document Tracker - Group 6
+══════════════════════════════════════════════════════════════════════ */
+
 const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -6,7 +11,7 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
 
 const generateToken = (id) => jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 
-// POST /api/auth/register
+/* ── POST /api/auth/register ── */
 const registerUser = async (req, res) => {
   try {
     const { userId, username, name, password, role, color } = req.body;
@@ -47,7 +52,7 @@ const registerUser = async (req, res) => {
   }
 };
 
-// POST /api/auth/login
+/* ── POST /api/auth/login ── */
 const loginUser = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -68,6 +73,7 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ message: 'Incorrect username or password.' });
     }
 
+    /* ── stamp last login time ── */
     user.lastLogin = new Date();
     await user.save();
 
@@ -86,7 +92,7 @@ const loginUser = async (req, res) => {
   }
 };
 
-// GET /api/auth/me (protected)
+/* ── GET /api/auth/me ── (protected) */
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
@@ -97,7 +103,7 @@ const getMe = async (req, res) => {
   }
 };
 
-// GET /api/auth/users (admin only)
+/* ── GET /api/auth/users ── (admin only) */
 const getUsers = async (req, res) => {
   try {
     const users = await User.find({ role: 'user' })
@@ -132,8 +138,9 @@ const getUsers = async (req, res) => {
   }
 };
 
-// POST /api/auth/heartbeat (protected)
-// Called by the frontend every 2 minutes to keep lastSeen fresh for online status detection.
+/* ── POST /api/auth/heartbeat ── (protected)
+   Called by the frontend every 2 minutes while user is active.
+   Updates lastSeen so the admin can see who is currently online. */
 const heartbeat = async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.user._id, { lastSeen: new Date() });

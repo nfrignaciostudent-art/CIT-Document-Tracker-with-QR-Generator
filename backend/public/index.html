@@ -10,7 +10,9 @@
 </head>
 <body class="public-mode">
 
-<!-- TOP NAV -->
+<!-- ==============================================================
+     TOP NAV
+     ============================================================== -->
 <nav class="topnav" id="topnav">
   <div class="nav-brand" id="nav-brand">
     <div class="brand-icon">
@@ -25,7 +27,9 @@
   </div>
 </nav>
 
-<!-- PUBLIC VIEW -->
+<!-- ==============================================================
+     PUBLIC VIEW
+     ============================================================== -->
 <div id="public-view">
 
   <section class="hero" id="hero">
@@ -55,7 +59,7 @@
 
     <div class="unified-receipt-card">
 
-      <!-- Result Header -->
+      <!-- ── Card Header ── -->
       <div class="unified-receipt-header">
         <div class="res-header-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -67,46 +71,67 @@
         <div id="res-status-badge" class="res-status-pill">-</div>
       </div>
 
-      <!-- Location -->
+      <!-- ── Optional location pills ── -->
       <div id="res-location-row" class="res-location-row" style="display:none"></div>
 
+      <!-- ── Card Body ── -->
       <div class="unified-receipt-body">
 
-        <!-- Progress -->
+        <!-- Workflow progress — full width -->
         <div class="unified-section">
-          <div class="unified-section-label">Document Progress</div>
+          <div class="unified-section-label">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Document Progress
+          </div>
           <div id="receipt-workflow" class="receipt-workflow"></div>
         </div>
 
         <div class="unified-divider"></div>
 
+        <!-- Two-column grid -->
         <div class="unified-two-col">
 
-          <!-- Left Column -->
+          <!-- LEFT: Details + Activity History -->
           <div class="unified-left">
-            <div class="unified-section-label">Document Details</div>
+            <div class="unified-section-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Document Details
+            </div>
             <div id="detail-list" class="res-fields"></div>
 
-            <div class="unified-section-label">Activity History</div>
+            <div class="unified-section-label" style="margin-top:22px">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              Activity History
+            </div>
             <div id="pub-timeline" class="res-timeline"></div>
           </div>
 
-          <!-- Right Column -->
+          <!-- RIGHT: QR Code + Download -->
           <div class="unified-right">
-            <div class="unified-section-label">QR Code</div>
+            <div class="unified-section-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/></svg>
+              QR Code · Scan to Track
+            </div>
             <div class="qr-center">
               <div class="qr-box" id="pub-qr-box"></div>
-              <p class="qr-hint">Scan to track</p>
-              <button onclick="downloadPublicQR()" class="res-dl-qr-btn">Download QR</button>
+              <p class="qr-hint">Point any phone camera at this code</p>
+              <div class="qr-url-tag" id="qr-url-tag"></div>
+              <button onclick="downloadPublicQR()" class="res-dl-qr-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download QR
+              </button>
             </div>
 
-            <div class="unified-section-label">Download</div>
+            <div class="unified-section-label" style="margin-top:22px">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download
+            </div>
             <div id="download-zone"></div>
           </div>
 
-        </div>
-      </div>
-    </div>
+        </div><!-- /.unified-two-col -->
+      </div><!-- /.unified-receipt-body -->
+    </div><!-- /.unified-receipt-card -->
 
     <div class="back-row">
       <button class="btn-back" onclick="goBack()">← Search Another Document</button>
@@ -117,111 +142,737 @@
     <p>CIT Document Tracker - IDEA-128 Encryption - Group 6</p>
   </div>
 
-</div>
+</div><!-- /#public-view -->
 
-<!-- APP VIEW -->
+
+<!-- ==============================================================
+     APP VIEW
+     ============================================================== -->
 <div id="app-view" style="display:none">
 
-  <!-- Sidebar toggle -->
-  <button id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+  <button id="sidebar-toggle" aria-label="Open navigation" onclick="toggleSidebar()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
   <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-logo">
-      <h1>CIT Tracker</h1>
+      <div class="logo-mark">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <h1>CIT Document Tracker</h1>
     </div>
-
-    <button class="nav-item active" onclick="showPage('dashboard',this)">Dashboard</button>
-    <button class="nav-item" onclick="showPage('register',this)">Register Doc</button>
-    <button class="nav-item" onclick="showPage('track',this)">Track</button>
-    <button class="nav-item" onclick="showPage('vault',this)">Vault</button>
-
+    <div id="user-info-bar" class="user-info-bar"></div>
+    <button class="notif-btn" id="notif-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Notifications
+      <span class="notif-count" id="notif-count" style="display:none">0</span>
+    </button>
+    <div class="nav-section-label">Main</div>
+    <button class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>Dashboard
+    </button>
+    <button class="nav-item" id="nav-register" onclick="showPage('register',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>Register Doc
+    </button>
+    <button class="nav-item" id="nav-track" onclick="showPage('track',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>Track Document
+    </button>
+    <button class="nav-item" id="nav-vault" onclick="showPage('vault',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Secure Vault
+    </button>
+    <button class="nav-item admin-only" id="nav-users" onclick="showPage('users',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>User Management
+    </button>
+    <button class="nav-item admin-only" id="nav-actlogs" onclick="showPage('actlogs',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>Activity Logs
+    </button>
+    <button class="nav-item admin-only" id="nav-movements" onclick="showPage('movements',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span>Movement Logs
+    </button>
+    <button class="nav-item admin-only" id="nav-scanlogs" onclick="showPage('scanlogs',this)" style="display:none">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><line x1="21" y1="21" x2="21" y2="21"/></svg></span>Scan Logs
+    </button>
+    <div class="nav-section-label">Tools</div>
+    <button class="nav-item" id="nav-demo" onclick="showPage('demo',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>IDEA Demo
+    </button>
+    <button class="nav-item" id="nav-settings" onclick="showPage('settings',this)">
+      <span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Settings
+    </button>
     <div class="sidebar-bottom">
-      <button onclick="logout()">Log Out</button>
+      <button class="lock-btn" onclick="logout()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Log Out
+      </button>
     </div>
   </div>
 
-  <!-- MAIN -->
+  <!-- Main Content -->
   <div class="main">
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
-      <div class="page-header">
-        <h2>Dashboard</h2>
-
-        <!-- Global search -->
-        <div class="global-search-wrap">
-          <input type="text" id="global-search-input" placeholder="Search...">
+      <div class="page-header dash-header-row">
+        <div>
+          <h2 id="dash-title">Dashboard</h2>
+          <p id="dash-subtitle"></p>
+        </div>
+        <!-- ── FEATURE 1: Global Search ── -->
+        <div class="global-search-wrap" id="global-search-wrap">
+          <svg class="gsearch-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="global-search-input" class="global-search-input"
+            placeholder="Search anything..."
+            autocomplete="off" spellcheck="false"
+            onkeydown="if(event.key==='Escape')closeSearchResults()">
+          <div class="global-search-results" id="global-search-results"></div>
         </div>
       </div>
 
       <div class="stats-grid" id="stats-row"></div>
 
-      <div class="card">
-        <h3>Recent Documents</h3>
-        <table>
-          <tbody id="dash-tbody"></tbody>
-        </table>
+      <!-- ── Existing dash-grid (unchanged) ── -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="dash-grid">
+        <div class="card">
+          <div class="card-head"><div><h3>Recent Documents</h3><p></p></div></div>
+          <table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="dash-tbody"></tbody></table>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3 id="my-activity-title">My Recent Activity</h3></div>
+          <div class="card-body"><div class="activity-list" id="activity-list"></div></div>
+        </div>
       </div>
 
-      <div class="card">
-        <h3>Activity</h3>
-        <div id="activity-list"></div>
+      <!-- ── Second row: User Overview + System Activity (admin only) ── -->
+      <div style="display:none;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="dash-grid-2">
+
+        <!-- User Overview (admin only) -->
+        <div class="card" id="card-user-overview" style="display:none">
+          <div class="card-head">
+            <div>
+              <h3>User Overview</h3>
+              <p class="card-subhead">Registered accounts</p>
+            </div>
+            <button class="dash-link-btn" onclick="showPage('users',document.getElementById('nav-users'))">Manage</button>
+          </div>
+          <div id="user-overview-body" style="padding:0 16px 12px"></div>
+        </div>
+
+        <!-- System Activity (admin only) -->
+        <div class="card" id="card-system-activity" style="display:none">
+          <div class="card-head">
+            <div>
+              <h3>System Activity</h3>
+              <p class="card-subhead">Recent system activities</p>
+            </div>
+            <button class="dash-link-btn" onclick="showPage('actlogs',document.getElementById('nav-actlogs'))">View all</button>
+          </div>
+          <div class="card-body">
+            <div class="activity-list" id="system-activity-list"></div>
+          </div>
+        </div>
+
       </div>
     </div>
 
-    <!-- REGISTER -->
+    <!-- REGISTER DOC -->
     <div class="page" id="page-register">
       <div class="page-header"><h2>Register Document</h2></div>
-
-      <div class="card">
-        <h3>Document Details</h3>
-
-        <input id="new-name" placeholder="Document Name">
-        <input id="new-by" placeholder="Submitted By">
-        <input id="new-purpose" placeholder="Purpose">
-
-        <button onclick="addDocument()">Submit</button>
+      <div class="workflow" id="register-workflow">
+        <div class="wf-step"><div class="wf-dot active">1</div><span class="wf-label active">Submit</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">2</div><span class="wf-label">Received</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">3</div><span class="wf-label">Processing</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">4</div><span class="wf-label">For Approval</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">5</div><span class="wf-label">Approved</span></div>
+        <div class="wf-arrow">›</div>
+        <div class="wf-step"><div class="wf-dot">6</div><span class="wf-label">Released</span></div>
+      </div>
+      <div class="card" id="register-card">
+        <div class="card-head"><h3>Document Details</h3></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="field"><label>Document Name</label><input type="text" id="new-name" placeholder="e.g. Enrollment Form"></div>
+            <div class="field"><label>Document Type</label>
+              <select id="new-type">
+                <option value="">Select type…</option>
+                <option>Academic</option><option>Laboratory</option>
+                <option>Administrative</option><option>Financial</option><option>Other</option>
+              </select>
+            </div>
+            <div class="field"><label>Submitted By</label><input type="text" id="new-by" placeholder="Full name"></div>
+            <div class="field"><label>Purpose</label><input type="text" id="new-purpose" placeholder="Brief description"></div>
+            <div class="field"><label>Priority Level</label>
+              <select id="new-priority">
+                <option value="Normal">Normal</option><option value="Low">Low</option>
+                <option value="High">High</option><option value="Urgent">Urgent</option>
+              </select>
+            </div>
+            <div class="field"><label>Expected Date (optional)</label><input type="date" id="new-due"></div>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label>Attach File <span style="font-weight:400;color:var(--muted)">(PDF, JPG, PNG - max 5 MB, optional)</span></label>
+            <div class="file-upload">
+              <input type="file" id="fileUpload" accept=".pdf,image/jpeg,image/png" onchange="previewFile(this)">
+              <label for="fileUpload" class="file-upload-control">
+                <span class="file-upload-btn">Choose file</span>
+                <span class="file-upload-state" id="file-upload-state">No file selected</span>
+              </label>
+            </div>
+            <div id="file-preview" style="display:none;" class="file-preview">
+              <span id="file-preview-name"></span>
+              <span id="file-preview-size" style="color:var(--muted);font-size:11px;"></span>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="save-btn" onclick="addDocument()">Submit Document</button>
+        </div>
+      </div>
+      <div id="register-receipt" style="display:none;margin-top:0">
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:16px">
+          <div style="width:36px;height:36px;background:#22c55e;border-radius:50%;display:grid;place-items:center;flex-shrink:0;color:#0d1117;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#15803d">Document Registered Successfully</div>
+            <div style="font-size:12px;color:#16a34a;margin-top:2px">Encrypted with IDEA - Permanent QR generated</div>
+          </div>
+        </div>
+        <div class="card" id="receipt-card">
+          <div class="card-head" style="background:#fafafa">
+            <div><h3>Receipt &amp; Routing Tag</h3><p>Permanent QR - always shows latest status when scanned</p></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" onclick="window.print()">Print</button>
+              <button class="btn btn-primary btn-sm" onclick="registerAnother()">+ Register Another</button>
+            </div>
+          </div>
+          <div class="card-body" style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;flex-shrink:0">
+              <div id="receipt-qr-wrap" style="padding:12px;background:#fff;border:2px solid var(--border);border-radius:12px;display:inline-block"></div>
+              <div id="receipt-qr-url" style="display:none"></div>
+            </div>
+            <div style="flex:1;min-width:220px">
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px">
+                <span style="font-weight:600;color:var(--muted)">Tracking ID</span>
+                <span id="receipt-id" style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-d)"></span>
+                <span style="font-weight:600;color:var(--muted)">Document</span><span id="receipt-name" style="font-weight:600"></span>
+                <span style="font-weight:600;color:var(--muted)">Type</span><span id="receipt-type"></span>
+                <span style="font-weight:600;color:var(--muted)">Submitted By</span><span id="receipt-by"></span>
+                <span style="font-weight:600;color:var(--muted)">Purpose</span><span id="receipt-purpose"></span>
+                <span style="font-weight:600;color:var(--muted)">Priority</span><span id="receipt-priority"></span>
+                <span style="font-weight:600;color:var(--muted)">Date Filed</span>
+                <span id="receipt-date" style="font-family:var(--mono);font-size:12px"></span>
+                <span style="font-weight:600;color:var(--muted)">Status</span>
+                <span><span class="badge badge-received" id="receipt-status">Received</span></span>
+                <span style="font-weight:600;color:var(--muted)">Attachment</span>
+                <span id="receipt-file" style="font-size:12px;color:var(--muted)"></span>
+              </div>
+              <div style="margin-top:16px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
+                <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">IDEA Encryption Proof</div>
+                <div style="font-family:var(--mono);font-size:10px;color:#94a3b8;word-break:break-all;line-height:1.6;white-space:pre-line" id="receipt-enc-proof"></div>
+              </div>
+              <div id="receipt-file-notice" style="display:none;margin-top:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1d4ed8;line-height:1.5">
+                <strong>Attached file is secured.</strong> Downloadable from tracking page once status is <strong>Released</strong>.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- TRACK -->
+    <!-- TRACK DOCUMENT -->
     <div class="page" id="page-track">
-      <div class="page-header"><h2>Track Document</h2></div>
-
-      <div class="card">
-        <input id="track-id-input" placeholder="Document ID">
-        <button onclick="searchByTrackingId()">Search</button>
+      <div class="page-header">
+        <h2>Track Document</h2>
+        
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-head">
+          <div>
+            <h3>Find Document</h3>
+            
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:10px;max-width:500px;margin-bottom:16px">
+            <input type="text" id="track-id-input" placeholder="DOC-20260405-0001 or internal ULID" class="search-input"
+              style="flex:1;font-family:var(--mono);text-transform:uppercase"
+              oninput="this.value=this.value.toUpperCase()"
+              onkeydown="if(event.key==='Enter')searchByTrackingId()">
+            <button class="btn btn-primary" onclick="searchByTrackingId()">Search →</button>
+          </div>
+          <div id="track-search-result"></div>
+        </div>
       </div>
     </div>
 
-    <!-- VAULT -->
+    <!-- SECURE VAULT -->
     <div class="page" id="page-vault">
-      <div class="page-header"><h2>Secure Vault</h2></div>
-
+      <div class="page-header"><h2>Secure Vault</h2><p></p></div>
       <div class="card">
-        <h3>Documents</h3>
-        <table>
-          <tbody id="vault-tbody"></tbody>
-        </table>
+        <div class="card-head">
+          <div><h3>Document Registry</h3></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="vault-user-filter" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--sans);outline:none;display:none" onchange="renderVault()">
+              <option value="">All Users</option>
+            </select>
+            <input class="search-input" id="vault-search" placeholder="  Search…" oninput="renderVault()">
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead id="vault-thead"><tr>
+              <th>Doc ID</th><th>Name</th><th>By</th><th>IDEA Encrypted</th><th>Decrypted</th><th>Location</th><th>File</th><th>Priority</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="vault-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-  </div>
-</div>
+    <!-- USER MANAGEMENT -->
+    <div class="page" id="page-users">
+      <div class="page-header"><h2>User Management</h2><p></p></div>
+      <div class="card">
+        <div class="card-head"><h3>Registered Users</h3></div>
+        <div class="card-body" id="users-list"></div>
+      </div>
+    </div>
 
-<!-- AUTH MODAL -->
-<div id="auth-overlay" style="display:none">
+    <!-- ACTIVITY LOGS -->
+    <div class="page" id="page-actlogs">
+      <div class="page-header"><h2>Activity Logs</h2><p></p></div>
+      <div class="card">
+        <div class="card-head">
+          <h3>System Logs</h3>
+          <button class="btn btn-sm btn-ghost" onclick="clearActivityLogs()">Clear All</button>
+        </div>
+        <div class="card-body" id="actlogs-body">
+          <p style="font-size:13px;color:var(--muted)">No activity yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOVEMENT LOGS -->
+    <div class="page" id="page-movements">
+      <div class="page-header"><h2>Movement Logs</h2><p></p></div>
+      <div class="stats-grid stats-grid-3" id="movement-stats-row"></div>
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Admin Movement History</h3><p>Movement entries logged by admin - authoritative document flow record</p></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input class="search-input" id="movement-search" placeholder="  Filter by doc or handler…" oninput="renderMovementLogs()">
+            <button class="btn btn-sm btn-red-soft" onclick="clearMovementLogs()">Clear All</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Timestamp</th><th>Doc ID</th><th>Document Name</th>
+              <th>Handled By</th><th>Location</th><th>Action</th>
+            </tr></thead>
+            <tbody id="movement-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCAN LOGS (ADMIN ONLY) -->
+    <div class="page" id="page-scanlogs">
+      <div class="page-header"><h2>Scan Logs</h2><p>Auto-generated QR scan events - separate from movement logs</p></div>
+      <div class="stats-grid stats-grid-3" id="scanlogs-stats-row"></div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3>QR Scan Events</h3>
+            <p>Every QR code scan from any device - system-generated only, read-only</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input class="search-input" id="scanlogs-search" placeholder="  Filter by doc, device or location..." oninput="renderScanLogs()">
+            <button class="btn btn-sm btn-ghost" onclick="refreshScanLogs()">Refresh</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Timestamp (Manila)</th><th>Doc ID</th><th>Document Name</th>
+              <th>Location</th><th>Status at Scan</th><th>Note</th>
+            </tr></thead>
+            <tbody id="scanlogs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- IDEA DEMO -->
+    <div class="page" id="page-demo">
+      <div class="page-header"><h2>IDEA Encryption Demo</h2><p></p></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-head"><h3>Algorithm Info</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--muted);line-height:1.7">
+            IDEA (International Data Encryption Algorithm) is a symmetric-key block cipher using a 64-bit block and a 128-bit key, expanded into 52 subkeys over 8 full rounds plus an output transformation. Each round combines three algebraic operations: multiplication mod 65537, addition mod 65536, and bitwise XOR.
+          </p>
+          <div class="algo-chips" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px">
+            <span class="chip">64-bit Block</span><span class="chip">128-bit Key</span>
+            <span class="chip">52 Subkeys</span><span class="chip">8 Rounds</span>
+            <span class="chip">MUL mod 65537</span><span class="chip">ADD mod 65536</span>
+            <span class="chip">XOR Bitwise</span><span class="chip">PKCS#7 Padding</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Try It</h3></div>
+        <div class="card-body">
+          <div class="form-grid cols3" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="field"><label>Secret Key (16 chars)</label><input type="text" id="demo-key" value="Group6CITKey2024"></div>
+            <div class="field"><label>Plaintext Message</label><input type="text" id="demo-msg" value="Hello CIT Group 6!"></div>
+            <div class="field" style="display:flex;align-items:flex-end"><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="runDemo()">Run IDEA</button></div>
+          </div>
+          <div class="demo-result" id="demo-result" style="display:none;margin-top:16px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:16px 18px">
+            <div class="demo-row" style="display:flex;gap:10px;margin-bottom:8px"><span class="demo-label">Original</span><span class="demo-val" id="d-orig"></span></div>
+            <div class="demo-row" style="display:flex;gap:10px;margin-bottom:8px"><span class="demo-label">Encrypted</span><span class="demo-val" id="d-enc" style="color:#dc2626;font-family:var(--mono);font-size:12px;word-break:break-all"></span></div>
+            <div class="demo-row" style="display:flex;gap:10px"><span class="demo-label">Decrypted</span><span class="demo-val" id="d-dec" style="color:#16a34a;font-weight:600;font-family:var(--mono)"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="page-header"><h2>Settings</h2><p>Manage your account</p></div>
+      <div class="card" style="max-width:440px">
+        <div class="card-head"><h3>Change Password</h3></div>
+        <div class="card-body">
+          <div class="field" style="margin-bottom:14px"><label>Current Password</label><input type="password" id="cur-pass" placeholder="Your current password"></div>
+          <div class="field" style="margin-bottom:14px"><label>New Password</label><input type="password" id="new-pass" placeholder="Min. 4 characters"></div>
+          <div class="field" style="margin-bottom:16px"><label>Confirm New Password</label><input type="password" id="conf-pass" placeholder="Repeat new password"></div>
+          <button class="btn btn-yellow" onclick="changePassword()">Update Password</button>
+          <p style="font-size:12px;color:var(--muted);margin-top:10px">You will be logged out after changing your password.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app-view -->
+
+
+<!-- ==============================================================
+     AUTH MODAL
+     ============================================================== -->
+<div class="auth-overlay" id="auth-overlay" style="display:none" onclick="handleOverlayClick(event)">
   <div class="auth-modal">
-    <h2>Login</h2>
-    <input id="l-user" placeholder="Username">
-    <input id="l-pass" type="password" placeholder="Password">
-    <button onclick="doLogin()">Sign In</button>
+    <button class="auth-close" onclick="closeAuth()">&#x2715;</button>
+    <div class="auth-badge">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    </div>
+    <h2 class="auth-heading">CIT Document Tracker</h2>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Create Account</button>
+    </div>
+    <div id="form-login" style="width:100%">
+      <div class="auth-field"><input type="text" id="l-user" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="auth-field"><input type="password" id="l-pass" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="auth-error" id="l-error" style="display:none"></div>
+      <button class="auth-submit" id="l-btn" onclick="doLogin()">Sign In</button>
+      <button class="auth-link" onclick="switchAuthTab('register')">Don't have an account? Create one</button>
+    </div>
+    <div id="form-register" style="display:none;width:100%">
+      <div class="auth-field"><input type="text" id="r-name" placeholder="Full Name"></div>
+      <div class="auth-field"><input type="text" id="r-user" placeholder="Username (letters, numbers, _)" autocomplete="username"></div>
+      <div class="auth-field"><input type="password" id="r-pass" placeholder="Password (min. 4 chars)" autocomplete="new-password"></div>
+      <div class="auth-field"><input type="password" id="r-confirm" placeholder="Confirm Password" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <div class="auth-error" id="r-error" style="display:none"></div>
+      <button class="auth-submit" id="r-btn" onclick="doRegister()">Create Account</button>
+      <button class="auth-link" onclick="switchAuthTab('login')">Already have an account? Sign in</button>
+    </div>
+    <p class="auth-footer"></p>
   </div>
 </div>
 
-<!-- SCRIPTS -->
+<!-- ENCRYPT ANIMATION -->
+<div id="encrypt-overlay">
+  <div class="encrypt-card">
+    <div class="encrypt-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+    <h3>Encrypting Document</h3>
+    <div id="encrypt-step" class="encrypt-step">Initializing cipher…</div>
+    <div class="encrypt-bar-wrap"><div class="encrypt-bar" id="encrypt-bar"></div></div>
+    <div id="encrypt-substep" class="encrypt-substep"></div>
+  </div>
+</div>
+
+<!-- UPDATE STATUS MODAL -->
+<div class="overlay" id="update-modal">
+  <div class="modal" style="width:460px">
+    <div class="modal-head"><h3>Update Document Status</h3><button class="modal-close" onclick="closeModal('update-modal')">&times;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Document ID</label><input type="text" id="upd-id" readonly style="background:#f8fafc;color:var(--muted)"></div>
+      <div class="field"><label>Document Name</label><input type="text" id="upd-name" readonly style="background:#f8fafc;color:var(--muted)"></div>
+      <div class="field"><label>New Status</label>
+        <select id="upd-status" onchange="onUpdateStatusChange(this.value)">
+          <option>Received</option><option>Pending</option><option>Processing</option>
+          <option>For Approval</option><option>Signed</option><option>Approved</option>
+          <option>Released</option><option>Rejected</option>
+        </select>
+      </div>
+      <div class="field"><label>Current Location</label>
+        <input type="text" id="upd-location" placeholder="e.g. Registrar's Office" list="location-suggestions">
+        <datalist id="location-suggestions">
+          <option value="Desk"><option value="Archive Room"><option value="Registrar's Office">
+          <option value="Dean's Office"><option value="Accounting Office"><option value="Laboratory Office">
+          <option value="Administrative Office"><option value="Document Control Office">
+          <option value="Library"><option value="Faculty Room">
+        </datalist>
+      </div>
+      <div class="field"><label>Currently Handled By</label>
+        <input type="text" id="upd-handler" placeholder="e.g. Employee A, John Santos…">
+      </div>
+      <div class="field"><label>Admin Note (optional)</label><input type="text" id="upd-note" placeholder="Reason for status change…"></div>
+
+      <!-- Processed File Upload -->
+      <div style="margin-top:16px;padding:14px 16px;background:#f8fafc;border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+          Processed File
+          <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px;color:#94a3b8"></span>
+        </div>
+        <div id="upd-file-existing" style="display:none;margin-bottom:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;font-size:12px;color:#15803d;display:flex;align-items:center;gap:7px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span id="upd-file-existing-label">Processed file already attached</span>
+          <span style="margin-left:auto;font-size:11px;color:#16a34a;font-weight:600">OK Uploaded</span>
+        </div>
+        <label style="font-size:12px;font-weight:500;color:var(--text);display:block;margin-bottom:6px">
+          <span id="upd-file-action-label">Attach Processed File</span>
+          <span style="font-weight:400;color:var(--muted)"> (PDF, JPG, PNG - max 5 MB)</span>
+        </label>
+        <div class="file-upload">
+          <input type="file" id="upd-processed-file" accept=".pdf,image/jpeg,image/png"
+            onchange="previewProcessedFile(this)" style="display:none;">
+          <label for="upd-processed-file" class="file-upload-control">
+            <span class="file-upload-btn">Choose file</span>
+            <span class="file-upload-state" id="upd-file-upload-state">No file selected</span>
+          </label>
+        </div>
+        <div id="upd-file-preview" class="file-preview" style="display:none;">
+          <span id="upd-file-preview-name"></span>
+          <span id="upd-file-preview-size" style="color:var(--muted)"></span>
+        </div>
+        <div id="upd-release-warning" style="display:none;margin-top:8px;padding:7px 10px;background:#fef9c3;border:1px solid #fef08a;border-radius:7px;font-size:11px;color:#854d0e">
+          <strong>Released</strong> status requires a processed file to be uploaded.
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="applyUpdate()">Save Changes</button>
+        <button class="btn btn-ghost" onclick="closeModal('update-modal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCAN LOG MODAL -->
+<div class="overlay" id="scan-log-modal">
+  <div class="modal" style="width:420px">
+    <div class="scan-log-modal-header">
+      <div>
+        <h3>Log QR Scan Movement</h3>
+        <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:2px">Record who handled this document and where</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('scan-log-modal')" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:22px">
+      <div style="padding:10px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;margin-bottom:16px;font-size:12px;color:var(--sub);">Scanning logs movement only. It does <u>not</u> change the document status.</div>
+      <div id="scan-log-doc-info" style="padding:10px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;margin-bottom:18px;font-size:13px"></div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Handled By <span style="color:var(--red)">*</span></label>
+        <input type="text" id="scan-log-handler" placeholder="Your full name (e.g. Maria Santos)" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-family:var(--sans);font-size:13px;outline:none;">
+      </div>
+      <div class="field" style="margin-bottom:20px">
+        <label>Current Location <span style="color:var(--red)">*</span></label>
+        <input type="text" id="scan-log-location" placeholder="e.g. Registrar's Office" list="scan-log-loc-list"
+          style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-family:var(--sans);font-size:13px;outline:none;">
+        <datalist id="scan-log-loc-list">
+          <option value="Desk"><option value="Archive Room"><option value="Registrar's Office">
+          <option value="Dean's Office"><option value="Accounting Office">
+          <option value="Administrative Office"><option value="Document Control Office">
+          <option value="Library"><option value="Faculty Room">
+        </datalist>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="confirmScanLog()">Log Movement &amp; View</button>
+        <button class="btn btn-ghost" onclick="skipScanLog()">Skip →</button>
+      </div>
+      <p id="scan-log-error" style="color:var(--red);font-size:12px;margin-top:10px;display:none;text-align:center"></p>
+    </div>
+  </div>
+</div>
+
+<!-- QR MODAL -->
+<div class="overlay" id="qr-modal">
+  <div class="modal" style="width:480px">
+    <div class="modal-head"><h3>Document QR Code</h3><button class="modal-close" onclick="closeModal('qr-modal')">&times;</button></div>
+    <div class="modal-body" style="text-align:center">
+      <p id="qr-name" style="font-weight:600;font-size:15px;margin-bottom:2px"></p>
+      <p id="qr-status" style="font-size:12px;color:var(--muted);margin-bottom:12px"></p>
+      <input type="text" id="qr-base-url" style="display:none">
+      <div id="qr-wrap" style="display:inline-block;padding:12px;background:#fff;border-radius:10px;border:1px solid var(--border);margin-bottom:10px"></div>
+      <p id="qr-enc-hint" style="display:none;font-size:11px;color:var(--muted);margin-bottom:8px"></p>
+      <div id="qr-url-preview" style="display:none"><p id="qr-url-text" style="font-size:10px;color:var(--muted);font-family:var(--mono);word-break:break-all;max-width:400px;margin:0 auto"></p></div>
+      <div style="border-top:1px solid var(--border);margin:4px 0 12px;"></div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:500">Testing in browser?</p>
+      <button onclick="simulateScan()" class="btn btn-ghost btn-sm" id="qr-simulate-btn">
+        Simulate QR Scan
+      </button>
+      <p style="font-size:10px;color:#b0bec5;margin-top:8px">QR points to a permanent static tracking URL</p>
+    </div>
+  </div>
+</div>
+
+<!-- SCAN RESULT MODAL -->
+<div class="overlay" id="scan-result-modal">
+  <div class="modal" style="width:480px;max-height:90vh">
+    <div class="modal-head" style="background:#0d1a10;border-bottom:1px solid rgba(74,222,128,.15)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;background:#4ade80;border-radius:7px;display:grid;place-items:center;flex-shrink:0;color:#0d1117">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div>
+          <h3 style="color:#e6edf3;font-size:14px">CIT Document Tracker</h3>
+          <p style="font-size:10px;color:rgba(255,255,255,.35);margin-top:1px">Live Document Status</p>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal('scan-result-modal')" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">&times;</button>
+    </div>
+    <div class="modal-body" style="background:#0d1a10;padding:0;overflow-y:auto" id="scan-result-body"></div>
+  </div>
+</div>
+
+<!-- HISTORY MODAL -->
+<div class="overlay" id="history-modal">
+  <div class="modal">
+    <div class="modal-head"><h3>Document History</h3><button class="modal-close" onclick="closeModal('history-modal')">&times;</button></div>
+    <div class="modal-body">
+      <p id="hist-name" style="font-weight:600;margin-bottom:4px;font-size:14px"></p>
+      <p id="hist-id" style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:12px"></p>
+      <div id="hist-file-section" style="margin-bottom:16px"></div>
+      <div class="timeline" id="hist-timeline"></div>
+    </div>
+  </div>
+</div>
+
+<!-- NOTIFICATIONS MODAL -->
+<div class="overlay" id="notif-modal">
+  <div class="modal" style="width:380px">
+    <div class="modal-head">
+      <h3>Notifications</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-sm btn-ghost" onclick="markAllRead()">Mark all read</button>
+        <button class="modal-close" onclick="closeModal('notif-modal')">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body"><div class="notif-list" id="notif-list"></div></div>
+  </div>
+</div>
+
+<!-- USER VAULT MODAL -->
+<div class="overlay" id="user-vault-modal">
+  <div class="modal" style="width:700px;max-width:95vw">
+    <div class="modal-head">
+      <div>
+        <h3 id="uv-title">User Documents</h3>
+        <p id="uv-subtitle" style="font-size:12px;color:var(--muted);margin-top:1px"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('user-vault-modal')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div style="display:flex;border-bottom:1px solid var(--border);padding:0 22px;gap:0">
+        <button id="uv-tab-docs" onclick="switchUVTab('docs')" style="padding:12px 16px;border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--text);border-bottom:2px solid var(--accent);cursor:pointer;">Documents</button>
+        <button id="uv-tab-logs" onclick="switchUVTab('logs')" style="padding:12px 16px;border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;">Activity Log</button>
+      </div>
+      <div id="uv-docs-panel">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+          <div style="position:relative;max-width:340px;">
+            <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.4" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="uv-search" type="text" placeholder="Search by ID, name, or status..."
+              oninput="renderUVDocs()"
+              style="width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--sans);outline:none;background:var(--bg);color:var(--text);box-sizing:border-box;">
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Doc ID</th><th>Name</th><th>Type</th><th>Priority</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody id="uv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="uv-logs-panel" style="display:none;padding:16px 22px">
+        <div class="log-table" id="uv-logs-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==============================================================
+     FILE VIEW / PREVIEW MODAL  ← updated with live preview
+     ============================================================== -->
+<div class="overlay" id="file-modal">
+  <div class="modal" style="width:600px;max-width:95vw">
+    <div class="modal-head">
+      <div>
+        <h3>File Viewer</h3>
+        <p id="file-modal-docname" style="font-size:12px;color:var(--muted);margin-top:2px"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('file-modal')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px">
+
+      <!-- Status badge -->
+      <div id="file-modal-status-badge" style="margin-bottom:10px"></div>
+
+      <!-- Filename label -->
+      <p id="file-modal-filename"
+         style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px;
+                display:flex;align-items:center;gap:8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span id="file-modal-filename-text"></span>
+      </p>
+
+      <!-- -- Preview injected here by viewFile() -- -->
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:4px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="file-modal-dl-btn"
+          style="display:none;gap:8px;font-size:13px;padding:10px 24px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download File
+        </button>
+        <button class="btn btn-ghost" onclick="closeModal('file-modal')">Close</button>
+      </div>
+
+      <p style="font-size:10px;color:var(--muted);text-align:center;margin-top:10px">
+        Decrypted in-browser using IDEA-128 - File never leaves your device
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ==============================================================
+     SCRIPTS
+     ============================================================== -->
 <script src="api.js"></script>
 <script src="auth.js"></script>
 <script src="qr.js"></script>
@@ -230,14 +881,27 @@
 <script src="script.js"></script>
 
 <script>
-// Sidebar toggle
-function toggleSidebar(){
-  const sb=document.querySelector('.sidebar');
-  const ov=document.getElementById('sidebar-overlay');
-  const open=sb.classList.toggle('open');
-  ov.classList.toggle('open',open);
-  document.body.style.overflow=open?'hidden':'';
+function toggleSidebar() {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  const isOpen = sb.classList.toggle('open');
+  ov.classList.toggle('open', isOpen);
+  document.body.style.overflow = isOpen ? 'hidden' : '';
 }
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.nav-item').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (window.innerWidth <= 768) {
+        const sb = document.querySelector('.sidebar');
+        const ov = document.getElementById('sidebar-overlay');
+        if (sb) sb.classList.remove('open');
+        if (ov) ov.classList.remove('open');
+        document.body.style.overflow = '';
+      }
+    });
+  });
+});
 </script>
 
 </body>

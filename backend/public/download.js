@@ -1,12 +1,26 @@
-// File download logic for the public tracking page.
-//
-// Rules:
-//   - Only processedFile (admin-uploaded) is publicly downloadable
-//   - Download is only available when status === 'Released'
-//   - originalFile is reference-only; never offered for download on the public page
-//   - Files are decrypted locally with IDEA-128 and never stored unencrypted on the server
+/* ══════════════════════════════════════════════════════════════════════
+   download.js - File Download Logic
+   CIT Document Tracker - Group 6
 
-// Builds the file section HTML for the public tracking page
+   Rule: Download button ONLY appears when document status === 'Released'
+   Rule: No inline file preview (PDF embed / image preview removed)
+   Rule: Clean, minimal download UI only
+══════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════
+   download.js - File Download Logic (Updated for Dual-File System)
+   CIT Document Tracker - Group 6
+
+   TWO FILE TYPES:
+     originalFile  - uploaded by user at registration (reference copy)
+     processedFile - uploaded by admin when approving/releasing (final copy)
+
+   RULE: Only processedFile is downloadable, and ONLY when status === 'Released'
+   RULE: Download button ONLY appears when processedFile exists AND status === 'Released'
+   RULE: Show clear labels: "Original File (Submitted)" / "Final File (Approved)"
+══════════════════════════════════════════════════════════════════════ */
+
+/* Build the file section HTML for the PUBLIC tracking page */
 function buildPublicFileSection(d) {
   const isReleased      = d.status === 'Released';
   const sc              = statusColorMap[d.status] || '#64748b';
@@ -16,13 +30,14 @@ function buildPublicFileSection(d) {
   const processedBy     = d.processedBy || 'Admin';
   const processedAt     = d.processedAt || '';
 
+  // Nothing attached at all
   if (!hasOriginal && !hasProcessed) {
     return '<p style="font-size:13px;color:rgba(255,255,255,.3);text-align:center;padding:28px 0">No digital file attached to this document.</p>';
   }
 
   let html = '<div style="padding:4px 0">';
 
-  // Original file row — always shown when present, but never downloadable
+  /* -- Original File row (always shown if exists) -- */
   if (hasOriginal) {
     html += `
       <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
@@ -37,8 +52,9 @@ function buildPublicFileSection(d) {
       </div>`;
   }
 
-  // Processed/final file row
+  /* -- Processed/Final File row -- */
   if (hasProcessed && isReleased) {
+    /* Released + processed file = show download button */
     html += `
       <div style="padding:20px 18px">
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
@@ -67,14 +83,14 @@ function buildPublicFileSection(d) {
         </div>
       </div>`;
   } else if (!hasProcessed && isReleased) {
-    // Released but admin hasn't attached a processed file yet (shouldn't normally happen)
+    /* Released but no processed file yet (shouldn't happen with validation, but graceful fallback) */
     html += `
       <div style="text-align:center;padding:28px 18px">
         <p style="font-size:13px;color:rgba(255,255,255,.5);font-weight:600;margin-bottom:6px">Awaiting Final File</p>
         <p style="font-size:12px;color:rgba(255,255,255,.3);line-height:1.6">The admin has not yet uploaded the processed/final file.</p>
       </div>`;
   } else {
-    // Not yet released — file is locked until status reaches Released
+    /* Not yet released - file is locked */
     html += `
       <div style="text-align:center;padding:28px 18px">
         <div style="width:52px;height:52px;margin:0 auto 14px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.1);border-radius:50%;display:grid;place-items:center">

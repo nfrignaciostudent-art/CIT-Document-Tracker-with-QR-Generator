@@ -1,8 +1,13 @@
-const mongoose = require('mongoose');
+/* ══════════════════════════════════════════════════════════════════════
+   models/ScanLog.js - QR Scan Log Schema
+   CIT Document Tracker - Group 6
 
-// Separate collection for auto-logged QR scan events.
-// Populated on every public QR scan — no auth required.
-// Admin can view via Scan Logs page. Users cannot create these manually.
+   Separate collection from document history.
+   Auto-populated on every QR code scan (public, no auth required).
+   Admin can view via Scan Logs page. Users cannot create these manually.
+══════════════════════════════════════════════════════════════════════ */
+
+const mongoose = require('mongoose');
 
 const ScanLogSchema = new mongoose.Schema({
   documentId:   { type: String, required: true, index: true },

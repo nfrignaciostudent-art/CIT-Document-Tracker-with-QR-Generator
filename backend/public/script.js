@@ -1,9 +1,16 @@
-// Main initialization and core app logic.
-// Contains: IDEA-128 encryption, ULID + display ID generation,
-// global state, save/load, render functions, document CRUD,
-// history, movement logs, notifications, settings, and demo.
+/* ======================================================================
+   script.js - Main Initialization & Core App Logic
+   CIT Document Tracker - Group 6
 
-// IDEA ENCRYPTION (128-bit block cipher)
+   Contains: IDEA encryption, ULID + Display ID generation,
+             global state, save/load, render functions,
+             document CRUD, history, movement logs,
+             notifications, settings, demo
+====================================================================== */
+
+/* ========================================================
+   IDEA ENCRYPTION (128-bit block cipher)
+======================================================== */
 const IDEA = (() => {
   function mu(a,b){a&=0xFFFF;b&=0xFFFF;if(!a)a=65536;if(!b)b=65536;const r=Number(BigInt(a)*BigInt(b)%65537n);return r===65536?0:r;}
   function mi(a){if(!a)return 0;if(a===1)return 1;let t=0n,nt=1n,r=65537n,nr=BigInt(a);while(nr){const q=r/nr;[t,nt]=[nt,t-q*nt];[r,nr]=[nr,r%nr];}return Number(t<0n?t+65537n:t);}
@@ -61,7 +68,9 @@ const IDEA = (() => {
   return{encrypt,decrypt};
 })();
 
-// FILE ENCRYPTION - IDEA at Rest
+/* ========================================================
+   FILE ENCRYPTION - IDEA at Rest
+======================================================== */
 
 function encryptFile(dataURI, ext) {
   const commaIdx = dataURI.indexOf(',');
@@ -175,7 +184,9 @@ function _dlToast(msg) {
   else alert(msg);
 }
 
-// VIEW FILE - decrypt and preview/download in modal
+/* ========================================================
+   VIEW FILE - decrypt and preview/download in modal
+======================================================== */
 async function viewFile(docKey, fileType, btnEl) {
   fileType = fileType || 'original';
   const d = docs.find(x => (x.internalId || x.id) === docKey);
@@ -292,7 +303,9 @@ async function viewFile(docKey, fileType, btnEl) {
   if (btnEl) { btnEl.disabled = false; btnEl.textContent = origText; }
 }
 
-// DOCUMENT ID SYSTEM
+/* ========================================================
+   DOCUMENT ID SYSTEM
+======================================================== */
 
 function generateULID() {
   const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -365,7 +378,9 @@ function findDoc(query) {
   ) || null;
 }
 
-// CONSTANTS & GLOBAL STATE
+/* ========================================================
+   CONSTANTS & GLOBAL STATE
+======================================================== */
 const KEY = 'Group6CITKey2024';
 
 let accounts      = [];
@@ -392,7 +407,9 @@ const docOfficeMap = {
   Other:'Document Control Office'
 };
 
-// HELPERS
+/* ========================================================
+   HELPERS
+======================================================== */
 const genId  = () => 'DOC-' + Date.now().toString(36).toUpperCase().slice(-5);
 const genUID = () => 'USR-' + Date.now().toString(36).toUpperCase();
 const nowStr = () => new Date().toLocaleString('en-PH', {
@@ -412,7 +429,9 @@ function initials(name){ return (name||'?').split(' ').map(w=>w[0]).join('').sli
 function statusColor(s){ return statusColorMap[s] || '#94a3b8'; }
 function docOffice(type){ return docOfficeMap[type] || 'Document Control Office'; }
 
-// STORAGE
+/* ========================================================
+   STORAGE
+======================================================== */
 function save(){
   const docsLite = docs.map(d => {
     const c = Object.assign({}, d);
@@ -475,7 +494,9 @@ function logActivity(userId, message, color){
   save();
 }
 
-// NAVIGATION
+/* ========================================================
+   NAVIGATION
+======================================================== */
 function showPage(id, btn){
   document.querySelectorAll('#app-view .page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -489,7 +510,9 @@ function showPage(id, btn){
   if(id==='scanlogs')  renderScanLogs();
 }
 
-// RENDER ALL
+/* ========================================================
+   RENDER ALL
+======================================================== */
 function renderAll(){ renderStats(); renderDash(); renderVault(); renderNotifCount(); }
 
 /* Stats */
@@ -632,7 +655,9 @@ function downloadDocFile(docKey, btnEl) {
   decryptAndDownload(docKey, btnEl || null);
 }
 
-// VAULT - with clickable file badges
+/* ========================================================
+   VAULT - with clickable file badges
+======================================================== */
 function renderVault(){
   const isAdmin=currentUser.role==='admin';
   const term=(document.getElementById('vault-search')?.value||'').toLowerCase();
@@ -818,7 +843,9 @@ function clearActivityLogs(){
   save(); renderActivityLogs(); toast('Activity logs cleared.');
 }
 
-// DOCUMENT CRUD
+/* ========================================================
+   DOCUMENT CRUD
+======================================================== */
 let _newFileData = null;
 let _newFileExt  = null;
 let _newFileReady = false;
@@ -1081,7 +1108,9 @@ async function deleteDoc(docKey){
   save(); renderAll(); toast(`Document "${d.name}" deleted.`);
 }
 
-// UPDATE STATUS MODAL
+/* ========================================================
+   UPDATE STATUS MODAL
+======================================================== */
 function openUpdate(docKey){
   const d=docs.find(x=>(x.internalId||x.id)===docKey);
   if(!d)return;
@@ -1269,7 +1298,9 @@ async function applyUpdate(){
   toast(`Status updated to "${newStatus}"${d.processedFile?' - Final file stored.':''}`);
 }
 
-// MOVEMENT LOGS
+/* ========================================================
+   MOVEMENT LOGS
+======================================================== */
 function logMovement(documentId, handledBy, location){
   const entry={
     documentId, handledBy, location,
@@ -1324,7 +1355,10 @@ function clearMovementLogs(){
   movementLogs=[];save();renderMovementLogs();toast('Movement logs cleared.');
 }
 
-// SCAN LOGS (Admin only - auto-generated QR scan events) Separate from movement logs. Source: scan_logs MongoDB collection.
+/* ==================================================================
+   SCAN LOGS (Admin only - auto-generated QR scan events)
+   Separate from movement logs. Source: scan_logs MongoDB collection.
+================================================================== */
 let _scanLogsCache = [];
 
 async function renderScanLogs(){
@@ -1406,7 +1440,9 @@ async function refreshScanLogs(){
   toast('Scan logs refreshed.');
 }
 
-// SCAN RESULT
+/* ========================================================
+   SCAN RESULT
+======================================================== */
 function renderScanResult(d){
   const sc=statusColorMap[d.status]||'#64748b';
   const office=docOffice(d.type);
@@ -1570,7 +1606,9 @@ function renderScanResult(d){
     </div>`;
 }
 
-// HISTORY MODAL
+/* ========================================================
+   HISTORY MODAL
+======================================================== */
 function openHistory(docKey){
   const d=docs.find(x=>(x.internalId||x.id)===docKey);
   if(!d)return;
@@ -1665,7 +1703,9 @@ function openHistory(docKey){
   openModal('history-modal');
 }
 
-// NOTIFICATIONS
+/* ========================================================
+   NOTIFICATIONS
+======================================================== */
 function addNotification(userId,msg,documentId){
   if(!notifications[userId]) notifications[userId]=[];
   notifications[userId].push({id:Date.now(),msg,date:nowStr(),read:false,documentId:documentId||null});
@@ -1715,7 +1755,9 @@ function openDocumentFromNotif(documentId){
   setTimeout(()=>openHistory(documentId),150);
 }
 
-// SETTINGS
+/* ========================================================
+   SETTINGS
+======================================================== */
 function changePassword(){
   const cur=document.getElementById('cur-pass').value;
   const np=document.getElementById('new-pass').value;
@@ -1734,7 +1776,9 @@ function changePassword(){
   setTimeout(()=>logout(),1500);
 }
 
-// IDEA DEMO
+/* ========================================================
+   IDEA DEMO
+======================================================== */
 function runDemo(){
   const key=document.getElementById('demo-key').value||KEY;
   const msg=document.getElementById('demo-msg').value||'Hello CIT!';
@@ -1746,7 +1790,9 @@ function runDemo(){
   toast('Encryption demo complete.');
 }
 
-// MODAL HELPERS
+/* ========================================================
+   MODAL HELPERS
+======================================================== */
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
@@ -1760,7 +1806,9 @@ function closeModal(id){
 }
 document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
 
-// TOAST
+/* ========================================================
+   TOAST
+======================================================== */
 let toastTimer;
 function toast(msg){
   const el=document.getElementById('toast');
@@ -1769,7 +1817,9 @@ function toast(msg){
   toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
 }
 
-// INIT
+/* ========================================================
+   INIT
+======================================================== */
 load();
 
 const styleEl=document.createElement('style');
@@ -1914,7 +1964,11 @@ function _seedDemoDocsIfEmpty(){
 }
 
 _appInit();
-// FEATURE 1 — GLOBAL SEARCH Searches docs by ID, name, status, type. Dropdown results. Click → opens document history modal via vault page.
+/* ================================================================
+   FEATURE 1 — GLOBAL SEARCH
+   Searches docs by ID, name, status, type. Dropdown results.
+   Click → opens document history modal via vault page.
+================================================================ */
 function initGlobalSearch() {
   const input = document.getElementById('global-search-input');
   if (!input) return;
@@ -1990,7 +2044,10 @@ function openSearchResult(docKey) {
   setTimeout(function(){ openHistory(docKey); }, 160);
 }
 
-// FEATURE 2 — USER OVERVIEW PANEL  (admin only) Shows totals, active count, recently added users.
+/* ================================================================
+   FEATURE 2 — USER OVERVIEW PANEL  (admin only)
+   Shows totals, active count, recently added users.
+================================================================ */
 function renderUserOverview() {
   const el   = document.getElementById('user-overview-body');
   const card = document.getElementById('card-user-overview');
@@ -2047,7 +2104,11 @@ function renderUserOverview() {
     : '<p style="font-size:13px;color:var(--muted);padding:12px 0">No users registered yet.</p>');
 }
 
-// FEATURE 3 — PENDING / URGENT DOCUMENTS SECTION Detects stuck docs by checking last history entry date. Warning (yellow) = 1–2 days.  Urgent (red) = 3+ days.
+/* ================================================================
+   FEATURE 3 — PENDING / URGENT DOCUMENTS SECTION
+   Detects stuck docs by checking last history entry date.
+   Warning (yellow) = 1–2 days.  Urgent (red) = 3+ days.
+================================================================ */
 function _getDocLastUpdated(doc) {
   if (doc.history && doc.history.length) {
     var latest = null;
@@ -2118,7 +2179,10 @@ function renderUrgentDocs() {
   }).join('');
 }
 
-// HOOK INTO EXISTING renderAll + enterApp Non-destructive override — calls new features after the originals.
+/* ================================================================
+   HOOK INTO EXISTING renderAll + enterApp
+   Non-destructive override — calls new features after the originals.
+================================================================ */
 (function() {
   var _origRenderAll = renderAll;
   renderAll = function() {
@@ -2133,9 +2197,16 @@ function renderUrgentDocs() {
   };
 })();
 
-// PATCH 2 — Fix all issues from user feedback: 1. Stats cards: add date range + real % change badges 2. Admin right card: swap "System Activity" → Pending/Urgent 3. User Overview: accurate active count (has ever logged in) 4. Pending/Urgent: admin only, hidden from regular users 5. dash-grid-2: admin = User Overview only; user = hidden
+/* ================================================================
+   PATCH 2 — Fix all issues from user feedback:
+   1. Stats cards: add date range + real % change badges
+   2. Admin right card: swap "System Activity" → Pending/Urgent
+   3. User Overview: accurate active count (has ever logged in)
+   4. Pending/Urgent: admin only, hidden from regular users
+   5. dash-grid-2: admin = User Overview only; user = hidden
+================================================================ */
 
-// Date helpers
+/* ── Date helpers ── */
 function _ordinal(n) {
   var s = ['th','st','nd','rd'], v = n % 100;
   return n + (s[(v-20)%10] || s[v] || s[0]);
@@ -2146,7 +2217,7 @@ function _statDateRange() {
   return 'From Jan 1st \u2013 ' + months[now.getMonth()] + ' ' + _ordinal(now.getDate());
 }
 
-// % change: this month count vs last month count
+/* ── % change: this month count vs last month count ── */
 function _countInMonth(pool, m, y, statusFilter) {
   return pool.filter(function(d) {
     var raw = d.date || d.createdAt || '';
@@ -2194,7 +2265,7 @@ function _pctBadge(r) {
     (r.up ? '\u2197' : '\u2198') + ' ' + r.pct + '%</span>';
 }
 
-// 1. Override renderStats with date range + % badges
+/* ── 1. Override renderStats with date range + % badges ── */
 function renderStats() {
   var isAdmin = currentUser.role === 'admin';
   var myDocs  = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id; });
@@ -2227,7 +2298,7 @@ function renderStats() {
     : 'Welcome back, ' + (currentUser.name || currentUser.username);
 }
 
-// 2. Swap right card to Pending/Urgent for admin
+/* ── 2. Swap right card to Pending/Urgent for admin ── */
 function _renderUrgentInDashCard() {
   var titleEl = document.getElementById('my-activity-title');
   if (titleEl) titleEl.textContent = 'Pending / Urgent Docs';
@@ -2279,7 +2350,7 @@ function _renderUrgentInDashCard() {
   }).join('');
 }
 
-// 3. Fixed renderUserOverview — accurate active count
+/* ── 3. Fixed renderUserOverview — accurate active count ── */
 function renderUserOverview() {
   var el   = document.getElementById('user-overview-body');
   var card = document.getElementById('card-user-overview');
@@ -2328,7 +2399,7 @@ function renderUserOverview() {
       : '<p style="font-size:13px;color:var(--muted);padding:12px 0">No users registered yet.</p>');
 }
 
-// 4. renderUrgentDocs: now admin-only, renders into dash-grid-2 left card
+/* ── 4. renderUrgentDocs: now admin-only, renders into dash-grid-2 left card ── */
 function renderUrgentDocs() {
   var el = document.getElementById('urgent-docs-list');
   if (!el) return;
@@ -2338,7 +2409,7 @@ function renderUrgentDocs() {
   /* Urgent is now rendered in the dash-grid right card for admin via _renderUrgentInDashCard */
 }
 
-// 5. dash-grid-2 visibility: admin = User Overview only; user = hidden
+/* ── 5. dash-grid-2 visibility: admin = User Overview only; user = hidden ── */
 function _updateDashGrid2() {
   var grid2 = document.getElementById('dash-grid-2');
   if (!grid2) return;
@@ -2352,7 +2423,7 @@ function _updateDashGrid2() {
   if (isAdmin) grid2.style.gridTemplateColumns = '1fr';
 }
 
-// Final override: wire everything together
+/* ── Final override: wire everything together ── */
 (function() {
   var _prev_renderAll = renderAll;
   renderAll = function() {
@@ -2365,7 +2436,13 @@ function _updateDashGrid2() {
   };
 })();
 
-// PATCH 3 — Use real backend data. No localStorage guessing. - apiGetUsers() fetches real users + lastLogin + docCount from MongoDB - % badges hidden when no previous-month data exists (prev=0 → null) - Active users = users with lastLogin !== null (actually logged in) - All stats sourced from backend-synced `docs` array (createdAt field)
+/* ================================================================
+   PATCH 3 — Use real backend data. No localStorage guessing.
+   - apiGetUsers() fetches real users + lastLogin + docCount from MongoDB
+   - % badges hidden when no previous-month data exists (prev=0 → null)
+   - Active users = users with lastLogin !== null (actually logged in)
+   - All stats sourced from backend-synced `docs` array (createdAt field)
+================================================================ */
 
 /* Cache for backend users so we don't re-fetch on every renderAll */
 let _backendUsers = null;
@@ -2388,7 +2465,7 @@ async function _fetchBackendUsers(force) {
   _backendUsersFetching = false;
 }
 
-// Fixed % change: return null when no previous period exists
+/* ── Fixed % change: return null when no previous period exists ── */
 function _pctChange(pool, statusFilter) {
   var now = new Date();
   var tm = now.getMonth(), ty = now.getFullYear();
@@ -2418,7 +2495,7 @@ function _pctChangeUsers(userList) {
   return { pct: Math.abs(parseFloat(p)).toFixed(1), up: parseFloat(p) >= 0 };
 }
 
-// renderStats using real docs + real backend users
+/* ── renderStats using real docs + real backend users ── */
 function renderStats() {
   var isAdmin = currentUser.role === 'admin';
   var myDocs  = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id || d.ownerId === currentUser.userId; });
@@ -2460,7 +2537,7 @@ function renderStats() {
     : 'Welcome back, ' + (currentUser.name || currentUser.username);
 }
 
-// renderUserOverview using real backend users
+/* ── renderUserOverview using real backend users ── */
 function renderUserOverview() {
   var el   = document.getElementById('user-overview-body');
   var card = document.getElementById('card-user-overview');
@@ -2546,7 +2623,7 @@ function renderUserOverview() {
     '</div>';
 }
 
-// Wire: fetch backend users then render dashboard
+/* ── Wire: fetch backend users then render dashboard ── */
 (function() {
   var _prev_renderAll3 = renderAll;
   renderAll = function() {
@@ -2569,9 +2646,17 @@ function renderUserOverview() {
   };
 })();
 
-// PATCH 4 — Restore System Activity panel + fix layout Layout (admin): Row 1: Recent Documents  |  Pending/Urgent Docs Row 2: User Overview     |  System Activity (All Users) Layout (user): Row 1: Recent Documents  |  My Recent Activity Row 2: hidden
+/* ================================================================
+   PATCH 4 — Restore System Activity panel + fix layout
+   Layout (admin):
+     Row 1: Recent Documents  |  Pending/Urgent Docs
+     Row 2: User Overview     |  System Activity (All Users)
+   Layout (user):
+     Row 1: Recent Documents  |  My Recent Activity
+     Row 2: hidden
+================================================================ */
 
-// Render System Activity card (admin only, dash-grid-2 right)
+/* ── Render System Activity card (admin only, dash-grid-2 right) ── */
 function renderSystemActivity() {
   var card = document.getElementById('card-system-activity');
   var list = document.getElementById('system-activity-list');
@@ -2639,7 +2724,7 @@ function renderSystemActivity() {
   }).join('');
 }
 
-// Override _updateDashGrid2: admin sees row2, user hides it
+/* ── Override _updateDashGrid2: admin sees row2, user hides it ── */
 function _updateDashGrid2() {
   var grid2 = document.getElementById('dash-grid-2');
   if (!grid2) return;
@@ -2650,7 +2735,7 @@ function _updateDashGrid2() {
   if (urgentCard) urgentCard.style.display = 'none'; /* urgent is in dash-grid right card */
 }
 
-// Wire renderSystemActivity into renderAll
+/* ── Wire renderSystemActivity into renderAll ── */
 (function() {
   var _prev4 = renderAll;
   renderAll = function() {
@@ -2659,7 +2744,9 @@ function _updateDashGrid2() {
   };
 })();
 
-// PATCH 5 — Fix dash-grid-2 always rendering as 2 columns side by side
+/* ================================================================
+   PATCH 5 — Fix dash-grid-2 always rendering as 2 columns side by side
+================================================================ */
 function _updateDashGrid2() {
   var grid2 = document.getElementById('dash-grid-2');
   if (!grid2) return;
@@ -2671,9 +2758,18 @@ function _updateDashGrid2() {
   if (urgentCard) urgentCard.style.display = 'none';
 }
 
-// PATCH 6 — Real-time sync: polling + backend-driven renderUsers Strategy: - Poll every 30s: fetch fresh users + docs from backend - On tab focus (visibilitychange): immediate re-fetch - renderUsers() now reads from _backendUsers (real MongoDB data) - After every user fetch, merge into accounts[] so openUserVault works - After every doc fetch, update docs[] so all existing functions work
+/* ================================================================
+   PATCH 6 — Real-time sync: polling + backend-driven renderUsers
+   
+   Strategy:
+   - Poll every 30s: fetch fresh users + docs from backend
+   - On tab focus (visibilitychange): immediate re-fetch
+   - renderUsers() now reads from _backendUsers (real MongoDB data)
+   - After every user fetch, merge into accounts[] so openUserVault works
+   - After every doc fetch, update docs[] so all existing functions work
+================================================================ */
 
-// Merge backend users into accounts[] so existing functions keep working
+/* ── Merge backend users into accounts[] so existing functions keep working ── */
 function _mergeBackendUsersIntoAccounts(backendUsers) {
   if (!Array.isArray(backendUsers)) return;
   backendUsers.forEach(function(bu) {
@@ -2699,7 +2795,7 @@ function _mergeBackendUsersIntoAccounts(backendUsers) {
   });
 }
 
-// renderUsers: reads from _backendUsers (real data), falls back to accounts
+/* ── renderUsers: reads from _backendUsers (real data), falls back to accounts ── */
 function renderUsers() {
   var ul = document.getElementById('users-list');
   if (!ul) return;
@@ -2752,7 +2848,7 @@ function renderUsers() {
   }).join('');
 }
 
-// openUserVaultById: works with backend users (no accounts[] dependency)
+/* ── openUserVaultById: works with backend users (no accounts[] dependency) ── */
 function openUserVaultById(uid, username, name) {
   /* Try accounts[] first, then build a minimal object from params */
   var u = accounts.find(function(a) {
@@ -2771,7 +2867,7 @@ function openUserVaultById(uid, username, name) {
   openModal('user-vault-modal');
 }
 
-// Sync fresh docs from backend into docs[]
+/* ── Sync fresh docs from backend into docs[] ── */
 async function _syncDocsFromBackend() {
   if (!currentUser || !currentUser.token) return;
   try {
@@ -2809,7 +2905,7 @@ async function _syncDocsFromBackend() {
   }
 }
 
-// Master refresh: fetch users + docs, then re-render everything
+/* ── Master refresh: fetch users + docs, then re-render everything ── */
 var _polling = false;
 async function _fullRefresh(silent) {
   if (!currentUser || !currentUser.token) return;
@@ -2835,7 +2931,7 @@ async function _fullRefresh(silent) {
   _polling = false;
 }
 
-// Start polling (30s interval)
+/* ── Start polling (30s interval) ── */
 var _pollTimer = null;
 function _startPolling() {
   if (_pollTimer) clearInterval(_pollTimer);
@@ -2848,14 +2944,14 @@ function _stopPolling() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
 }
 
-// On tab focus: immediate refresh
+/* ── On tab focus: immediate refresh ── */
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'visible' && currentUser && currentUser.token) {
     _fullRefresh(true);
   }
 });
 
-// Wire into enterApp + logout
+/* ── Wire into enterApp + logout ── */
 (function() {
   var _prevEnter = enterApp;
   enterApp = function() {
@@ -2872,7 +2968,17 @@ document.addEventListener('visibilitychange', function() {
   };
 })();
 
-// PATCH 7 — Heartbeat-based accurate "Active" users How it works: - Every logged-in user pings POST /api/auth/heartbeat every 2 min - Backend sets user.lastSeen = now() on each ping - On logout: heartbeat stops → lastSeen goes stale naturally - Admin's GET /api/auth/users returns lastSeen for all users - ACTIVE = lastSeen within last 5 minutes (real online status) - If lastSeen is null/stale → user is offline
+/* ================================================================
+   PATCH 7 — Heartbeat-based accurate "Active" users
+   
+   How it works:
+   - Every logged-in user pings POST /api/auth/heartbeat every 2 min
+   - Backend sets user.lastSeen = now() on each ping
+   - On logout: heartbeat stops → lastSeen goes stale naturally
+   - Admin's GET /api/auth/users returns lastSeen for all users
+   - ACTIVE = lastSeen within last 5 minutes (real online status)
+   - If lastSeen is null/stale → user is offline
+================================================================ */
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000;  /* 2 minutes */
 const ACTIVE_THRESHOLD_MS   = 5 * 60 * 1000;  /* 5 minutes = considered online */
@@ -2906,7 +3012,7 @@ function _stopHeartbeat() {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
 }
 
-// Override renderUserOverview with accurate online status
+/* ── Override renderUserOverview with accurate online status ── */
 function renderUserOverview() {
   var el   = document.getElementById('user-overview-body');
   var card = document.getElementById('card-user-overview');
@@ -2987,7 +3093,7 @@ function renderUserOverview() {
     '</div>';
 }
 
-// Wire heartbeat into enterApp / logout
+/* ── Wire heartbeat into enterApp / logout ── */
 (function() {
   var _prevEnter7 = enterApp;
   enterApp = function() {

@@ -1,3 +1,21 @@
+/* ══════════════════════════════════════════════════════════════════════
+   controllers/documentController.js
+   CIT Document Tracker - Group 6
+
+   ID Standard:
+     internalId    - ULID (primary key, used in QR, not predictable)
+     displayId     - DOC-YYYYMMDD-XXXX (user-facing, incremental per day)
+     verifyCode    - 4-char alphanumeric HMAC-based suffix
+     fullDisplayId - displayId-verifyCode (on receipts)
+
+   TIMEZONE: All timestamps stored as ISO UTC, displayed as Asia/Manila (UTC+8)
+
+   SCAN vs MOVEMENT separation:
+     - scan_logs  : separate MongoDB collection, auto-created on QR scan (public)
+     - movement   : entries in doc.history with action='Movement', admin only
+     - doc.history: contains only Status Updates and admin Movement entries
+══════════════════════════════════════════════════════════════════════ */
+
 const path     = require('path');
 const QRCode   = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
@@ -6,20 +24,7 @@ const ScanLog  = require('../models/ScanLog');
 
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
 
-// ID system:
-//   internalId    — ULID (primary key, used in QR, not predictable)
-//   displayId     — DOC-YYYYMMDD-XXXX (user-facing, incremental per day)
-//   verifyCode    — 4-char FNV-1a hash suffix for tamper detection
-//   fullDisplayId — displayId-verifyCode (shown on receipts)
-//
-// Timestamps: stored as ISO UTC, displayed as Asia/Manila (UTC+8)
-//
-// Scan vs Movement separation:
-//   scan_logs  — separate collection, auto-created on QR scan (public endpoint)
-//   movement   — entries in doc.history with action='Movement', admin only
-//   doc.history — contains only Status Updates and admin Movement entries
-
-// Returns current time formatted for Asia/Manila (UTC+8)
+/* ── Manila timezone helper (UTC+8) ── */
 function manilaTimestamp() {
   return new Date().toLocaleString('en-PH', {
     timeZone: 'Asia/Manila',
@@ -29,9 +34,8 @@ function manilaTimestamp() {
   });
 }
 
-// Crockford Base32 alphabet used for ULID and verify codes
+/* ── ULID Generator ── */
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-
 function generateULID() {
   const t = Date.now();
   let timeStr = '';
@@ -47,7 +51,7 @@ function generateULID() {
   return timeStr + randStr;
 }
 
-// Generates a daily sequential display ID: DOC-YYYYMMDD-XXXX
+/* ── Daily sequential Display ID: DOC-YYYYMMDD-XXXX ── */
 async function genDisplayId() {
   const manilaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
   const yyyy    = manilaNow.getFullYear();
@@ -72,7 +76,7 @@ async function genDisplayId() {
   return prefix + String(nextSeq).padStart(4, '0');
 }
 
-// Deterministic 4-char verification code using FNV-1a on displayId + internalId
+/* ── Deterministic 4-char verification code (FNV-1a based) ── */
 function genVerifyCode(displayId, internalId) {
   const str = displayId + ':' + internalId;
   let hash = 2166136261;
@@ -90,7 +94,7 @@ function genVerifyCode(displayId, internalId) {
 
 const trackUrl = (internalId) => `${APP_BASE_URL}?track=${internalId}`;
 
-// POST /api/documents/register
+/* ── POST /api/documents/register ── */
 const registerDocument = async (req, res) => {
   let body;
   if (req.file) {
@@ -118,8 +122,6 @@ const registerDocument = async (req, res) => {
 
   const resolvedFileExt = req.file ? (fileExt || '') : (fileExt || null);
   const nowManila = manilaTimestamp();
-
-  // Retry loop guards against the rare ULID/displayId collision on the same millisecond
   const MAX_RETRIES = 5;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -190,8 +192,7 @@ const registerDocument = async (req, res) => {
   return res.status(500).json({ message: 'Could not generate a unique document ID after several attempts. Please try again.' });
 };
 
-// GET /api/documents/track/:id (public — no auth)
-// Accepts internalId, displayId, or fullDisplayId
+/* ── GET /api/documents/track/:id (PUBLIC - no auth) ── */
 const trackDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -237,7 +238,7 @@ const trackDocument = async (req, res) => {
   }
 };
 
-// GET /api/documents/download/:id (public — only allowed when status is Released)
+/* ── GET /api/documents/download/:id (PUBLIC - only if Released) ── */
 const downloadDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -257,7 +258,6 @@ const downloadDocument = async (req, res) => {
       });
     }
 
-    // Prefer processedFile; fall back to originalFile for legacy docs
     const fileData = doc.processedFile || doc.originalFile || doc.filePath;
     const fileExt  = doc.processedFile
       ? (doc.processedFileExt || null)
@@ -279,8 +279,7 @@ const downloadDocument = async (req, res) => {
   }
 };
 
-// PATCH /api/documents/:id/status (auth + admin required)
-// Releasing a document requires a processed file to be present.
+/* ── PATCH /api/documents/:id/status (Auth + Admin required) ── */
 const updateDocumentStatus = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -313,7 +312,6 @@ const updateDocumentStatus = async (req, res) => {
     });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
-    // Enforce: Released status requires a processed file
     if (status === 'Released' && !resolvedProcessedFile && !doc.processedFile) {
       return res.status(400).json({
         message: 'Cannot set status to "Released" without uploading a processed/final file.'
@@ -358,8 +356,7 @@ const updateDocumentStatus = async (req, res) => {
   }
 };
 
-// GET /api/documents/:id/original-file (auth required)
-// Accessible by the document owner or any admin
+/* ── GET /api/documents/:id/original-file (Auth required) ── */
 const getOriginalFile = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -392,8 +389,7 @@ const getOriginalFile = async (req, res) => {
   }
 };
 
-// GET /api/documents (auth required)
-// Admin sees all docs; regular users see only their own
+/* ── GET /api/documents (Auth required) ── */
 const getAllDocuments = async (req, res) => {
   try {
     const { ownerId, role } = req.query;
@@ -402,7 +398,6 @@ const getAllDocuments = async (req, res) => {
     const effectiveOwnerId = isAdmin ? null : (ownerId || req.user.userId || String(req.user._id));
     const filter = isAdmin ? {} : { ownerId: effectiveOwnerId };
 
-    // File blobs are excluded from list responses — they're fetched on demand
     const docs = await Document.find(filter)
       .select('-filePath -fileData -originalFile -processedFile')
       .sort({ createdAt: -1 })
@@ -422,8 +417,7 @@ const getAllDocuments = async (req, res) => {
   }
 };
 
-// DELETE /api/documents/:id (auth + admin required)
-// Also cleans up associated scan logs
+/* ── DELETE /api/documents/:id (Auth + Admin required) ── */
 const deleteDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -442,8 +436,9 @@ const deleteDocument = async (req, res) => {
   }
 };
 
-// POST /api/documents/:id/scan-log (public — no auth)
-// Saves to scan_logs collection only. Does NOT touch doc.history.
+/* ── POST /api/documents/:id/scan-log (PUBLIC - no auth) ──────────
+   Saves to scan_logs collection ONLY. Does NOT touch doc.history.
+───────────────────────────────────────────────────────────────────── */
 const logScan = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -488,9 +483,9 @@ const logScan = async (req, res) => {
   }
 };
 
-// POST /api/documents/:id/movement (auth + admin only)
-// Saves to doc.history with action='Movement'.
-// Distinct from QR scan logs — this is a manual admin entry.
+/* ── POST /api/documents/:id/movement (Auth + Admin only) ─────────
+   Saves to doc.history with action='Movement'. Admin only.
+───────────────────────────────────────────────────────────────────── */
 const addMovementLog = async (req, res) => {
   try {
     const query = req.params.documentId;
@@ -537,8 +532,8 @@ const addMovementLog = async (req, res) => {
   }
 };
 
-// GET /api/documents/scan-logs (auth + admin only)
-// Returns entries from the scan_logs collection (QR auto-scans only)
+/* ── GET /api/documents/scan-logs (Auth + Admin only) ───────────────
+   Returns entries from the scan_logs collection (QR auto-scans only). */
 const getAllScanLogs = async (req, res) => {
   try {
     const { search, docId } = req.query;
@@ -566,8 +561,8 @@ const getAllScanLogs = async (req, res) => {
   }
 };
 
-// GET /api/documents/movement-logs (auth + admin only)
-// Returns Movement entries from document histories (admin-created, not QR scans)
+/* ── GET /api/documents/movement-logs (Auth + Admin only) ───────────
+   Returns Movement entries from document histories (admin-created). */
 const getAllMovementLogs = async (req, res) => {
   try {
     const docs = await Document.find(
