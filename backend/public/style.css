@@ -1795,162 +1795,231 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
   .dash-header-row { flex-direction:column; }
   .global-search-wrap { max-width:100%; }
   #dash-grid-2 { grid-template-columns: 1fr !important; }
-}
+
 /* ================================================================
-   UNIFIED RECEIPT CARD — Public Tracking Page Redesign
-   Replaces the multi-box layout with a single clean card.
+   UNIFIED RECEIPT CARD — Compact, aligned single-card layout
 ================================================================ */
 
-/* ── Outer section: max-width stays same ── */
 .result-section {
-  max-width: 900px !important;
+  max-width: 860px !important;
   margin: 0 auto !important;
-  padding: 24px 20px 60px !important;
+  padding: 20px 16px 48px !important;
 }
 
-/* ── The one unified card ── */
+/* ── Single card wrapper ── */
 .unified-receipt-card {
   background: rgba(255,255,255,.03);
   border: 1px solid rgba(255,255,255,.10);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,.35);
+  box-shadow: 0 4px 20px rgba(0,0,0,.3);
 }
 
-/* ── Card header bar (green gradient) ── */
+/* ── Header bar ── */
 .unified-receipt-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 20px 24px;
+  gap: 12px;
+  padding: 14px 18px;
   background: linear-gradient(135deg, #0d2318 0%, #112b1a 100%);
-  border-bottom: 1px solid rgba(52,199,90,.18);
+  border-bottom: 1px solid rgba(52,199,90,.15);
+}
+.unified-receipt-header .res-doc-name {
+  font-size: 15px;
+}
+.unified-receipt-header .res-header-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
 }
 
-/* Reuse existing .res-header-icon, .res-doc-name, .res-doc-meta, .res-status-pill */
-
-/* ── Location row inside card ── */
+/* ── Location row ── */
 .unified-receipt-card .res-location-row {
-  padding: 10px 24px;
+  padding: 8px 18px;
   border-bottom: 1px solid rgba(255,255,255,.06);
   background: rgba(0,0,0,.15);
 }
 
-/* ── Card body ── */
+/* ── Body padding ── */
 .unified-receipt-body {
-  padding: 24px;
+  padding: 16px 18px 18px;
 }
 
-/* ── Section label (like form section titles) ── */
+/* ── Section labels ── */
 .unified-section-label {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 10px;
+  gap: 6px;
+  font-size: 9px;
   font-weight: 700;
-  color: rgba(255,255,255,.35);
+  color: rgba(255,255,255,.3);
   text-transform: uppercase;
   letter-spacing: .7px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
-/* ── Workflow section ── */
-.unified-section {
-  margin-bottom: 0;
-}
+/* ── Workflow ── */
 .unified-section .receipt-workflow {
-  padding: 10px 0 4px;
+  padding: 6px 0 2px;
 }
 
-/* ── Divider between workflow and two-col ── */
+/* ── Divider ── */
 .unified-divider {
   height: 1px;
-  background: rgba(255,255,255,.07);
-  margin: 20px 0;
+  background: rgba(255,255,255,.06);
+  margin: 14px 0;
 }
 
-/* ── Two-column layout ── */
+/* ── Two-column grid ── */
 .unified-two-col {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 28px;
+  grid-template-columns: 1fr 240px;
+  gap: 18px;
   align-items: start;
 }
-
 .unified-left,
-.unified-right {
-  min-width: 0;
-}
+.unified-right { min-width: 0; }
 
-/* ── Detail fields: inherit existing res-fields styles ── */
+/* ── Details table ── */
 .unified-left .res-fields {
   padding: 0;
   background: rgba(255,255,255,.02);
   border: 1px solid rgba(255,255,255,.06);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
 }
 .unified-left .rec-detail-row {
-  padding: 10px 14px;
+  display: flex;
+  gap: 10px;
+  padding: 7px 12px;
   border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: 12px;
 }
-.unified-left .rec-detail-row:last-child {
-  border-bottom: none;
+.unified-left .rec-detail-row:last-child { border-bottom: none; }
+.unified-left .rec-detail-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255,255,255,.28);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  width: 100px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.unified-left .rec-detail-value {
+  font-size: 12px;
+  color: rgba(255,255,255,.8);
+  font-weight: 500;
+  flex: 1;
 }
 
 /* ── Timeline ── */
 .unified-left .res-timeline {
-  padding: 14px 14px 14px 38px;
+  padding: 10px 10px 10px 30px;
   background: rgba(255,255,255,.02);
   border: 1px solid rgba(255,255,255,.06);
-  border-radius: 10px;
+  border-radius: 8px;
+  position: relative;
 }
 .unified-left .res-timeline::before {
-  left: 25px;
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: rgba(255,255,255,.07);
 }
 
-/* ── QR code centered in right col ── */
+/* Timeline item sizing */
+.unified-left .rec-tl-item {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.unified-left .rec-tl-item:last-child { border-bottom: none; }
+.unified-left .rec-tl-tag {
+  font-size: 8px;
+  padding: 1px 6px;
+  border-radius: 20px;
+}
+.unified-left .rec-tl-title { font-size: 12px; }
+.unified-left .rec-tl-meta  { font-size: 10px; }
+
+/* ── QR section ── */
 .unified-right .qr-center {
   text-align: center;
-  padding: 16px;
+  padding: 12px 10px;
   background: rgba(255,255,255,.02);
   border: 1px solid rgba(255,255,255,.06);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 .unified-right .qr-box {
-  margin-bottom: 10px;
+  display: inline-block;
+  padding: 8px;
+  background: #fff;
+  border-radius: 8px;
+  margin-bottom: 7px;
+}
+/* Force QR smaller */
+.unified-right .qr-box canvas,
+.unified-right .qr-box img {
+  width: 130px !important;
+  height: 130px !important;
+  display: block;
 }
 .unified-right .qr-hint {
-  font-size: 11px;
-  color: rgba(255,255,255,.28);
-  margin-bottom: 6px;
+  font-size: 10px;
+  color: rgba(255,255,255,.25);
+  margin-bottom: 4px;
 }
 .unified-right .qr-url-tag {
-  font-size: 9px;
-  color: rgba(74,222,128,.4);
-  font-family: var(--mono, 'DM Mono', monospace);
+  font-size: 8px;
+  color: rgba(74,222,128,.38);
+  font-family: 'DM Mono', monospace;
   word-break: break-all;
-  margin: 0 auto 4px;
-  line-height: 1.5;
+  line-height: 1.4;
+  margin-bottom: 2px;
 }
 .unified-right .res-dl-qr-btn {
-  margin-top: 10px;
+  margin-top: 8px;
   width: 100%;
   justify-content: center;
+  padding: 7px 14px;
+  font-size: 12px;
 }
 
 /* ── Download zone ── */
 #download-zone {
   background: rgba(255,255,255,.02);
   border: 1px solid rgba(255,255,255,.06);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
 }
+/* Compact file rows inside download zone */
+#download-zone .rec-file-row {
+  padding: 10px 12px;
+  gap: 10px;
+}
+#download-zone .rec-file-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+#download-zone .rec-file-name { font-size: 11px; }
+#download-zone .rec-file-meta { font-size: 10px; }
+#download-zone .rec-file-badge {
+  font-size: 9px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+#download-zone .rec-lock-title { font-size: 12px; }
+#download-zone .rec-lock-desc  { font-size: 11px; line-height: 1.5; }
 
-/* ── Back button row ── */
+/* ── Back button ── */
 .back-row {
   text-align: center;
-  margin-top: 20px;
+  margin-top: 14px;
   padding-top: 0;
   border-top: none;
 }
@@ -1958,39 +2027,27 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 24px;
+  padding: 8px 20px;
   background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.09);
   border-radius: 8px;
-  color: rgba(255,255,255,.55);
+  color: rgba(255,255,255,.45);
   font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all .15s;
 }
 .btn-back:hover {
   background: rgba(255,255,255,.09);
-  color: rgba(255,255,255,.8);
+  color: rgba(255,255,255,.75);
 }
 
-/* ── Responsive: stack to single column on mobile ── */
-@media (max-width: 720px) {
-  .unified-two-col {
-    grid-template-columns: 1fr;
-  }
-  .unified-right {
-    order: -1; /* QR and download appear first on mobile */
-  }
-  .unified-receipt-header {
-    flex-wrap: wrap;
-    padding: 16px 18px;
-  }
-  .unified-receipt-body {
-    padding: 18px 16px;
-  }
-  .res-doc-name {
-    font-size: 15px;
-    white-space: normal;
-  }
+/* ── Mobile: stack columns ── */
+@media (max-width: 680px) {
+  .unified-two-col { grid-template-columns: 1fr; }
+  .unified-right   { order: -1; }
+  .unified-receipt-header { padding: 12px 14px; flex-wrap: wrap; }
+  .unified-receipt-body   { padding: 14px 14px 16px; }
+  .res-doc-name { font-size: 14px; white-space: normal; }
 }
