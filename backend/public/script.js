@@ -2672,9 +2672,22 @@ function renderSystemActivity() {
   Object.entries(activityLogs).forEach(function(pair) {
     var uid  = pair[0];
     var logs = pair[1];
-    var acc  = accounts.find(function(a){ return a.id === uid; });
+    /* Search accounts by id, userId, or _id string */
+    var acc = accounts.find(function(a) {
+      return a.id === uid || a.userId === uid || String(a._id || '') === uid;
+    });
+    /* Also check _backendUsers if not found in accounts */
+    if (!acc && _backendUsers) {
+      var bu = _backendUsers.find(function(u) {
+        return u.userId === uid || String(u._id || '') === uid;
+      });
+      if (bu) acc = bu;
+    }
+    var uname = acc ? (acc.username || acc.name || uid) : uid;
+    /* If uname still looks like a MongoDB _id (24 hex chars), show 'unknown' */
+    if (/^[a-f0-9]{24}$/.test(uname)) uname = 'unknown';
     logs.forEach(function(l) {
-      all.push({ msg: l.msg, date: l.date, color: l.color, uname: acc ? (acc.username || acc.name) : uid });
+      all.push({ msg: l.msg, date: l.date, color: l.color, uname: uname });
     });
   });
   all.sort(function(a, b){ return new Date(b.date) - new Date(a.date); });
