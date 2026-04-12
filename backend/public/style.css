@@ -1796,3 +1796,201 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
   .global-search-wrap { max-width:100%; }
   #dash-grid-2 { grid-template-columns: 1fr !important; }
 }
+/* ================================================================
+   UNIFIED RECEIPT CARD — Public Tracking Page Redesign
+   Replaces the multi-box layout with a single clean card.
+================================================================ */
+
+/* ── Outer section: max-width stays same ── */
+.result-section {
+  max-width: 900px !important;
+  margin: 0 auto !important;
+  padding: 24px 20px 60px !important;
+}
+
+/* ── The one unified card ── */
+.unified-receipt-card {
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.35);
+}
+
+/* ── Card header bar (green gradient) ── */
+.unified-receipt-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #0d2318 0%, #112b1a 100%);
+  border-bottom: 1px solid rgba(52,199,90,.18);
+}
+
+/* Reuse existing .res-header-icon, .res-doc-name, .res-doc-meta, .res-status-pill */
+
+/* ── Location row inside card ── */
+.unified-receipt-card .res-location-row {
+  padding: 10px 24px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  background: rgba(0,0,0,.15);
+}
+
+/* ── Card body ── */
+.unified-receipt-body {
+  padding: 24px;
+}
+
+/* ── Section label (like form section titles) ── */
+.unified-section-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,.35);
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  margin-bottom: 12px;
+}
+
+/* ── Workflow section ── */
+.unified-section {
+  margin-bottom: 0;
+}
+.unified-section .receipt-workflow {
+  padding: 10px 0 4px;
+}
+
+/* ── Divider between workflow and two-col ── */
+.unified-divider {
+  height: 1px;
+  background: rgba(255,255,255,.07);
+  margin: 20px 0;
+}
+
+/* ── Two-column layout ── */
+.unified-two-col {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 28px;
+  align-items: start;
+}
+
+.unified-left,
+.unified-right {
+  min-width: 0;
+}
+
+/* ── Detail fields: inherit existing res-fields styles ── */
+.unified-left .res-fields {
+  padding: 0;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.unified-left .rec-detail-row {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.unified-left .rec-detail-row:last-child {
+  border-bottom: none;
+}
+
+/* ── Timeline ── */
+.unified-left .res-timeline {
+  padding: 14px 14px 14px 38px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+}
+.unified-left .res-timeline::before {
+  left: 25px;
+}
+
+/* ── QR code centered in right col ── */
+.unified-right .qr-center {
+  text-align: center;
+  padding: 16px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+}
+.unified-right .qr-box {
+  margin-bottom: 10px;
+}
+.unified-right .qr-hint {
+  font-size: 11px;
+  color: rgba(255,255,255,.28);
+  margin-bottom: 6px;
+}
+.unified-right .qr-url-tag {
+  font-size: 9px;
+  color: rgba(74,222,128,.4);
+  font-family: var(--mono, 'DM Mono', monospace);
+  word-break: break-all;
+  margin: 0 auto 4px;
+  line-height: 1.5;
+}
+.unified-right .res-dl-qr-btn {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Download zone ── */
+#download-zone {
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* ── Back button row ── */
+.back-row {
+  text-align: center;
+  margin-top: 20px;
+  padding-top: 0;
+  border-top: none;
+}
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 8px;
+  color: rgba(255,255,255,.55);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-back:hover {
+  background: rgba(255,255,255,.09);
+  color: rgba(255,255,255,.8);
+}
+
+/* ── Responsive: stack to single column on mobile ── */
+@media (max-width: 720px) {
+  .unified-two-col {
+    grid-template-columns: 1fr;
+  }
+  .unified-right {
+    order: -1; /* QR and download appear first on mobile */
+  }
+  .unified-receipt-header {
+    flex-wrap: wrap;
+    padding: 16px 18px;
+  }
+  .unified-receipt-body {
+    padding: 18px 16px;
+  }
+  .res-doc-name {
+    font-size: 15px;
+    white-space: normal;
+  }
+}
