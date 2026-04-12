@@ -1,8 +1,3 @@
-/* ══════════════════════════════════════════════════════════════════════
-   routes/authRoutes.js
-   CIT Document Tracker - Group 6
-══════════════════════════════════════════════════════════════════════ */
-
 const express  = require('express');
 const router   = express.Router();
 const { registerUser, loginUser, getMe, getUsers, heartbeat } = require('../controllers/authController');

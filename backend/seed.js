@@ -1,8 +1,3 @@
-/* ══════════════════════════════════════════════════════════════════════
-   seed.js - One-time Admin Account Seeder
-   CIT Document Tracker - Group 6
-══════════════════════════════════════════════════════════════════════ */
-
 require('dotenv').config();
 const mongoose = require('mongoose');
 const User     = require('./models/User');
@@ -12,6 +7,7 @@ async function seed() {
   await mongoose.connect(uri);
   console.log('Connected to MongoDB');
 
+  // Remove any existing admin record — it may have an unhashed password from a previous seed
   const existing = await User.findOne({ username: 'admin' });
   if (existing) {
     await User.deleteOne({ username: 'admin' });

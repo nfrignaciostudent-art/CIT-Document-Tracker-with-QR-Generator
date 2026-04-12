@@ -1,17 +1,15 @@
-/* ══════════════════════════════════════════════════════════════════════
-   qr.js - QR Code Generation & Handling
-   CIT Document Tracker - Group 6
-
-   RULE: QR always encodes a STATIC permanent URL using the Internal ID:
-         baseUrl + "?track=" + doc.internalId (ULID)
-         The QR never changes even after status updates.
-
-   SCAN vs MOVEMENT:
-     - QR scans are auto-logged to scan_logs collection (public, no form)
-     - Admin movements are logged to doc.history via /movement endpoint
-     - confirmScanLog() calls apiAddMovementLog() (admin, JWT protected)
-     - simulateScan() is admin-only (frontend + backend enforced)
-══════════════════════════════════════════════════════════════════════ */
+// QR code generation and handling.
+//
+// QR encoding rule:
+//   Always encodes a static permanent URL using the internal ULID:
+//   baseUrl + "?track=" + doc.internalId
+//   The QR code never changes, even after status updates.
+//
+// Scan vs Movement distinction:
+//   QR scans  — auto-logged to scan_logs collection (public, no form)
+//   Movements — logged to doc.history via /movement endpoint (admin only)
+//   confirmScanLog() calls apiAddMovementLog() — admin + JWT required
+//   simulateScan()   — admin-only, enforced both client and server side
 
 function encodeSnapshot(snap) {
   return btoa(unescape(encodeURIComponent(JSON.stringify(snap))))
@@ -25,7 +23,7 @@ function getSavedBaseUrl() {
   return window.location.href.split('?')[0].replace(/\/+$/, '');
 }
 
-/* Build a static QR pointing to ?track=<internalId> */
+// Builds a static QR pointing to ?track=<internalId>
 function buildQR(docKey, baseUrl, targetElId) {
   const d = docs.find(function(x){ return (x.internalId||x.id) === docKey; });
   if (!d) return;
@@ -84,7 +82,7 @@ function openQR(docKey) {
   localStorage.setItem('cit_qr_base_url', saved);
   document.getElementById('qr-base-url').value = saved;
 
-  /* Hide "Simulate QR Scan" button for non-admins */
+  // Simulate scan button is admin-only
   const simBtn = document.getElementById('qr-simulate-btn');
   if (simBtn) {
     simBtn.style.display = (currentUser && currentUser.role === 'admin') ? '' : 'none';
@@ -94,10 +92,9 @@ function openQR(docKey) {
   setTimeout(function(){ buildQR(docKey, saved); }, 150);
 }
 
-/* ── simulateScan - ADMIN ONLY ─────────────────────────────────────
-   Opens the manual movement log modal from within the app.
-   Backend further enforces admin role on the /movement endpoint.
-───────────────────────────────────────────────────────────────────── */
+// simulateScan — admin only
+// Opens the manual movement log modal from within the app.
+// Backend also enforces admin role on the /movement endpoint.
 function simulateScan() {
   if (!_currentQRDocId) { toast('Open a QR code first.'); return; }
 
@@ -120,7 +117,7 @@ function simulateScan() {
   openModal('scan-log-modal');
 }
 
-/* Build receipt QR on the register page */
+// Builds the receipt QR on the document registration page
 function buildReceiptQR(doc) {
   const cleanBase = window.location.href.split('?')[0].replace(/\/+$/, '');
   const trackUrl  = cleanBase + '?track=' + (doc.internalId || doc.id);
@@ -140,12 +137,10 @@ function buildReceiptQR(doc) {
   return trackUrl;
 }
 
-/* ── confirmScanLog - ADMIN ONLY ───────────────────────────────────
-   Called when admin submits the manual movement log form.
-   Calls apiAddMovementLog() which hits POST /api/documents/:id/movement.
-   This saves to doc.history with action='Movement'.
-   NOT the same as a QR scan (which goes to scan_logs collection).
-───────────────────────────────────────────────────────────────────── */
+// confirmScanLog — admin only
+// Submits the manual movement log form.
+// Hits POST /api/documents/:id/movement → saves to doc.history with action='Movement'.
+// This is NOT the same as a QR scan (which goes to scan_logs collection).
 async function confirmScanLog() {
   if (!currentUser || currentUser.role !== 'admin') {
     toast('Only admins can log movement.');
@@ -167,10 +162,10 @@ async function confirmScanLog() {
   const d = docs.find(function(x){ return (x.internalId||x.id) === _currentQRDocId; });
   if (!d) { toast('Document not found.'); return; }
 
-  /* Record locally first — use action 'Movement' not 'Scanned' */
+  // Record locally first with action='Movement'
   logMovement(d.internalId || d.id, handler, location);
 
-  /* Persist to backend via admin-only /movement endpoint */
+  // Persist to backend via admin-only /movement endpoint
   try {
     if (typeof apiAddMovementLog === 'function') {
       const result = await apiAddMovementLog(

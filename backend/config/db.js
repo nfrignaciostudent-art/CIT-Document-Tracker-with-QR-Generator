@@ -1,8 +1,3 @@
-/* ══════════════════════════════════════════════════════════════════════
-   config/db.js - MongoDB Connection
-   CIT Document Tracker - Group 6
-══════════════════════════════════════════════════════════════════════ */
-
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
@@ -14,7 +9,7 @@ const connectDB = async () => {
     });
     console.log(`MongoDB Connected: ${conn.connection.host}`);
 
-    /* Drop stale legacy indexes that cause E11000 on null values */
+    // Drop stale legacy indexes that cause E11000 on null values
     try {
       const docsCollection = conn.connection.collection('documents');
       const indexes = await docsCollection.indexes();

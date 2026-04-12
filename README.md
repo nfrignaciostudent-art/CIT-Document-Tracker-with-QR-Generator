@@ -1,229 +1,168 @@
-# CIT Document Tracker With QR Generator
+# CIT Document Tracker
 
-**Group 6** · Node.js + Express + MongoDB + IDEA-128 Encryption
-
-A full-stack document tracking system built for CIT. Users submit documents, admins process and release them, and anyone can scan a QR code to check real-time status. All file attachments are encrypted with IDEA-128 on the client before ever leaving the browser.
-
----
-
-## Project Structure
-
-```
-cit-doctracker/
-├── server.js                    # Express entry point
-├── seed.js                      # One-time admin account seeder
-├── package.json
-├── package-lock.json
-├── .gitignore
-├── .env                         # Your local env (never commit this)
-│
-├── config/
-│   └── db.js                    # MongoDB connection + stale index cleanup
-│
-├── controllers/
-│   ├── authController.js        # Register, login, getMe
-│   └── documentController.js   # Register, track, download, status update, delete
-│
-├── middleware/
-│   └── authMiddleware.js        # JWT Bearer token guard
-│
-├── models/
-│   ├── User.js                  # User schema (bcrypt passwords)
-│   └── Document.js              # Document schema (dual-ID, IDEA fields)
-│
-├── routes/
-│   ├── authRoutes.js            # /api/auth/*
-│   └── documentRoutes.js        # /api/documents/*
-│
-├── lib/
-│   ├── core-3.5.2.jar
-│   ├── javase-3.5.2.jar
-│   └── server.js
-│
-└── Frontend/
-    ├── server.js                # Dev server (serves frontend + proxies API)
-    ├── package.json
-    ├── .env
-    ├── index.html               # Single-page app shell
-    ├── style.css                # Global styles
-    ├── script.js                # Core app logic, state, UI rendering
-    ├── auth.js                  # Login / register / session management
-    ├── api.js                   # Centralized fetch helpers (JSON + FormData)
-    ├── track.js                 # Public QR tracking page logic
-    ├── download.js              # File download & decryption UI
-    └── qr.js                    # QR code generation & scan simulation
-```
+A full-stack document tracking system with QR code scanning, IDEA-128 file encryption, and role-based access control.
 
 ---
 
 ## Features
 
-- **Dual-ID system** — every document gets a ULID (internal, used in QR codes) and a human-readable `DOC-YYYYMMDD-XXXX` display ID with a 4-character verification code
-- **IDEA-128 client-side encryption** — files are encrypted in the browser before upload; the server never sees plaintext file content
-- **QR code tracking** — each document has a permanent QR that resolves to a public tracking page via its ULID
-- **Dual-file workflow** — users attach an original file at submission; admins attach a separate processed/final file when approving
-- **Download gating** — files are only downloadable once status is `Released`
-- **JWT authentication** — 7-day tokens, bcrypt-hashed passwords
-- **Offline fallback** — if the backend is unreachable, the app falls back to localStorage-based accounts and documents
-- **Admin controls** — status updates, movement logging, user management, activity logs
-- **Scan logging** — movement is logged with handler + location on every QR scan (30-second cooldown to prevent duplicates)
+- **Document registration** with IDEA-128 encrypted name and file attachment
+- **Dual-ID system** — a stable internal ULID for QR codes and a human-readable display ID (DOC-YYYYMMDD-XXXX) for receipts
+- **QR code tracking** — every document gets a permanent QR code that always points to live status
+- **Automatic scan logging** — scanning a QR code silently logs the event to a separate `scan_logs` collection with no user action required
+- **Manual movement logging** — admins can record physical document movements via a form; these go to `doc.history`
+- **Two-file system** — original (user-submitted, reference only) and processed (admin-uploaded, downloadable on release)
+- **Client-side decryption** — files are decrypted in the browser using IDEA-128; the server never holds unencrypted file data
+- **Role-based access** — admin and user roles with JWT authentication; admin-only routes enforced on both client and server
+- **Heartbeat-based online status** — users ping the server every 2 minutes; admins see who is currently active
+- **Real-time dashboard sync** — polls the backend every 30 seconds and re-fetches on tab focus
 
 ---
 
-## Getting Started (Local)
+## Tech Stack
 
-### Prerequisites
+| Layer     | Technology                          |
+|-----------|-------------------------------------|
+| Backend   | Node.js, Express                    |
+| Database  | MongoDB (Mongoose ODM)              |
+| Auth      | JWT (jsonwebtoken) + bcryptjs       |
+| File upload | Multer (memory storage)           |
+| QR codes  | qrcode (server), QRCode.js (client) |
+| Encryption | IDEA-128 (custom client-side impl) |
+| Frontend  | Vanilla JS, single HTML file        |
 
-- Node.js v18+
-- MongoDB running locally, or a [MongoDB Atlas](https://www.mongodb.com/atlas) URI
+---
 
-### 1. Install dependencies
+## How It Works
+
+### Document Lifecycle
+
+```
+User registers document
+  → IDEA-128 encrypts document name + file (client-side)
+  → Backend generates ULID (internalId) + DOC-YYYYMMDD-XXXX (displayId)
+  → QR code generated pointing to ?track=<internalId>
+  → Status: Received
+
+Admin processes document
+  → Updates status (Processing → For Approval → Approved → Released)
+  → On release: must upload the processed/final file
+  → Final file encrypted client-side before upload
+
+User scans QR code
+  → Public tracking page renders live status
+  → Scan event auto-logged to scan_logs collection (no auth required)
+  → If status is Released: download button appears for the final file
+  → Download decrypts file locally in the browser
+```
+
+### ID System
+
+- **internalId** — ULID (time-sortable, used in QR codes, never shown to users)
+- **displayId** — `DOC-YYYYMMDD-XXXX` (sequential per day, shown on receipts)
+- **verifyCode** — 4-char FNV-1a hash of `displayId:internalId` (anti-tamper)
+- **fullDisplayId** — `displayId-verifyCode` (what appears in the UI)
+
+### Scan vs Movement Logs
+
+| Type | Trigger | Storage | Auth |
+|------|---------|---------|------|
+| QR Scan | Visiting `?track=<id>` URL | `scan_logs` collection | None (public) |
+| Movement | Admin submits movement form | `doc.history` (action: `'Movement'`) | Admin JWT |
+
+These are intentionally separate. Scan logs are automatic and immutable. Movement logs are manual admin records.
+
+### File Security
+
+- Files are encrypted with IDEA-128 in the browser before upload
+- The server stores only the encrypted payload — never the raw file
+- Decryption happens entirely client-side on download
+- The original (user-submitted) file is stored as a reference copy and is never publicly downloadable
+- Only the admin-uploaded processed file is downloadable, and only after status reaches `Released`
+
+---
+
+## Setup
+
+### Requirements
+
+- Node.js 18+
+- MongoDB (local or Atlas)
+
+### Install
 
 ```bash
 npm install
 ```
 
-### 2. Set up environment variables
+### Environment
 
-```bash
-cp .env.example .env
+Copy `env.example` to `.env` and fill in:
+
+```env
+MONGO_URI=mongodb://localhost:27017/cit_doctracker
+JWT_SECRET=your_secret_key
+JWT_EXPIRES=7d
+PORT=3000
+APP_BASE_URL=http://localhost:3000
 ```
 
-Then edit `.env` with your values (see **Environment Variables** below).
-
-### 3. Seed the admin account (run once)
+### Seed the admin account
 
 ```bash
 node seed.js
 ```
 
-This creates the default admin account:
+Default credentials: `admin` / `admin1234` — **change after first login**.
 
-| Field    | Value      |
-|----------|------------|
-| Username | `admin`    |
-| Password | `admin1234`|
-| Role     | `admin`    |
-
-Running `seed.js` again when an admin already exists is safe — it will skip creation.
-
-### 4. Start the server
+### Run
 
 ```bash
 # Production
 npm start
 
-# Development (auto-reload)
+# Development (with auto-reload)
 npm run dev
 ```
 
-Open **http://localhost:3000** and log in with `admin / admin1234`.
+The frontend is served as static files from `public/` on the same Express server.
 
 ---
 
-## Environment Variables
-
-```env
-PORT=3000
-MONGO_URI=mongodb://localhost:27017/cit_doctracker
-JWT_SECRET=cit_group6_secret_key_2024
-JWT_EXPIRES=7d
-APP_BASE_URL=http://localhost:3000
-```
-
-| Variable      | Description                                          | Default                                      |
-|---------------|------------------------------------------------------|----------------------------------------------|
-| `PORT`        | Server port                                          | `3000`                                       |
-| `MONGO_URI`   | MongoDB connection string                            | `mongodb://localhost:27017/cit_doctracker`   |
-| `JWT_SECRET`  | Secret for signing JWTs — change in production       | `cit_group6_secret_key_2024`                 |
-| `JWT_EXPIRES` | JWT expiry duration                                  | `7d`                                         |
-| `APP_BASE_URL`| Base URL embedded in QR codes                        | `http://localhost:3000`                      |
-
-Never commit your `.env` file. Only commit `.env.example`.
-
----
-
-## Deploying to Render
-
-1. Push your repo to GitHub
-2. Go to [render.com](https://render.com) and create a **New Web Service**
-3. Connect your GitHub repository
-4. Configure:
-
-| Setting           | Value         |
-|-------------------|---------------|
-| **Build Command** | `npm install` |
-| **Start Command** | `npm start`   |
-| **Environment**   | `Node`        |
-
-5. In the **Environment** tab, add all variables from `.env.example`:
-   - Set `MONGO_URI` to your MongoDB Atlas connection string
-   - Set `APP_BASE_URL` to your Render URL (e.g. `https://cit-doctracker.onrender.com`)
-   - Set a strong random `JWT_SECRET`
-
-6. Click **Deploy**
-
-Use [MongoDB Atlas Free Tier](https://www.mongodb.com/atlas) for the database — Render cannot run a local MongoDB instance.
-
----
-
-## API Reference
+## API Overview
 
 ### Auth
 
-| Method | Endpoint             | Auth    | Description                          |
-|--------|----------------------|---------|--------------------------------------|
-| `POST` | `/api/auth/register` | None    | Create a new user account            |
-| `POST` | `/api/auth/login`    | None    | Sign in — returns a JWT token        |
-| `GET`  | `/api/auth/me`       | JWT     | Get the currently authenticated user |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/auth/register` | — | Create user account |
+| POST | `/api/auth/login` | — | Login, returns JWT |
+| GET | `/api/auth/me` | JWT | Get current user |
+| GET | `/api/auth/users` | Admin JWT | List all users with stats |
+| POST | `/api/auth/heartbeat` | JWT | Update lastSeen timestamp |
 
 ### Documents
 
-| Method   | Endpoint                          | Auth | Description                                        |
-|----------|-----------------------------------|------|----------------------------------------------------|
-| `POST`   | `/api/documents/register`         | JWT  | Register a document (supports multipart upload)    |
-| `GET`    | `/api/documents`                  | JWT  | Get documents (admin sees all; users see their own)|
-| `GET`    | `/api/documents/track/:id`        | None | Public tracking by ULID, displayId, or fullDisplayId|
-| `GET`    | `/api/documents/download/:id`     | None | Download file (only if status is `Released`)       |
-| `GET`    | `/api/documents/:id/original-file`| JWT  | Fetch original encrypted file blob                 |
-| `PATCH`  | `/api/documents/:id/status`       | JWT  | Update status + optional processed file upload     |
-| `DELETE` | `/api/documents/:id`              | JWT  | Delete a document                                  |
-
-### Health Check
-
-```
-GET /api/health
--> { status: "ok", message: "CIT DocTracker API running", group: "Group 6" }
-```
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/documents/register` | JWT | Register new document |
+| GET | `/api/documents` | JWT | List documents (own or all for admin) |
+| GET | `/api/documents/track/:id` | — | Public tracking lookup |
+| GET | `/api/documents/download/:id` | — | Download released document |
+| GET | `/api/documents/:id/original-file` | JWT (owner or admin) | Fetch original file |
+| PATCH | `/api/documents/:id/status` | Admin JWT | Update status + optional processed file |
+| DELETE | `/api/documents/:id` | Admin JWT | Delete document + scan logs |
+| POST | `/api/documents/:id/scan-log` | — | Auto-log QR scan |
+| POST | `/api/documents/:id/movement` | Admin JWT | Manual movement log |
+| GET | `/api/documents/scan-logs` | Admin JWT | All QR scan events |
+| GET | `/api/documents/movement-logs` | Admin JWT | All movement history entries |
 
 ---
 
-## Security Notes
+## Notes
 
-- Passwords are hashed with **bcrypt** (10 salt rounds) — never stored in plain text
-- Files are encrypted with **IDEA-128 entirely in the browser** before upload
-- The server stores only the encrypted blob — decryption happens client-side on download
-- Every protected route is guarded by the JWT `authMiddleware`
-- File uploads are capped at **20 MB** via multer
-- A document cannot be set to `Released` unless a processed file has been attached by an admin
-
----
-
-## Dependencies
-
-| Package          | Purpose                          |
-|------------------|----------------------------------|
-| `express`        | Web framework                    |
-| `mongoose`       | MongoDB ODM                      |
-| `bcryptjs`       | Password hashing                 |
-| `jsonwebtoken`   | JWT signing & verification       |
-| `multer`         | Multipart/form-data file upload  |
-| `qrcode`         | Server-side QR code generation   |
-| `uuid`           | UUID generation                  |
-| `cors`           | Cross-origin request headers     |
-| `dotenv`         | Environment variable loading     |
-| `nodemon` (dev)  | Auto-restart on file changes     |
-
----
-
-## Group 6
+- **Do not manually edit scan logs** — they are auto-generated by the QR scan system and exist in a separate MongoDB collection from document history.
+- **Movement logs are admin-only** — regular users cannot log movements. The backend enforces this regardless of the frontend state.
+- **Released status requires a processed file** — the backend rejects a status update to `Released` if no processed file has been attached.
+- **QR codes are permanent** — the QR always encodes the internal ULID URL. It never needs to be regenerated after status changes.
+- **File blobs are excluded from list responses** — `/api/documents` never returns raw file data. Files are fetched on demand via dedicated endpoints to keep list payloads small.

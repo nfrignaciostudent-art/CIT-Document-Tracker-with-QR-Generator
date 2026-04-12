@@ -1,24 +1,21 @@
-/* ══════════════════════════════════════════════════════════════════════
-   api.js - Centralized API Requests
-   CIT Document Tracker - Group 6
-
-   TWO SCAN LOG FUNCTIONS:
-     apiLogScan()           - public, auto, no auth. Saves to scan_logs collection.
-     apiAddMovementLog()    - protected, admin only. Saves to doc.history.
-
-   TWO LOG FETCH FUNCTIONS:
-     apiGetAllScanLogs()    - fetches from scan_logs collection (QR auto events)
-     apiGetAllMovementLogs()- fetches admin movement entries from doc.history
-
-   Returns:
-     - Response JSON  if request succeeded (2xx)
-     - { _error, status, message }  if server returned an error (4xx/5xx)
-     - null           ONLY if the server is completely unreachable
-══════════════════════════════════════════════════════════════════════ */
+// Centralized API request helpers for the CIT Document Tracker frontend.
+//
+// Two scan log functions:
+//   apiLogScan()           — public, no auth. Saves to scan_logs collection.
+//   apiAddMovementLog()    — admin only, JWT required. Saves to doc.history.
+//
+// Two log fetch functions:
+//   apiGetAllScanLogs()    — fetches QR auto-scan events from scan_logs collection
+//   apiGetAllMovementLogs()— fetches admin movement entries from doc.history
+//
+// Return conventions:
+//   Response JSON          — if request succeeded (2xx)
+//   { _error, status, message } — if server returned an error (4xx/5xx)
+//   null                   — ONLY if the server is completely unreachable
 
 const API_BASE = window.CIT_API_BASE || '';
 
-/* ── Core JSON helper ── */
+// Core JSON request helper
 async function apiRequest(method, path, body = null, token = null) {
   try {
     const opts = {
@@ -41,7 +38,7 @@ async function apiRequest(method, path, body = null, token = null) {
   }
 }
 
-/* ── Core FormData helper ── */
+// Core FormData request helper (used for file uploads to bypass body-size limits)
 async function apiFormRequest(method, path, formData, token = null) {
   try {
     const opts = { method, headers: {}, body: formData };
@@ -64,9 +61,7 @@ function _jwt() {
   try { return localStorage.getItem('cit_jwt') || null; } catch(e) { return null; }
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   AUTH ENDPOINTS
-══════════════════════════════════════════════════════════════════════ */
+// Auth endpoints
 async function apiRegisterUser(payload) {
   return await apiRequest('POST', '/api/auth/register', payload);
 }
@@ -79,20 +74,16 @@ async function apiGetMe(token) {
   return await apiRequest('GET', '/api/auth/me', null, token || _jwt());
 }
 
-/* ── GET /api/auth/users (admin only) ── */
 async function apiGetUsers(token) {
   return await apiRequest('GET', '/api/auth/users', null, token || _jwt());
 }
 
-/* ── POST /api/auth/heartbeat ── keeps lastSeen fresh while user is active */
+// Keeps lastSeen fresh while the user is active (called every 2 minutes)
 async function apiHeartbeat(token) {
   return await apiRequest('POST', '/api/auth/heartbeat', {}, token || _jwt());
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   DOCUMENT ENDPOINTS
-══════════════════════════════════════════════════════════════════════ */
-
+// Document endpoints
 async function apiRegisterDocument(payload, token) {
   return await apiRequest('POST', '/api/documents/register', payload, token || _jwt());
 }
@@ -167,17 +158,13 @@ async function apiDeleteDocument(documentId, token) {
   return await apiRequest('DELETE', `/api/documents/${encodeURIComponent(documentId)}`, null, token || _jwt());
 }
 
-/* ── POST /api/documents/:id/scan-log (PUBLIC - no auth) ──────────
-   Auto-log when a QR code is scanned.
-   Saves to the scan_logs collection ONLY.
-   Does NOT touch doc.history. */
+// Public endpoint — auto-log when a QR code is scanned.
+// Saves to scan_logs collection only. Does NOT touch doc.history.
 async function apiLogScan(documentId, payload) {
   return await apiRequest('POST', `/api/documents/${encodeURIComponent(documentId)}/scan-log`, payload);
 }
 
-/* ── POST /api/documents/:id/movement (Admin only - JWT required) ──
-   Manual movement log, added by admin. Saves to doc.history.
-   Users cannot call this endpoint. */
+// Admin-only — manual movement log added by admin. Saves to doc.history.
 async function apiAddMovementLog(documentId, payload, token) {
   return await apiRequest(
     'POST',
@@ -187,15 +174,12 @@ async function apiAddMovementLog(documentId, payload, token) {
   );
 }
 
-/* ── GET /api/documents/scan-logs (admin only) ────────────────────
-   Fetches from the scan_logs collection.
-   These are auto-generated QR scan events only. */
+// Admin-only — fetches from the scan_logs collection (QR auto-scan events)
 async function apiGetAllScanLogs(token) {
   return await apiRequest('GET', '/api/documents/scan-logs', null, token || _jwt());
 }
 
-/* ── GET /api/documents/movement-logs (admin only) ────────────────
-   Fetches admin-created movement entries from document histories. */
+// Admin-only — fetches Movement entries from document histories
 async function apiGetAllMovementLogs(token) {
   return await apiRequest('GET', '/api/documents/movement-logs', null, token || _jwt());
 }
