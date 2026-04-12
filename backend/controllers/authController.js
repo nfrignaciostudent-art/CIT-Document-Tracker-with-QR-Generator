@@ -127,6 +127,7 @@ const getUsers = async (req, res) => {
       color:     u.color,
       createdAt: u.createdAt,
       lastLogin: u.lastLogin || null,
+      lastSeen:  u.lastSeen  || null,
       docCount:  countMap[u.userId] || countMap[String(u._id)] || 0,
     }));
 
@@ -137,4 +138,16 @@ const getUsers = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getMe, getUsers };
+/* ── POST /api/auth/heartbeat ── (protected)
+   Called by the frontend every 2 minutes while user is active.
+   Updates lastSeen so the admin can see who is currently online. */
+const heartbeat = async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { lastSeen: new Date() });
+    res.json({ ok: true, lastSeen: new Date() });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, getMe, getUsers, heartbeat };

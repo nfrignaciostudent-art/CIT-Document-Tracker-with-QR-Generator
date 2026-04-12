@@ -2955,3 +2955,143 @@ document.addEventListener('visibilitychange', function() {
     _prevLogout.apply(this, arguments);
   };
 })();
+
+/* ================================================================
+   PATCH 7 — Heartbeat-based accurate "Active" users
+   
+   How it works:
+   - Every logged-in user pings POST /api/auth/heartbeat every 2 min
+   - Backend sets user.lastSeen = now() on each ping
+   - On logout: heartbeat stops → lastSeen goes stale naturally
+   - Admin's GET /api/auth/users returns lastSeen for all users
+   - ACTIVE = lastSeen within last 5 minutes (real online status)
+   - If lastSeen is null/stale → user is offline
+================================================================ */
+
+const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000;  /* 2 minutes */
+const ACTIVE_THRESHOLD_MS   = 5 * 60 * 1000;  /* 5 minutes = considered online */
+
+let _heartbeatTimer = null;
+
+function _isUserOnline(lastSeen) {
+  if (!lastSeen) return false;
+  try {
+    return (Date.now() - new Date(lastSeen).getTime()) < ACTIVE_THRESHOLD_MS;
+  } catch(e) { return false; }
+}
+
+async function _sendHeartbeat() {
+  if (!currentUser || !currentUser.token) return;
+  try {
+    await apiHeartbeat(currentUser.token);
+  } catch(e) {
+    console.warn('[heartbeat] failed:', e);
+  }
+}
+
+function _startHeartbeat() {
+  if (_heartbeatTimer) clearInterval(_heartbeatTimer);
+  /* Send immediately on login so lastSeen is set right away */
+  _sendHeartbeat();
+  _heartbeatTimer = setInterval(_sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+}
+
+function _stopHeartbeat() {
+  if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+}
+
+/* ── Override renderUserOverview with accurate online status ── */
+function renderUserOverview() {
+  var el   = document.getElementById('user-overview-body');
+  var card = document.getElementById('card-user-overview');
+  if (!el || !card) return;
+
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  card.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  var users = _backendUsers;
+  if (!users) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:16px 0;text-align:center">Loading…</p>';
+    return;
+  }
+  if (!users.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:16px 0">No users registered yet.</p>';
+    return;
+  }
+
+  var total = users.length;
+
+  /* ACTIVE = lastSeen within last 5 minutes (heartbeat-based) */
+  var active = users.filter(function(u) { return _isUserOnline(u.lastSeen); }).length;
+
+  /* NEW = registered this calendar month */
+  var now = new Date();
+  var newThisMonth = users.filter(function(u) {
+    if (!u.createdAt) return false;
+    var d = new Date(u.createdAt);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  function _fmtDate(iso) {
+    if (!iso) return '-';
+    try {
+      return new Date(iso).toLocaleDateString('en-PH', {
+        timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric'
+      });
+    } catch(e) { return iso; }
+  }
+
+  var recentUsers = users.slice(0, 5);
+
+  el.innerHTML =
+    '<div class="user-ov-stats">' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num">' + total + '</div><div class="user-ov-stat-label">TOTAL</div></div>' +
+      '<div class="user-ov-stat">' +
+        '<div class="user-ov-stat-num" style="color:#4ade80">' + active + '</div>' +
+        '<div class="user-ov-stat-label">ACTIVE</div>' +
+        '<div class="user-ov-stat-hint">online now</div>' +
+      '</div>' +
+      '<div class="user-ov-stat">' +
+        '<div class="user-ov-stat-num" style="color:#60a5fa">' + newThisMonth + '</div>' +
+        '<div class="user-ov-stat-label">NEW</div>' +
+        '<div class="user-ov-stat-hint">this month</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="user-ov-section-label">RECENTLY ADDED</div>' +
+    '<div class="user-ov-list">' +
+      recentUsers.map(function(u, i) {
+        var colors  = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399','#f87171','#fbbf24'];
+        var bg      = u.color || colors[i % colors.length];
+        var online  = _isUserOnline(u.lastSeen);
+        return '<div class="user-ov-item">' +
+          '<div style="position:relative;flex-shrink:0">' +
+            '<div class="user-avatar" style="background:' + bg + ';width:32px;height:32px;min-width:32px;font-size:11px">' + initials(u.name || u.username) + '</div>' +
+            (online ? '<span style="position:absolute;bottom:0;right:0;width:9px;height:9px;background:#4ade80;border:2px solid var(--card);border-radius:50%"></span>' : '') +
+          '</div>' +
+          '<div class="user-ov-info">' +
+            '<div class="user-ov-name">' + (u.name || u.username) + '</div>' +
+            '<div class="user-ov-meta">' +
+              (u.userId || '') + ' &nbsp;&middot;&nbsp; ' + _fmtDate(u.createdAt) +
+              (u.docCount ? ' &nbsp;&middot;&nbsp; ' + u.docCount + ' doc' + (u.docCount !== 1 ? 's' : '') : '') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
+
+/* ── Wire heartbeat into enterApp / logout ── */
+(function() {
+  var _prevEnter7 = enterApp;
+  enterApp = function() {
+    _prevEnter7.apply(this, arguments);
+    _startHeartbeat();
+  };
+
+  var _prevLogout7 = logout;
+  logout = function() {
+    _stopHeartbeat();
+    _prevLogout7.apply(this, arguments);
+  };
+})();

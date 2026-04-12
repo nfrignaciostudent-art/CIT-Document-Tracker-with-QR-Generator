@@ -5,7 +5,7 @@
 
 const express  = require('express');
 const router   = express.Router();
-const { registerUser, loginUser, getMe, getUsers } = require('../controllers/authController');
+const { registerUser, loginUser, getMe, getUsers, heartbeat } = require('../controllers/authController');
 const protect  = require('../middleware/authMiddleware');
 
 const adminOnly = (req, res, next) => {
@@ -15,9 +15,10 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-router.post('/register', registerUser);
-router.post('/login',    loginUser);
-router.get('/me',        protect, getMe);
-router.get('/users',     protect, adminOnly, getUsers);
+router.post('/register',  registerUser);
+router.post('/login',     loginUser);
+router.get('/me',         protect, getMe);
+router.get('/users',      protect, adminOnly, getUsers);
+router.post('/heartbeat', protect, heartbeat);
 
 module.exports = router;

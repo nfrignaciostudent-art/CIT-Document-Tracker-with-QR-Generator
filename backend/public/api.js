@@ -84,6 +84,11 @@ async function apiGetUsers(token) {
   return await apiRequest('GET', '/api/auth/users', null, token || _jwt());
 }
 
+/* ── POST /api/auth/heartbeat ── keeps lastSeen fresh while user is active */
+async function apiHeartbeat(token) {
+  return await apiRequest('POST', '/api/auth/heartbeat', {}, token || _jwt());
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    DOCUMENT ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */
