@@ -276,22 +276,15 @@ function renderPublicTrackResult(d) {
 
   /* ── Workflow ── */
   const wfHtml = isRejected
-    ? `<div class="rec-wf-rejected">Document Rejected</div>`
+    ? `<span class="wf-pill rejected">✕ Rejected</span>`
     : workflow.map((step, i) => {
         const done = curIdx > i, curr = curIdx === i;
-        return `
-          ${i > 0 ? `<div class="rec-wf-line${done ? ' done' : ''}"></div>` : ''}
-          <div class="rec-wf-step">
-            <div class="rec-wf-dot${done ? ' done' : curr ? ' curr' : ''}">
-              ${done
-                ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-                : curr ? `<span class="rec-wf-pulse"></span>` : i + 1}
-            </div>
-            <span class="rec-wf-label${done ? ' done' : curr ? ' curr' : ''}">${step}</span>
-          </div>`;
+        const cls  = done ? 'done' : curr ? 'curr' : '';
+        return (i > 0 ? `<span class="wf-sep">›</span>` : '') +
+               `<span class="wf-pill ${cls}">${step}</span>`;
       }).join('');
 
-  _set('receipt-workflow', `<div style="display:flex;align-items:center;width:100%">${wfHtml}</div>`);
+  _set('receipt-workflow', `<div class="wf-bar">${wfHtml}</div>`);
 
   /* ── Details ── */
   _set('detail-list', [
@@ -304,9 +297,9 @@ function renderPublicTrackResult(d) {
       ? `<span style="color:#4ade80;font-weight:600">${relEntry.date}</span>`
       : `<span style="opacity:.4">Pending</span>`]
   ].map(([lbl, val]) =>
-    `<div class="rec-detail-row">
-      <span class="rec-detail-label">${lbl}</span>
-      <span class="rec-detail-value">${val}</span>
+    `<div class="detail-row">
+      <span class="detail-label">${lbl}</span>
+      <span class="detail-value">${val}</span>
     </div>`
   ).join(''));
 
@@ -345,7 +338,7 @@ function renderPublicTrackResult(d) {
     qrBox.innerHTML = '';
     const target = document.createElement('div');
     qrBox.appendChild(target);
-    new QRCode(target, { text: trackUrl, width: 130, height: 130, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
   }
   _text('qr-url-tag', trackUrl);
 
