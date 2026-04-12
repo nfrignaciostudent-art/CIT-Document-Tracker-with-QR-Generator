@@ -230,7 +230,7 @@ function showPublicError(msg) {
 function renderPublicTrackResult(d) {
   _pubTrackDocId = d.internalId || d.id;
 
-  const sc         = statusColorMap[d.status] || '#64748b';
+  const sc         = (typeof statusColorMap !== 'undefined' ? statusColorMap[d.status] : null) || '#64748b';
   const isReleased = d.status === 'Released';
   const isRejected = d.status === 'Rejected';
   const workflow   = ['Received', 'Processing', 'For Approval', 'Approved', 'Released'];
@@ -240,30 +240,42 @@ function renderPublicTrackResult(d) {
   const office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
   const relEntry   = [...(d.history || [])].reverse().find(h => h.status === 'Released');
 
+  /* ── Helper: safe set innerHTML ── */
+  function _set(id, html) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+  function _text(id, txt) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  }
+
   /* ── Header ── */
-  document.getElementById('res-doc-name').textContent = d.name;
-  document.getElementById('res-doc-meta').textContent = dispId + ' · ' + (d.type || '');
-  document.getElementById('res-status-badge').innerHTML =
+  _text('res-doc-name', d.name);
+  _text('res-doc-meta', dispId + ' · ' + (d.type || ''));
+  _set('res-status-badge',
     `<span style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:99px;
       font-size:12px;font-weight:700;background:${sc}18;border:1px solid ${sc}44;color:${sc}">
       <span style="width:7px;height:7px;border-radius:50%;background:${sc};flex-shrink:0;display:inline-block${
         !isRejected && !isReleased ? ';animation:pulse 1.5s infinite' : ''}"></span>
       ${d.status}
-    </span>`;
+    </span>`);
 
   /* ── Location row ── */
   const locRow = document.getElementById('res-location-row');
-  if (lastLoc.location || lastLoc.handler) {
-    locRow.style.display = '';
-    locRow.innerHTML =
-      (lastLoc.location ? `<span class="rec-loc-pill">${lastLoc.location}</span>` : '') +
-      (lastLoc.handler  ? `<span class="rec-loc-pill">${lastLoc.handler}</span>`  : '');
-  } else {
-    locRow.style.display = 'none';
+  if (locRow) {
+    if (lastLoc.location || lastLoc.handler) {
+      locRow.style.display = '';
+      locRow.innerHTML =
+        (lastLoc.location ? `<span class="rec-loc-pill">${lastLoc.location}</span>` : '') +
+        (lastLoc.handler  ? `<span class="rec-loc-pill">${lastLoc.handler}</span>`  : '');
+    } else {
+      locRow.style.display = 'none';
+    }
   }
 
   /* ── Workflow ── */
-  document.getElementById('receipt-workflow').innerHTML = isRejected
+  const wfHtml = isRejected
     ? `<div class="rec-wf-rejected">Document Rejected</div>`
     : workflow.map((step, i) => {
         const done = curIdx > i, curr = curIdx === i;
@@ -279,8 +291,10 @@ function renderPublicTrackResult(d) {
           </div>`;
       }).join('');
 
+  _set('receipt-workflow', `<div style="display:flex;align-items:center;width:100%">${wfHtml}</div>`);
+
   /* ── Details ── */
-  document.getElementById('detail-list').innerHTML = [
+  _set('detail-list', [
     ['Submitted By',    d.by],
     ['Purpose',         d.purpose],
     ['Assigned Office', office],
@@ -294,7 +308,7 @@ function renderPublicTrackResult(d) {
       <span class="rec-detail-label">${lbl}</span>
       <span class="rec-detail-value">${val}</span>
     </div>`
-  ).join('');
+  ).join(''));
 
   /* ── Timeline ── */
   const hist = (d.history || [])
@@ -308,7 +322,7 @@ function renderPublicTrackResult(d) {
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .reverse();
 
-  document.getElementById('pub-timeline').innerHTML = hist.length === 0
+  _set('pub-timeline', hist.length === 0
     ? `<p class="rec-empty">No history recorded yet.</p>`
     : hist.map(h => {
         const isMove = h._type === 'movement';
@@ -322,16 +336,18 @@ function renderPublicTrackResult(d) {
             ${h.note ? `<div class="rec-tl-note">"${h.note}"</div>` : ''}
           </div>
         </div>`;
-      }).join('');
+      }).join(''));
 
   /* ── QR ── */
   const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
   const qrBox = document.getElementById('pub-qr-box');
-  qrBox.innerHTML = '';
-  const target = document.createElement('div');
-  qrBox.appendChild(target);
-  new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
-  document.getElementById('qr-url-tag').textContent = trackUrl;
+  if (qrBox) {
+    qrBox.innerHTML = '';
+    const target = document.createElement('div');
+    qrBox.appendChild(target);
+    new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+  }
+  _text('qr-url-tag', trackUrl);
 
   /* ── Files ── */
   const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
@@ -385,103 +401,14 @@ function renderPublicTrackResult(d) {
         </div>`;
     }
   }
-  document.getElementById('download-zone').innerHTML = fileHtml;
+  _set('download-zone', fileHtml);
 
   document.getElementById('hero').style.display           = 'none';
   document.getElementById('result-section').style.display = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-  _pubTrackDocId = d.internalId || d.id;
 
-  const sc         = statusColorMap[d.status] || '#64748b';
-  const isReleased = d.status === 'Released';
-  const isRejected = d.status === 'Rejected';
-  const workflow   = ['Received', 'Processing', 'For Approval', 'Approved', 'Released'];
-  const curIdx     = workflow.indexOf(d.status);
-  const lastLoc    = getLatestLocationPublic(d);
-  const dispId     = d.fullDisplayId || d.displayId || d.id;
-  const office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
-  const relEntry   = [...(d.history || [])].reverse().find(h => h.status === 'Released');
-  const trackUrl   = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
-
-  /* ── Workflow progress bar ── */
-  const wfHtml = isRejected
-    ? `<div class="pub-wf-rejected">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-        Document Rejected
-       </div>`
-    : workflow.map((step, i) => {
-        const done = curIdx > i;
-        const curr = curIdx === i;
-        return `
-          ${i > 0 ? `<div class="pub-wf-line ${done ? 'done' : ''}"></div>` : ''}
-          <div class="pub-wf-step">
-            <div class="pub-wf-dot ${done ? 'done' : curr ? 'current' : ''}">
-              ${done
-                ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-                : curr ? `<span class="pub-wf-pulse"></span>` : i + 1}
-            </div>
-            <span class="pub-wf-label ${done ? 'done' : curr ? 'current' : ''}">${step}</span>
-          </div>`;
-      }).join('');
-
-  /* ── Activity timeline ── */
-  const hist = (d.history || [])
-    .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
-    .map(h => ({
-      _type:    h.action === 'Movement' ? 'movement' : 'status',
-      status:   h.status   || '',
-      by:       h.by       || '-',
-      date:     h.date     || '',
-      location: h.location || '',
-      handler:  h.handler  || '',
-      note:     h.note     || ''
-    }))
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .reverse();
-
-  const timelineHtml = hist.length === 0
-    ? `<p class="pub-empty">No history recorded yet.</p>`
-    : hist.map(h => {
-        const isMove = h._type === 'movement';
-        const dotBg  = isMove ? '#f59e0b' : sc;
-        const tag    = isMove
-          ? `<span class="pub-tl-tag move">Movement</span>`
-          : `<span class="pub-tl-tag status">Status Update</span>`;
-        return `
-          <div class="pub-tl-item">
-            <div class="pub-tl-dot" style="background:${dotBg};box-shadow:0 0 0 3px ${dotBg}22"></div>
-            <div class="pub-tl-body">
-              ${tag}
-              <div class="pub-tl-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
-              <div class="pub-tl-meta">${isMove ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
-              ${h.location ? `<div class="pub-tl-loc">${h.location}${h.handler ? ' · ' + h.handler : ''}</div>` : ''}
-              ${h.note ? `<div class="pub-tl-note">"${h.note}"</div>` : ''}
-            </div>
-          </div>`;
-      }).join('');
-
-  /* ── File / download section ── */
-  const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
-  const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.processedFile);
-  const docKey       = d.internalId || d.id;
-
-  let fileHtml = '';
-  if (hasOriginal) {
-    fileHtml += `
-      <div class="pub-file-row">
-        <div class="pub-file-icon ref">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        </div>
-        <div class="pub-file-info">
-          <div class="pub-file-name">Original File <span class="pub-file-sub">(Submitted)</span></div>
-          <div class="pub-file-meta">Submitted by ${d.by || 'user'} · IDEA-128 encrypted at rest</div>
-        </div>
-        <span class="pub-file-badge ref">Reference Only</span>
-      </div>`;
-}
-
-/* Go back */
+/* ── Go back ── */
 function goBack() {
   document.getElementById('result-section').style.display = 'none';
   document.getElementById('hero').style.display           = '';

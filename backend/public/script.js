@@ -2096,7 +2096,7 @@ function renderUserOverview() {
             '<div class="user-avatar" style="background:' + (u.color || avatarColor(i)) + ';width:32px;height:32px;min-width:32px;font-size:11px">' + initials(u.name || u.username) + '</div>' +
             '<div class="user-ov-info">' +
               '<div class="user-ov-name">' + (u.name || u.username) + '</div>' +
-              '<div class="user-ov-meta">' + (u.userId || u.id || '') + ' &nbsp;·&nbsp; ' + (u.created || '-') + '</div>' +
+              '<div class="user-ov-meta">' + (u.created || '-') + '</div>' +
             '</div>' +
           '</div>';
         }).join('') +
@@ -2392,7 +2392,7 @@ function renderUserOverview() {
               '<div class="user-avatar" style="background:'+(u.color||avatarColor(i))+';width:32px;height:32px;min-width:32px;font-size:11px">'+initials(u.name||u.username)+'</div>' +
               '<div class="user-ov-info">' +
                 '<div class="user-ov-name">'+(u.name||u.username)+'</div>' +
-                '<div class="user-ov-meta">'+(u.userId||u.id||'')+' &nbsp;&middot;&nbsp; '+(u.created||'-')+'</div>' +
+                '<div class="user-ov-meta">'+(u.created||'-')+'</div>' +
               '</div></div>';
           }).join('') +
         '</div>'
@@ -2614,8 +2614,7 @@ function renderUserOverview() {
               (hasLoggedIn ? '<span class="user-ov-active-dot" title="Has logged in"></span>' : '') +
             '</div>' +
             '<div class="user-ov-meta">' +
-              (u.userId || '') +
-              ' &nbsp;&middot;&nbsp; ' + _fmtDate(u.createdAt) +
+              _fmtDate(u.createdAt) +
               (u.docCount ? ' &nbsp;&middot;&nbsp; ' + u.docCount + ' doc' + (u.docCount !== 1 ? 's' : '') : '') +
             '</div>' +
           '</div>' +
@@ -2839,7 +2838,7 @@ function renderUsers() {
       '<div style="flex:1">' +
         '<div style="font-weight:600;font-size:14px">' + (u.name || u.username) + '</div>' +
         '<div style="font-size:12px;color:var(--muted);margin-top:2px">' +
-          '@' + u.username + ' &nbsp;&middot;&nbsp; ' + uid + ' &nbsp;&middot;&nbsp; ' +
+          '@' + u.username + ' &nbsp;&middot;&nbsp; ' +
           docCnt + ' doc' + (docCnt !== 1 ? 's' : '') + ' &nbsp;&middot;&nbsp; Joined ' + _fmtDate(u.createdAt) +
         '</div>' +
         '<div style="margin-top:3px">' + lastLogin + '</div>' +
@@ -3085,7 +3084,7 @@ function renderUserOverview() {
           '<div class="user-ov-info">' +
             '<div class="user-ov-name">' + (u.name || u.username) + '</div>' +
             '<div class="user-ov-meta">' +
-              (u.userId || '') + ' &nbsp;&middot;&nbsp; ' + _fmtDate(u.createdAt) +
+              _fmtDate(u.createdAt) +
               (u.docCount ? ' &nbsp;&middot;&nbsp; ' + u.docCount + ' doc' + (u.docCount !== 1 ? 's' : '') : '') +
             '</div>' +
           '</div>' +
