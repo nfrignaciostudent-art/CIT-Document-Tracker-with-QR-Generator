@@ -1079,3 +1079,52 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
   color: var(--muted);
   margin-top: 10px;
 }
+
+/* ── User overview small hint text + active dot ── */
+.user-ov-stat-hint {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.user-ov-active-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ── System Activity card items ── */
+.sysact-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.sysact-item:last-child { border-bottom: none; }
+.sysact-left { flex: 1; min-width: 0; }
+.sysact-user {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sysact-time {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.sysact-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}

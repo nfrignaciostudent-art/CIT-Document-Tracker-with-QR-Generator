@@ -79,6 +79,11 @@ async function apiGetMe(token) {
   return await apiRequest('GET', '/api/auth/me', null, token || _jwt());
 }
 
+/* ── GET /api/auth/users (admin only) ── */
+async function apiGetUsers(token) {
+  return await apiRequest('GET', '/api/auth/users', null, token || _jwt());
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    DOCUMENT ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */

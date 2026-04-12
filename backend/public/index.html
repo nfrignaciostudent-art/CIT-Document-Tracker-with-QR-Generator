@@ -233,22 +233,10 @@
         </div>
       </div>
 
-      <!-- ── FEATURE 2 & 3: Second row — Pending/Urgent + User Overview ── -->
+      <!-- ── Second row: User Overview + System Activity (admin only) ── -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="dash-grid-2">
 
-        <!-- FEATURE 3: Pending / Urgent Documents -->
-        <div class="card" id="card-urgent-docs">
-          <div class="card-head">
-            <div>
-              <h3>Pending / Urgent Docs</h3>
-              <p class="card-subhead">Delayed documents needing attention</p>
-            </div>
-            <button class="dash-link-btn" onclick="showPage('vault',document.getElementById('nav-vault'))">View all</button>
-          </div>
-          <div id="urgent-docs-list" style="padding:0 0 4px"></div>
-        </div>
-
-        <!-- FEATURE 2: User Overview (admin only — hidden for users) -->
+        <!-- User Overview (admin only) -->
         <div class="card" id="card-user-overview" style="display:none">
           <div class="card-head">
             <div>
@@ -258,6 +246,20 @@
             <button class="dash-link-btn" onclick="showPage('users',document.getElementById('nav-users'))">Manage</button>
           </div>
           <div id="user-overview-body" style="padding:0 16px 12px"></div>
+        </div>
+
+        <!-- System Activity (admin only) -->
+        <div class="card" id="card-system-activity" style="display:none">
+          <div class="card-head">
+            <div>
+              <h3>System Activity</h3>
+              <p class="card-subhead">Recent system activities</p>
+            </div>
+            <button class="dash-link-btn" onclick="showPage('actlogs',document.getElementById('nav-actlogs'))">View all</button>
+          </div>
+          <div class="card-body">
+            <div class="activity-list" id="system-activity-list"></div>
+          </div>
         </div>
 
       </div>

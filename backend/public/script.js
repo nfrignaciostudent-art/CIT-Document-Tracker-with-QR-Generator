@@ -2435,3 +2435,299 @@ function _updateDashGrid2() {
     _updateDashGrid2();
   };
 })();
+
+/* ================================================================
+   PATCH 3 — Use real backend data. No localStorage guessing.
+   - apiGetUsers() fetches real users + lastLogin + docCount from MongoDB
+   - % badges hidden when no previous-month data exists (prev=0 → null)
+   - Active users = users with lastLogin !== null (actually logged in)
+   - All stats sourced from backend-synced `docs` array (createdAt field)
+================================================================ */
+
+/* Cache for backend users so we don't re-fetch on every renderAll */
+let _backendUsers = null;
+let _backendUsersFetching = false;
+
+async function _fetchBackendUsers(force) {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  if (!currentUser.token && !getSavedToken()) return;
+  if (_backendUsersFetching) return;
+  if (_backendUsers && !force) return;
+  _backendUsersFetching = true;
+  try {
+    const result = await apiGetUsers(currentUser.token || getSavedToken());
+    if (Array.isArray(result)) {
+      _backendUsers = result;
+    }
+  } catch(e) {
+    console.warn('[_fetchBackendUsers]', e);
+  }
+  _backendUsersFetching = false;
+}
+
+/* ── Fixed % change: return null when no previous period exists ── */
+function _pctChange(pool, statusFilter) {
+  var now = new Date();
+  var tm = now.getMonth(), ty = now.getFullYear();
+  var lm = tm === 0 ? 11 : tm - 1;
+  var ly = tm === 0 ? ty - 1 : ty;
+  var cur  = _countInMonth(pool, tm, ty, statusFilter);
+  var prev = _countInMonth(pool, lm, ly, statusFilter);
+  if (prev === 0) return null; /* no basis for comparison — show nothing */
+  var p = ((cur - prev) / prev * 100).toFixed(1);
+  return { pct: Math.abs(parseFloat(p)).toFixed(1), up: parseFloat(p) >= 0 };
+}
+
+function _pctChangeUsers(userList) {
+  if (!userList || !userList.length) return null;
+  var now = new Date();
+  var tm = now.getMonth(), ty = now.getFullYear();
+  var lm = tm === 0 ? 11 : tm - 1, ly = tm === 0 ? ty - 1 : ty;
+  function cnt(m, y) {
+    return userList.filter(function(u) {
+      var d; try { d = new Date(u.createdAt); } catch(e){ return false; }
+      return !isNaN(d) && d.getMonth() === m && d.getFullYear() === y;
+    }).length;
+  }
+  var cur = cnt(tm,ty), prev = cnt(lm,ly);
+  if (prev === 0) return null;
+  var p = ((cur-prev)/prev*100).toFixed(1);
+  return { pct: Math.abs(parseFloat(p)).toFixed(1), up: parseFloat(p) >= 0 };
+}
+
+/* ── renderStats using real docs + real backend users ── */
+function renderStats() {
+  var isAdmin = currentUser.role === 'admin';
+  var myDocs  = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id || d.ownerId === currentUser.userId; });
+
+  var total    = myDocs.length;
+  var released = myDocs.filter(function(d){ return d.status === 'Released'; }).length;
+  var pending  = myDocs.filter(function(d){ return ['Received','Processing','For Approval','Pending'].includes(d.status); }).length;
+  var rejected = myDocs.filter(function(d){ return d.status === 'Rejected'; }).length;
+
+  var dr = _statDateRange();
+
+  var totalBadge = _pctBadge(_pctChange(myDocs, null));
+  var relBadge   = _pctBadge(_pctChange(myDocs, ['Released']));
+  var pendBadge  = _pctBadge(_pctChange(myDocs, ['Received','Processing','For Approval','Pending']));
+  var rejBadge   = _pctBadge(_pctChange(myDocs, ['Rejected']));
+
+  var totalUsers = 0;
+  var usersBadge = '';
+  if (isAdmin && _backendUsers) {
+    totalUsers = _backendUsers.length;
+    usersBadge = _pctBadge(_pctChangeUsers(_backendUsers));
+  } else if (isAdmin) {
+    totalUsers = accounts.filter(function(a){ return a.role !== 'admin'; }).length;
+  }
+
+  document.getElementById('stats-row').innerHTML = isAdmin
+    ? '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Total Documents</span>' + totalBadge + '</div><div class="stat-card-num">' + total + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Released</span>' + relBadge + '</div><div class="stat-card-num green">' + released + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Pending / Stuck</span>' + pendBadge + '</div><div class="stat-card-num yellow">' + pending + '</div><div class="stat-card-sub">Needs attention</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Total Users</span>' + usersBadge + '</div><div class="stat-card-num">' + totalUsers + '</div><div class="stat-card-sub">Active accounts</div></div>'
+    : '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">My Docs</span>' + totalBadge + '</div><div class="stat-card-num">' + total + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Released</span>' + relBadge + '</div><div class="stat-card-num green">' + released + '</div><div class="stat-card-sub">' + dr + '</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">In Progress</span>' + pendBadge + '</div><div class="stat-card-num yellow">' + pending + '</div><div class="stat-card-sub">Needs attention</div></div>' +
+      '<div class="stat-card"><div class="stat-card-top"><span class="stat-card-label">Rejected</span>' + rejBadge + '</div><div class="stat-card-num red">' + rejected + '</div><div class="stat-card-sub">' + dr + '</div></div>';
+
+  document.getElementById('dash-title').textContent    = isAdmin ? 'Admin Dashboard' : 'My Dashboard';
+  document.getElementById('dash-subtitle').textContent = isAdmin
+    ? 'Welcome back, Admin! Here\'s what\'s happening today.'
+    : 'Welcome back, ' + (currentUser.name || currentUser.username);
+}
+
+/* ── renderUserOverview using real backend users ── */
+function renderUserOverview() {
+  var el   = document.getElementById('user-overview-body');
+  var card = document.getElementById('card-user-overview');
+  if (!el || !card) return;
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  card.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  var users = _backendUsers;
+  if (!users) {
+    /* Backend data not loaded yet — show loading state */
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:16px 0;text-align:center">Loading users…</p>';
+    return;
+  }
+  if (!users.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:16px 0">No users registered yet.</p>';
+    return;
+  }
+
+  var total = users.length;
+
+  /*
+   * ACTIVE = user has lastLogin !== null in MongoDB.
+   * This is set by the backend every time the user logs in.
+   * No guessing, no localStorage, pure backend data.
+   */
+  var active = users.filter(function(u){ return !!u.lastLogin; }).length;
+
+  /* NEW = registered this calendar month per MongoDB createdAt */
+  var now = new Date();
+  var newThisMonth = users.filter(function(u) {
+    if (!u.createdAt) return false;
+    var d = new Date(u.createdAt);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  var recentUsers = users.slice(0, 5); /* already sorted createdAt desc from backend */
+
+  function _fmtDate(isoStr) {
+    if (!isoStr) return '-';
+    try {
+      return new Date(isoStr).toLocaleDateString('en-PH', {
+        timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric'
+      });
+    } catch(e){ return isoStr; }
+  }
+
+  el.innerHTML =
+    '<div class="user-ov-stats">' +
+      '<div class="user-ov-stat"><div class="user-ov-stat-num">' + total + '</div><div class="user-ov-stat-label">TOTAL</div></div>' +
+      '<div class="user-ov-stat">' +
+        '<div class="user-ov-stat-num" style="color:#4ade80">' + active + '</div>' +
+        '<div class="user-ov-stat-label">ACTIVE</div>' +
+        '<div class="user-ov-stat-hint">logged in</div>' +
+      '</div>' +
+      '<div class="user-ov-stat">' +
+        '<div class="user-ov-stat-num" style="color:#60a5fa">' + newThisMonth + '</div>' +
+        '<div class="user-ov-stat-label">NEW</div>' +
+        '<div class="user-ov-stat-hint">this month</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="user-ov-section-label">RECENTLY ADDED</div>' +
+    '<div class="user-ov-list">' +
+      recentUsers.map(function(u, i) {
+        var colors = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399'];
+        var bg = u.color || colors[i % colors.length];
+        var hasLoggedIn = !!u.lastLogin;
+        return '<div class="user-ov-item">' +
+          '<div class="user-avatar" style="background:' + bg + ';width:32px;height:32px;min-width:32px;font-size:11px">' +
+            initials(u.name || u.username) +
+          '</div>' +
+          '<div class="user-ov-info">' +
+            '<div class="user-ov-name">' + (u.name || u.username) +
+              (hasLoggedIn ? '<span class="user-ov-active-dot" title="Has logged in"></span>' : '') +
+            '</div>' +
+            '<div class="user-ov-meta">' +
+              (u.userId || '') +
+              ' &nbsp;&middot;&nbsp; ' + _fmtDate(u.createdAt) +
+              (u.docCount ? ' &nbsp;&middot;&nbsp; ' + u.docCount + ' doc' + (u.docCount !== 1 ? 's' : '') : '') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
+
+/* ── Wire: fetch backend users then render dashboard ── */
+(function() {
+  var _prev_renderAll3 = renderAll;
+  renderAll = function() {
+    _prev_renderAll3.apply(this, arguments);
+    if (!currentUser) return;
+    renderUserOverview();
+    _updateDashGrid2();
+  };
+
+  var _prev_enterApp3 = enterApp;
+  enterApp = function() {
+    _prev_enterApp3.apply(this, arguments);
+    /* Fetch real users from backend immediately on login */
+    if (currentUser && currentUser.role === 'admin' && (currentUser.token || getSavedToken())) {
+      _fetchBackendUsers(true).then(function() {
+        renderUserOverview();
+        renderStats();
+      });
+    }
+  };
+})();
+
+/* ================================================================
+   PATCH 4 — Restore System Activity panel + fix layout
+   Layout (admin):
+     Row 1: Recent Documents  |  Pending/Urgent Docs
+     Row 2: User Overview     |  System Activity (All Users)
+   Layout (user):
+     Row 1: Recent Documents  |  My Recent Activity
+     Row 2: hidden
+================================================================ */
+
+/* ── Render System Activity card (admin only, dash-grid-2 right) ── */
+function renderSystemActivity() {
+  var card = document.getElementById('card-system-activity');
+  var list = document.getElementById('system-activity-list');
+  if (!card || !list) return;
+
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  card.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) return;
+
+  /* Collect all activity logs across all users, newest first */
+  var all = [];
+  Object.entries(activityLogs).forEach(function(pair) {
+    var uid  = pair[0];
+    var logs = pair[1];
+    var acc  = accounts.find(function(a){ return a.id === uid; });
+    logs.forEach(function(l) {
+      all.push({ msg: l.msg, date: l.date, color: l.color, uname: acc ? (acc.username || acc.name) : uid });
+    });
+  });
+  all.sort(function(a, b){ return new Date(b.date) - new Date(a.date); });
+  all = all.slice(0, 8);
+
+  if (!all.length) {
+    list.innerHTML = '<p style="font-size:13px;color:var(--muted)">No recent activity.</p>';
+    return;
+  }
+
+  /* Map activity message → label + color for badge */
+  function _actBadge(msg) {
+    var m = (msg || '').toLowerCase();
+    if (m.indexOf('logged in')  !== -1) return { label: 'Login',         color: '#4ade80', bg: 'rgba(74,222,128,.1)' };
+    if (m.indexOf('logged out') !== -1) return { label: 'Logout',        color: '#94a3b8', bg: 'rgba(148,163,184,.1)' };
+    if (m.indexOf('registered') !== -1 || m.indexOf('uploaded') !== -1 || m.indexOf('upload') !== -1)
+                                         return { label: 'Upload',        color: '#60a5fa', bg: 'rgba(96,165,250,.1)' };
+    if (m.indexOf('status') !== -1 || m.indexOf('updated') !== -1)
+                                         return { label: 'Status Update', color: '#f59e0b', bg: 'rgba(245,158,11,.1)' };
+    if (m.indexOf('deleted') !== -1)     return { label: 'Delete',        color: '#ef4444', bg: 'rgba(239,68,68,.1)' };
+    if (m.indexOf('movement') !== -1)    return { label: 'Movement',      color: '#a78bfa', bg: 'rgba(167,139,250,.1)' };
+    if (m.indexOf('account') !== -1)     return { label: 'Register',      color: '#34d399', bg: 'rgba(52,211,153,.1)' };
+    return { label: 'Activity', color: '#94a3b8', bg: 'rgba(148,163,184,.1)' };
+  }
+
+  list.innerHTML = all.map(function(a) {
+    var badge = _actBadge(a.msg);
+    return '<div class="sysact-item">' +
+      '<div class="sysact-left">' +
+        '<div class="sysact-user"><strong>' + a.uname + '</strong> ' + a.msg + '</div>' +
+        '<div class="sysact-time">' + a.date + '</div>' +
+      '</div>' +
+      '<span class="sysact-badge" style="color:' + badge.color + ';background:' + badge.bg + '">' + badge.label + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── Override _updateDashGrid2: admin sees row2, user hides it ── */
+function _updateDashGrid2() {
+  var grid2 = document.getElementById('dash-grid-2');
+  if (!grid2) return;
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  grid2.style.display      = isAdmin ? '' : 'none';
+  grid2.style.gridTemplateColumns = isAdmin ? '1fr 1fr' : '1fr';
+  var urgentCard = document.getElementById('card-urgent-docs');
+  if (urgentCard) urgentCard.style.display = 'none'; /* urgent is in dash-grid right card */
+}
+
+/* ── Wire renderSystemActivity into renderAll ── */
+(function() {
+  var _prev4 = renderAll;
+  renderAll = function() {
+    _prev4.apply(this, arguments);
+    if (currentUser) renderSystemActivity();
+  };
+})();

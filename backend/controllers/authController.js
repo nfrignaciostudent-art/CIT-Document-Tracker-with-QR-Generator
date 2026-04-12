@@ -73,6 +73,10 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ message: 'Incorrect username or password.' });
     }
 
+    /* ── stamp last login time ── */
+    user.lastLogin = new Date();
+    await user.save();
+
     res.json({
       _id:      user._id,
       userId:   user.userId,
@@ -99,4 +103,38 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getMe };
+/* ── GET /api/auth/users ── (admin only) */
+const getUsers = async (req, res) => {
+  try {
+    const users = await User.find({ role: 'user' })
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const Document = require('../models/Document');
+    const docCounts = await Document.aggregate([
+      { $group: { _id: '$ownerId', count: { $sum: 1 } } }
+    ]);
+    const countMap = {};
+    docCounts.forEach(r => { countMap[r._id] = r.count; });
+
+    const payload = users.map(u => ({
+      _id:       u._id,
+      userId:    u.userId,
+      username:  u.username,
+      name:      u.name,
+      role:      u.role,
+      color:     u.color,
+      createdAt: u.createdAt,
+      lastLogin: u.lastLogin || null,
+      docCount:  countMap[u.userId] || countMap[String(u._id)] || 0,
+    }));
+
+    res.json(payload);
+  } catch (err) {
+    console.error('[getUsers]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, getMe, getUsers };
