@@ -2745,3 +2745,213 @@ function _updateDashGrid2() {
   var urgentCard = document.getElementById('card-urgent-docs');
   if (urgentCard) urgentCard.style.display = 'none';
 }
+
+/* ================================================================
+   PATCH 6 — Real-time sync: polling + backend-driven renderUsers
+   
+   Strategy:
+   - Poll every 30s: fetch fresh users + docs from backend
+   - On tab focus (visibilitychange): immediate re-fetch
+   - renderUsers() now reads from _backendUsers (real MongoDB data)
+   - After every user fetch, merge into accounts[] so openUserVault works
+   - After every doc fetch, update docs[] so all existing functions work
+================================================================ */
+
+/* ── Merge backend users into accounts[] so existing functions keep working ── */
+function _mergeBackendUsersIntoAccounts(backendUsers) {
+  if (!Array.isArray(backendUsers)) return;
+  backendUsers.forEach(function(bu) {
+    var idx = accounts.findIndex(function(a) {
+      return a.username === bu.username || a.id === bu.userId || a.id === String(bu._id);
+    });
+    var merged = {
+      id:        bu.userId || String(bu._id),
+      userId:    bu.userId,
+      username:  bu.username,
+      name:      bu.name,
+      role:      bu.role || 'user',
+      color:     bu.color || '#4ade80',
+      created:   bu.createdAt,
+      lastLogin: bu.lastLogin || null,
+      docCount:  bu.docCount || 0,
+    };
+    if (idx >= 0) {
+      accounts[idx] = Object.assign(accounts[idx], merged);
+    } else {
+      accounts.push(merged);
+    }
+  });
+}
+
+/* ── renderUsers: reads from _backendUsers (real data), falls back to accounts ── */
+function renderUsers() {
+  var ul = document.getElementById('users-list');
+  if (!ul) return;
+
+  var source = _backendUsers;
+
+  if (!source) {
+    /* Not loaded yet — show spinner and trigger fetch */
+    ul.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:16px 0">Loading users from server…</p>';
+    _fetchBackendUsers(true).then(function() {
+      renderUsers();
+    });
+    return;
+  }
+
+  if (!source.length) {
+    ul.innerHTML = '<p style="font-size:13px;color:var(--muted)">No registered users yet.</p>';
+    return;
+  }
+
+  function _fmtDate(iso) {
+    if (!iso) return '-';
+    try {
+      return new Date(iso).toLocaleDateString('en-PH', {
+        timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric'
+      });
+    } catch(e) { return iso; }
+  }
+
+  ul.innerHTML = source.map(function(u, i) {
+    var colors  = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399','#f87171','#fbbf24'];
+    var bg      = u.color || colors[i % colors.length];
+    var uid     = u.userId || String(u._id || '');
+    var docCnt  = u.docCount || 0;
+    var lastLogin = u.lastLogin
+      ? '<span style="color:#4ade80;font-size:11px">&#9679; Active &nbsp;&middot;&nbsp; Last login: ' + _fmtDate(u.lastLogin) + '</span>'
+      : '<span style="color:var(--muted);font-size:11px">&#9675; Never logged in</span>';
+    return '<div style="display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)">' +
+      '<div class="user-avatar" style="background:' + bg + '">' + initials(u.name || u.username) + '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font-weight:600;font-size:14px">' + (u.name || u.username) + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:2px">' +
+          '@' + u.username + ' &nbsp;&middot;&nbsp; ' + uid + ' &nbsp;&middot;&nbsp; ' +
+          docCnt + ' doc' + (docCnt !== 1 ? 's' : '') + ' &nbsp;&middot;&nbsp; Joined ' + _fmtDate(u.createdAt) +
+        '</div>' +
+        '<div style="margin-top:3px">' + lastLogin + '</div>' +
+      '</div>' +
+      '<button class="btn btn-sm btn-blue" onclick="openUserVaultById(\'' + uid + '\',\'' + (u.username||'') + '\',\'' + (u.name||'') + '\')">View Docs</button>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── openUserVaultById: works with backend users (no accounts[] dependency) ── */
+function openUserVaultById(uid, username, name) {
+  /* Try accounts[] first, then build a minimal object from params */
+  var u = accounts.find(function(a) {
+    return a.id === uid || a.userId === uid || a.username === username;
+  });
+  if (!u) {
+    u = { id: uid, userId: uid, username: username, name: name };
+    accounts.push(u);
+  }
+  _uvCurrentUid = u.id || uid;
+  document.getElementById('uv-title').textContent    = (u.name || name || username) + "'s Documents";
+  document.getElementById('uv-subtitle').textContent = '@' + (u.username || username);
+  var searchEl = document.getElementById('uv-search');
+  if (searchEl) searchEl.value = '';
+  switchUVTab('docs');
+  openModal('user-vault-modal');
+}
+
+/* ── Sync fresh docs from backend into docs[] ── */
+async function _syncDocsFromBackend() {
+  if (!currentUser || !currentUser.token) return;
+  try {
+    var token   = currentUser.token || getSavedToken();
+    var isAdmin = currentUser.role === 'admin';
+    var ownerId = isAdmin ? null : (currentUser.id || currentUser.userId);
+    var result  = await apiGetAllDocuments(token, ownerId, currentUser.role);
+    if (!Array.isArray(result)) return;
+
+    result.forEach(function(bd) {
+      var idx = docs.findIndex(function(d) { return (d.internalId || d.id) === bd.internalId; });
+      if (idx >= 0) {
+        var local = docs[idx];
+        docs[idx] = Object.assign({}, bd, {
+          id:               bd.internalId,
+          originalFile:     local.originalFile    || bd.originalFile    || null,
+          processedFile:    local.processedFile   || bd.processedFile   || null,
+          fileData:         local.fileData        || bd.fileData        || null,
+          originalFileExt:  local.originalFileExt || bd.originalFileExt || null,
+          processedFileExt: local.processedFileExt|| bd.processedFileExt|| null,
+          hasOriginalFile:  local.originalFile ? true : (bd.hasOriginalFile || false),
+          hasProcessedFile: local.processedFile ? true : (bd.hasProcessedFile || false),
+        });
+      } else {
+        docs.push(Object.assign({}, bd, { id: bd.internalId }));
+      }
+    });
+    /* Remove local-only docs that were deleted from backend */
+    var backendIds = new Set(result.map(function(d) { return d.internalId; }));
+    docs = docs.filter(function(d) {
+      return !d._backendSynced || backendIds.has(d.internalId || d.id);
+    });
+  } catch(e) {
+    console.warn('[_syncDocsFromBackend]', e);
+  }
+}
+
+/* ── Master refresh: fetch users + docs, then re-render everything ── */
+var _polling = false;
+async function _fullRefresh(silent) {
+  if (!currentUser || !currentUser.token) return;
+  if (_polling) return;
+  _polling = true;
+  try {
+    /* Parallel fetch */
+    await Promise.all([
+      _fetchBackendUsers(true),
+      _syncDocsFromBackend(),
+    ]);
+    /* Merge into accounts so legacy functions work */
+    if (_backendUsers) _mergeBackendUsersIntoAccounts(_backendUsers);
+    /* Re-render everything */
+    renderAll();
+    /* If user management page is open, refresh it */
+    var usersPage = document.getElementById('page-users');
+    if (usersPage && usersPage.classList.contains('active')) renderUsers();
+    if (!silent) console.info('[Poll] Dashboard synced at', new Date().toLocaleTimeString());
+  } catch(e) {
+    console.warn('[_fullRefresh]', e);
+  }
+  _polling = false;
+}
+
+/* ── Start polling (30s interval) ── */
+var _pollTimer = null;
+function _startPolling() {
+  if (_pollTimer) clearInterval(_pollTimer);
+  _pollTimer = setInterval(function() {
+    _fullRefresh(true);
+  }, 30000); /* every 30 seconds */
+}
+
+function _stopPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
+/* ── On tab focus: immediate refresh ── */
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && currentUser && currentUser.token) {
+    _fullRefresh(true);
+  }
+});
+
+/* ── Wire into enterApp + logout ── */
+(function() {
+  var _prevEnter = enterApp;
+  enterApp = function() {
+    _prevEnter.apply(this, arguments);
+    /* Initial full refresh then start polling */
+    _fullRefresh(true).then(function() { _startPolling(); });
+  };
+
+  var _prevLogout = logout;
+  logout = function() {
+    _stopPolling();
+    _backendUsers = null;
+    _prevLogout.apply(this, arguments);
+  };
+})();
