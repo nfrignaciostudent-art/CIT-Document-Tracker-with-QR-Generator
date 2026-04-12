@@ -237,62 +237,198 @@ function renderPublicTrackResult(d) {
   const curIdx     = workflow.indexOf(d.status);
   const lastLoc    = getLatestLocationPublic(d);
   const dispId     = d.fullDisplayId || d.displayId || d.id;
+  const office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
+  const relEntry   = [...(d.history || [])].reverse().find(h => h.status === 'Released');
 
+  /* ── Header ── */
   document.getElementById('res-doc-name').textContent = d.name;
-  document.getElementById('res-doc-meta').textContent = dispId + ' · ' + d.type;
-  document.getElementById('res-status-badge').innerHTML = `
-    <span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;font-size:12px;font-weight:700;background:${sc}22;border:1px solid ${sc}55;color:${sc}">
-      <span style="width:6px;height:6px;border-radius:50%;background:${sc};display:inline-block${!isRejected&&!isReleased?';animation:pulse 1.5s infinite':''}"></span>
+  document.getElementById('res-doc-meta').textContent = dispId + ' · ' + (d.type || '');
+  document.getElementById('res-status-badge').innerHTML =
+    `<span style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:99px;
+      font-size:12px;font-weight:700;background:${sc}18;border:1px solid ${sc}44;color:${sc}">
+      <span style="width:7px;height:7px;border-radius:50%;background:${sc};flex-shrink:0;display:inline-block${
+        !isRejected && !isReleased ? ';animation:pulse 1.5s infinite' : ''}"></span>
       ${d.status}
     </span>`;
 
+  /* ── Location row ── */
   const locRow = document.getElementById('res-location-row');
   if (lastLoc.location || lastLoc.handler) {
     locRow.style.display = '';
     locRow.innerHTML =
-      (lastLoc.location ? `<span class="res-loc-item"><strong>${lastLoc.location}</strong></span>` : '') +
-      (lastLoc.handler  ? `<span class="res-loc-item"><strong>${lastLoc.handler}</strong></span>`  : '');
+      (lastLoc.location ? `<span class="rec-loc-pill">${lastLoc.location}</span>` : '') +
+      (lastLoc.handler  ? `<span class="rec-loc-pill">${lastLoc.handler}</span>`  : '');
   } else {
     locRow.style.display = 'none';
   }
 
-  const relEntry    = [...(d.history || [])].reverse().find(function(h){ return h.status === 'Released'; });
-  const releaseDate = relEntry ? relEntry.date : null;
-  const office      = docOfficeMap[d.type] || 'Document Control Office';
+  /* ── Workflow ── */
+  document.getElementById('receipt-workflow').innerHTML = isRejected
+    ? `<div class="rec-wf-rejected">Document Rejected</div>`
+    : workflow.map((step, i) => {
+        const done = curIdx > i, curr = curIdx === i;
+        return `
+          ${i > 0 ? `<div class="rec-wf-line${done ? ' done' : ''}"></div>` : ''}
+          <div class="rec-wf-step">
+            <div class="rec-wf-dot${done ? ' done' : curr ? ' curr' : ''}">
+              ${done
+                ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+                : curr ? `<span class="rec-wf-pulse"></span>` : i + 1}
+            </div>
+            <span class="rec-wf-label${done ? ' done' : curr ? ' curr' : ''}">${step}</span>
+          </div>`;
+      }).join('');
 
+  /* ── Details ── */
   document.getElementById('detail-list').innerHTML = [
     ['Submitted By',    d.by],
     ['Purpose',         d.purpose],
     ['Assigned Office', office],
     ['Priority',        d.priority || 'Normal'],
     ['Date Filed',      d.date],
-    ['Release Date',    releaseDate
-      ? `<span style="color:#4ade80;font-weight:600">${releaseDate}</span>`
-      : `<span style="color:rgba(255,255,255,.25)">Pending</span>`]
-  ].map(function(row){
-    return `<div class="res-field-row">
-      <span class="res-field-label">${row[0]}</span>
-      <span class="res-field-value">${row[1]}</span>
-    </div>`;
-  }).join('');
+    ['Release Date',    relEntry
+      ? `<span style="color:#4ade80;font-weight:600">${relEntry.date}</span>`
+      : `<span style="opacity:.4">Pending</span>`]
+  ].map(([lbl, val]) =>
+    `<div class="rec-detail-row">
+      <span class="rec-detail-label">${lbl}</span>
+      <span class="rec-detail-value">${val}</span>
+    </div>`
+  ).join('');
 
-  document.getElementById('download-zone').innerHTML = buildPublicFileSection(d);
+  /* ── Timeline ── */
+  const hist = (d.history || [])
+    .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
+    .map(h => ({
+      _type: h.action === 'Movement' ? 'movement' : 'status',
+      status: h.status || '', by: h.by || '-',
+      date: h.date || '', location: h.location || '',
+      handler: h.handler || '', note: h.note || ''
+    }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .reverse();
 
+  document.getElementById('pub-timeline').innerHTML = hist.length === 0
+    ? `<p class="rec-empty">No history recorded yet.</p>`
+    : hist.map(h => {
+        const isMove = h._type === 'movement';
+        return `<div class="rec-tl-item">
+          <div class="rec-tl-dot" style="background:${isMove ? '#f59e0b' : sc}"></div>
+          <div class="rec-tl-body">
+            <span class="rec-tl-tag ${isMove ? 'move' : 'stat'}">${isMove ? 'Movement' : 'Status Update'}</span>
+            <div class="rec-tl-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
+            <div class="rec-tl-meta">${isMove ? '' : 'By ' + h.by + ' · '}${h.date}</div>
+            ${h.location ? `<div class="rec-tl-loc">${h.location}${h.handler ? ' · ' + h.handler : ''}</div>` : ''}
+            ${h.note ? `<div class="rec-tl-note">"${h.note}"</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+
+  /* ── QR ── */
   const trackUrl = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
-  const qrBox    = document.getElementById('pub-qr-box');
+  const qrBox = document.getElementById('pub-qr-box');
   qrBox.innerHTML = '';
   const target = document.createElement('div');
   qrBox.appendChild(target);
   new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
   document.getElementById('qr-url-tag').textContent = trackUrl;
 
-  /* Activity History - READ-ONLY timeline
-     Shows Status Updates and admin Movement entries from doc.history only.
-     QR scan events (scan_logs) are NOT shown here - they are admin-only. */
-  const hist = (d.history || []).filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action);
+  /* ── Files ── */
+  const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
+  const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.processedFile);
+  const docKey       = d.internalId || d.id;
+  let fileHtml = '';
 
-  const combined = hist.map(function(h){
-    return {
+  if (!hasOriginal && !hasProcessed) {
+    fileHtml = `<p class="rec-empty">No digital file attached.</p>`;
+  } else {
+    if (hasOriginal) {
+      fileHtml += `
+        <div class="rec-file-row">
+          <div class="rec-file-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="rec-file-info">
+            <div class="rec-file-name">Original File <span class="rec-file-sub">(Submitted)</span></div>
+            <div class="rec-file-meta">By ${d.by || 'user'} · IDEA-128 encrypted · Not downloadable</div>
+          </div>
+          <span class="rec-file-badge">Reference Only</span>
+        </div>`;
+    }
+    if (hasProcessed && isReleased) {
+      fileHtml += `
+        <div class="rec-file-row final">
+          <div class="rec-file-icon final">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
+          </div>
+          <div class="rec-file-info">
+            <div class="rec-file-name" style="color:#4ade80">Final File <span class="rec-file-sub">(Approved)</span></div>
+            <div class="rec-file-meta">By ${d.processedBy || 'Admin'}${d.processedAt ? ' · ' + d.processedAt : ''}</div>
+          </div>
+          <span class="rec-file-badge final">Released</span>
+        </div>
+        <div style="padding:14px 0 4px;text-align:center">
+          <button onclick="decryptAndDownload('${docKey}',this)" class="rec-dl-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Final File
+          </button>
+          <p class="rec-dl-hint">Decrypted locally · IDEA-128</p>
+        </div>`;
+    } else if (!isReleased) {
+      fileHtml += `
+        <div class="rec-file-locked">
+          <div class="rec-lock-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div class="rec-lock-title">Final File Pending</div>
+          <div class="rec-lock-desc">Available once status reaches <strong style="color:#4ade80">Released</strong>.<br>Current: <strong style="color:${sc}">${d.status}</strong></div>
+        </div>`;
+    }
+  }
+  document.getElementById('download-zone').innerHTML = fileHtml;
+
+  document.getElementById('hero').style.display           = 'none';
+  document.getElementById('result-section').style.display = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+  _pubTrackDocId = d.internalId || d.id;
+
+  const sc         = statusColorMap[d.status] || '#64748b';
+  const isReleased = d.status === 'Released';
+  const isRejected = d.status === 'Rejected';
+  const workflow   = ['Received', 'Processing', 'For Approval', 'Approved', 'Released'];
+  const curIdx     = workflow.indexOf(d.status);
+  const lastLoc    = getLatestLocationPublic(d);
+  const dispId     = d.fullDisplayId || d.displayId || d.id;
+  const office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
+  const relEntry   = [...(d.history || [])].reverse().find(h => h.status === 'Released');
+  const trackUrl   = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + (d.internalId || d.id);
+
+  /* ── Workflow progress bar ── */
+  const wfHtml = isRejected
+    ? `<div class="pub-wf-rejected">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        Document Rejected
+       </div>`
+    : workflow.map((step, i) => {
+        const done = curIdx > i;
+        const curr = curIdx === i;
+        return `
+          ${i > 0 ? `<div class="pub-wf-line ${done ? 'done' : ''}"></div>` : ''}
+          <div class="pub-wf-step">
+            <div class="pub-wf-dot ${done ? 'done' : curr ? 'current' : ''}">
+              ${done
+                ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+                : curr ? `<span class="pub-wf-pulse"></span>` : i + 1}
+            </div>
+            <span class="pub-wf-label ${done ? 'done' : curr ? 'current' : ''}">${step}</span>
+          </div>`;
+      }).join('');
+
+  /* ── Activity timeline ── */
+  const hist = (d.history || [])
+    .filter(h => h.action === 'Status Update' || h.action === 'Movement' || !h.action)
+    .map(h => ({
       _type:    h.action === 'Movement' ? 'movement' : 'status',
       status:   h.status   || '',
       by:       h.by       || '-',
@@ -300,38 +436,49 @@ function renderPublicTrackResult(d) {
       location: h.location || '',
       handler:  h.handler  || '',
       note:     h.note     || ''
-    };
-  }).sort(function(a, b){
-    const da = new Date(a.date), db = new Date(b.date);
-    return (isNaN(da) || isNaN(db)) ? 0 : da - db;
-  });
+    }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .reverse();
 
-  const timelineHtml = combined.length === 0
-    ? '<p style="font-size:13px;color:rgba(255,255,255,.3)">No history recorded.</p>'
-    : [...combined].reverse().map(function(h){
-        const isMovement = h._type === 'movement';
-        const dotStyle   = isMovement ? 'style="background:#f59e0b;border-color:rgba(245,158,11,.5)"' : '';
-        const aLabel     = isMovement ? 'Movement' : 'Status Update';
-        const aBg        = isMovement ? 'rgba(245,158,11,.12)' : 'rgba(59,130,246,.12)';
-        const aColor     = isMovement ? '#f59e0b' : '#93c5fd';
-        const aBorder    = isMovement ? 'rgba(245,158,11,.25)' : 'rgba(59,130,246,.25)';
-        return `<div class="ttl-item">
-          <div class="ttl-dot" ${dotStyle}></div>
-          <div style="margin-bottom:3px">
-            <span style="display:inline-flex;align-items:center;padding:2px 8px;background:${aBg};border:1px solid ${aBorder};border-radius:20px;font-size:9px;font-weight:700;color:${aColor};letter-spacing:.4px;text-transform:uppercase">${aLabel}</span>
-          </div>
-          <div class="ttl-status-label">${isMovement ? 'Handled by ' + h.by : (h.status || '-')}</div>
-          <div class="ttl-meta">${isMovement ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
-          ${(h.location || h.handler) ? `<div class="ttl-loc">${h.location ? h.location : ''}${h.location && h.handler ? ' &nbsp;·&nbsp; ' : ''}${h.handler ? h.handler : ''}</div>` : ''}
-          ${h.note ? `<div class="ttl-note">"${h.note}"</div>` : ''}
-        </div>`;
+  const timelineHtml = hist.length === 0
+    ? `<p class="pub-empty">No history recorded yet.</p>`
+    : hist.map(h => {
+        const isMove = h._type === 'movement';
+        const dotBg  = isMove ? '#f59e0b' : sc;
+        const tag    = isMove
+          ? `<span class="pub-tl-tag move">Movement</span>`
+          : `<span class="pub-tl-tag status">Status Update</span>`;
+        return `
+          <div class="pub-tl-item">
+            <div class="pub-tl-dot" style="background:${dotBg};box-shadow:0 0 0 3px ${dotBg}22"></div>
+            <div class="pub-tl-body">
+              ${tag}
+              <div class="pub-tl-title">${isMove ? 'Handled by ' + h.by : h.status}</div>
+              <div class="pub-tl-meta">${isMove ? '' : 'By ' + h.by + ' &nbsp;·&nbsp; '}${h.date}</div>
+              ${h.location ? `<div class="pub-tl-loc">${h.location}${h.handler ? ' · ' + h.handler : ''}</div>` : ''}
+              ${h.note ? `<div class="pub-tl-note">"${h.note}"</div>` : ''}
+            </div>
+          </div>`;
       }).join('');
 
-  document.getElementById('pub-timeline').innerHTML = timelineHtml;
+  /* ── File / download section ── */
+  const hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
+  const hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.processedFile);
+  const docKey       = d.internalId || d.id;
 
-  document.getElementById('hero').style.display           = 'none';
-  document.getElementById('result-section').style.display = '';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  let fileHtml = '';
+  if (hasOriginal) {
+    fileHtml += `
+      <div class="pub-file-row">
+        <div class="pub-file-icon ref">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="pub-file-info">
+          <div class="pub-file-name">Original File <span class="pub-file-sub">(Submitted)</span></div>
+          <div class="pub-file-meta">Submitted by ${d.by || 'user'} · IDEA-128 encrypted at rest</div>
+        </div>
+        <span class="pub-file-badge ref">Reference Only</span>
+      </div>`;
 }
 
 /* Go back */
