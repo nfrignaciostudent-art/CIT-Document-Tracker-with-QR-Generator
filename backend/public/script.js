@@ -2731,3 +2731,17 @@ function _updateDashGrid2() {
     if (currentUser) renderSystemActivity();
   };
 })();
+
+/* ================================================================
+   PATCH 5 — Fix dash-grid-2 always rendering as 2 columns side by side
+================================================================ */
+function _updateDashGrid2() {
+  var grid2 = document.getElementById('dash-grid-2');
+  if (!grid2) return;
+  var isAdmin = currentUser && currentUser.role === 'admin';
+  /* Just show/hide — columns are already set in HTML as 1fr 1fr */
+  grid2.style.display = isAdmin ? 'grid' : 'none';
+  /* Urgent card in dash-grid-2 is unused — hide it */
+  var urgentCard = document.getElementById('card-urgent-docs');
+  if (urgentCard) urgentCard.style.display = 'none';
+}
