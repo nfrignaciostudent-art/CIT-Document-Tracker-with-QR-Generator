@@ -345,7 +345,7 @@ function renderPublicTrackResult(d) {
     qrBox.innerHTML = '';
     const target = document.createElement('div');
     qrBox.appendChild(target);
-    new QRCode(target, { text: trackUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(target, { text: trackUrl, width: 130, height: 130, correctLevel: QRCode.CorrectLevel.M });
   }
   _text('qr-url-tag', trackUrl);
 

@@ -1795,259 +1795,259 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
   .dash-header-row { flex-direction:column; }
   .global-search-wrap { max-width:100%; }
   #dash-grid-2 { grid-template-columns: 1fr !important; }
+}
 
 /* ================================================================
-   UNIFIED RECEIPT CARD — Compact, aligned single-card layout
+   UNIFIED RECEIPT CARD — Compact single-card layout
 ================================================================ */
 
 .result-section {
-  max-width: 860px !important;
+  max-width: 820px !important;
   margin: 0 auto !important;
   padding: 20px 16px 48px !important;
 }
 
-/* ── Single card wrapper ── */
+/* One card */
 .unified-receipt-card {
-  background: rgba(255,255,255,.03);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,.3);
+  background: rgba(255,255,255,.03) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,.3) !important;
 }
 
-/* ── Header bar ── */
+/* Header bar */
 .unified-receipt-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  background: linear-gradient(135deg, #0d2318 0%, #112b1a 100%);
-  border-bottom: 1px solid rgba(52,199,90,.15);
-}
-.unified-receipt-header .res-doc-name {
-  font-size: 15px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 14px 18px !important;
+  background: linear-gradient(135deg, #0d2318 0%, #112b1a 100%) !important;
+  border-bottom: 1px solid rgba(52,199,90,.15) !important;
 }
 .unified-receipt-header .res-header-icon {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
+  width: 36px !important;
+  height: 36px !important;
+  flex-shrink: 0 !important;
+  background: rgba(52,199,90,.15) !important;
+  border: 1px solid rgba(52,199,90,.3) !important;
+  border-radius: 8px !important;
+  display: grid !important;
+  place-items: center !important;
+  color: #4ade80 !important;
+}
+.unified-receipt-header .res-header-text {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+.unified-receipt-header .res-doc-name {
+  font-size: 15px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.unified-receipt-header .res-status-pill {
+  flex-shrink: 0 !important;
 }
 
-/* ── Location row ── */
+/* Location row */
 .unified-receipt-card .res-location-row {
-  padding: 8px 18px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
-  background: rgba(0,0,0,.15);
+  padding: 8px 18px !important;
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  background: rgba(0,0,0,.15) !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
 }
 
-/* ── Body padding ── */
+/* Body */
 .unified-receipt-body {
-  padding: 16px 18px 18px;
+  padding: 16px 18px 18px !important;
 }
 
-/* ── Section labels ── */
+/* Section labels */
 .unified-section-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: 700;
-  color: rgba(255,255,255,.3);
-  text-transform: uppercase;
-  letter-spacing: .7px;
-  margin-bottom: 8px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  color: rgba(255,255,255,.3) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .7px !important;
+  margin-bottom: 8px !important;
 }
 
-/* ── Workflow ── */
+/* Workflow */
 .unified-section .receipt-workflow {
-  padding: 6px 0 2px;
+  padding: 6px 0 2px !important;
 }
 
-/* ── Divider ── */
+/* Divider */
 .unified-divider {
-  height: 1px;
-  background: rgba(255,255,255,.06);
-  margin: 14px 0;
+  height: 1px !important;
+  background: rgba(255,255,255,.06) !important;
+  margin: 14px 0 !important;
 }
 
-/* ── Two-column grid ── */
+/* Two-column grid */
 .unified-two-col {
-  display: grid;
-  grid-template-columns: 1fr 240px;
-  gap: 18px;
-  align-items: start;
+  display: grid !important;
+  grid-template-columns: 1fr 220px !important;
+  gap: 16px !important;
+  align-items: start !important;
 }
 .unified-left,
-.unified-right { min-width: 0; }
+.unified-right { min-width: 0 !important; }
 
-/* ── Details table ── */
+/* Detail rows */
 .unified-left .res-fields {
-  padding: 0;
-  background: rgba(255,255,255,.02);
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 8px;
-  overflow: hidden;
+  padding: 0 !important;
+  background: rgba(255,255,255,.02) !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
 }
 .unified-left .rec-detail-row {
-  display: flex;
-  gap: 10px;
-  padding: 7px 12px;
-  border-bottom: 1px solid rgba(255,255,255,.04);
-  font-size: 12px;
+  display: flex !important;
+  gap: 10px !important;
+  padding: 7px 12px !important;
+  border-bottom: 1px solid rgba(255,255,255,.04) !important;
+  align-items: flex-start !important;
 }
-.unified-left .rec-detail-row:last-child { border-bottom: none; }
+.unified-left .rec-detail-row:last-child { border-bottom: none !important; }
 .unified-left .rec-detail-label {
-  font-size: 9px;
-  font-weight: 700;
-  color: rgba(255,255,255,.28);
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  width: 100px;
-  flex-shrink: 0;
-  padding-top: 2px;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  color: rgba(255,255,255,.28) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .5px !important;
+  width: 95px !important;
+  flex-shrink: 0 !important;
+  padding-top: 2px !important;
 }
 .unified-left .rec-detail-value {
-  font-size: 12px;
-  color: rgba(255,255,255,.8);
-  font-weight: 500;
-  flex: 1;
+  font-size: 12px !important;
+  color: rgba(255,255,255,.8) !important;
+  font-weight: 500 !important;
+  flex: 1 !important;
 }
 
-/* ── Timeline ── */
+/* Timeline */
 .unified-left .res-timeline {
-  padding: 10px 10px 10px 30px;
-  background: rgba(255,255,255,.02);
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 8px;
-  position: relative;
+  padding: 10px 10px 10px 30px !important;
+  background: rgba(255,255,255,.02) !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 8px !important;
+  position: relative !important;
 }
 .unified-left .res-timeline::before {
-  content: '';
-  position: absolute;
-  left: 18px;
-  top: 10px;
-  bottom: 10px;
-  width: 1px;
-  background: rgba(255,255,255,.07);
+  content: '' !important;
+  position: absolute !important;
+  left: 18px !important;
+  top: 10px !important;
+  bottom: 10px !important;
+  width: 1px !important;
+  background: rgba(255,255,255,.07) !important;
 }
-
-/* Timeline item sizing */
 .unified-left .rec-tl-item {
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255,255,255,.04);
+  padding: 7px 0 !important;
+  border-bottom: 1px solid rgba(255,255,255,.04) !important;
 }
-.unified-left .rec-tl-item:last-child { border-bottom: none; }
-.unified-left .rec-tl-tag {
-  font-size: 8px;
-  padding: 1px 6px;
-  border-radius: 20px;
-}
-.unified-left .rec-tl-title { font-size: 12px; }
-.unified-left .rec-tl-meta  { font-size: 10px; }
+.unified-left .rec-tl-item:last-child { border-bottom: none !important; }
+.unified-left .rec-tl-tag  { font-size: 8px !important; padding: 1px 6px !important; }
+.unified-left .rec-tl-title { font-size: 12px !important; }
+.unified-left .rec-tl-meta  { font-size: 10px !important; }
 
-/* ── QR section ── */
+/* QR right column */
 .unified-right .qr-center {
-  text-align: center;
-  padding: 12px 10px;
-  background: rgba(255,255,255,.02);
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 8px;
+  text-align: center !important;
+  padding: 12px 10px !important;
+  background: rgba(255,255,255,.02) !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 8px !important;
 }
 .unified-right .qr-box {
-  display: inline-block;
-  padding: 8px;
-  background: #fff;
-  border-radius: 8px;
-  margin-bottom: 7px;
+  display: inline-block !important;
+  padding: 8px !important;
+  background: #fff !important;
+  border-radius: 8px !important;
+  margin-bottom: 6px !important;
 }
-/* Force QR smaller */
-.unified-right .qr-box canvas,
-.unified-right .qr-box img {
+.unified-right #pub-qr-box canvas,
+.unified-right #pub-qr-box img,
+#pub-qr-box canvas,
+#pub-qr-box img {
   width: 130px !important;
   height: 130px !important;
-  display: block;
+  display: block !important;
 }
 .unified-right .qr-hint {
-  font-size: 10px;
-  color: rgba(255,255,255,.25);
-  margin-bottom: 4px;
+  font-size: 10px !important;
+  color: rgba(255,255,255,.25) !important;
+  margin-bottom: 4px !important;
 }
-.unified-right .qr-url-tag {
-  font-size: 8px;
-  color: rgba(74,222,128,.38);
-  font-family: 'DM Mono', monospace;
-  word-break: break-all;
-  line-height: 1.4;
-  margin-bottom: 2px;
+.unified-right .qr-url-tag,
+#qr-url-tag {
+  font-size: 8px !important;
+  color: rgba(74,222,128,.38) !important;
+  word-break: break-all !important;
+  line-height: 1.4 !important;
+  margin-bottom: 2px !important;
 }
 .unified-right .res-dl-qr-btn {
-  margin-top: 8px;
-  width: 100%;
-  justify-content: center;
-  padding: 7px 14px;
-  font-size: 12px;
+  margin-top: 8px !important;
+  width: 100% !important;
+  justify-content: center !important;
+  padding: 7px 12px !important;
+  font-size: 12px !important;
 }
 
-/* ── Download zone ── */
+/* Download zone */
 #download-zone {
-  background: rgba(255,255,255,.02);
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 8px;
-  overflow: hidden;
+  background: rgba(255,255,255,.02) !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
 }
-/* Compact file rows inside download zone */
-#download-zone .rec-file-row {
-  padding: 10px 12px;
-  gap: 10px;
-}
-#download-zone .rec-file-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-#download-zone .rec-file-name { font-size: 11px; }
-#download-zone .rec-file-meta { font-size: 10px; }
-#download-zone .rec-file-badge {
-  font-size: 9px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-#download-zone .rec-lock-title { font-size: 12px; }
-#download-zone .rec-lock-desc  { font-size: 11px; line-height: 1.5; }
+#download-zone .rec-file-row    { padding: 9px 12px !important; gap: 10px !important; }
+#download-zone .rec-file-icon   { width: 28px !important; height: 28px !important; border-radius: 6px !important; flex-shrink: 0 !important; }
+#download-zone .rec-file-name   { font-size: 11px !important; }
+#download-zone .rec-file-meta   { font-size: 10px !important; }
+#download-zone .rec-file-badge  { font-size: 9px !important; padding: 2px 7px !important; white-space: nowrap !important; }
+#download-zone .rec-lock-title  { font-size: 12px !important; }
+#download-zone .rec-lock-desc   { font-size: 11px !important; line-height: 1.5 !important; }
 
-/* ── Back button ── */
+/* Back button */
 .back-row {
-  text-align: center;
-  margin-top: 14px;
-  padding-top: 0;
-  border-top: none;
+  text-align: center !important;
+  margin-top: 14px !important;
+  padding-top: 0 !important;
+  border-top: none !important;
 }
 .btn-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 20px;
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.09);
-  border-radius: 8px;
-  color: rgba(255,255,255,.45);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .15s;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 8px 20px !important;
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  border-radius: 8px !important;
+  color: rgba(255,255,255,.45) !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
 }
 .btn-back:hover {
-  background: rgba(255,255,255,.09);
-  color: rgba(255,255,255,.75);
+  background: rgba(255,255,255,.09) !important;
+  color: rgba(255,255,255,.75) !important;
 }
 
-/* ── Mobile: stack columns ── */
-@media (max-width: 680px) {
-  .unified-two-col { grid-template-columns: 1fr; }
-  .unified-right   { order: -1; }
-  .unified-receipt-header { padding: 12px 14px; flex-wrap: wrap; }
-  .unified-receipt-body   { padding: 14px 14px 16px; }
-  .res-doc-name { font-size: 14px; white-space: normal; }
+/* Mobile */
+@media (max-width: 640px) {
+  .unified-two-col { grid-template-columns: 1fr !important; }
+  .unified-right   { order: -1 !important; }
+  .unified-receipt-body { padding: 14px 14px 16px !important; }
 }
