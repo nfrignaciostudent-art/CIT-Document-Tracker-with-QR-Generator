@@ -129,25 +129,20 @@ async function decryptAndDownload(docKey, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Fetching…'; }
 
   try {
-    let fileSource = d.processedFile || d.fileData || d.originalFile;
+    /* ── ALWAYS fetch from backend so the admin-released file is served.
+       Never use localStorage or in-memory cache — the admin may have
+       uploaded a processed file from a different device/session. ── */
+    if (btnEl) btnEl.textContent = 'Downloading…';
 
-    if (!fileSource) {
-      if (btnEl) btnEl.textContent = 'Downloading…';
-      const backendResult = await apiDownloadDocument(docKey);
+    const backendResult = await apiDownloadDocument(docKey);
 
-      if (!backendResult || backendResult._error) {
-        _dlToast(backendResult?.message || 'No processed file available yet. Ask admin to upload the final file.');
-        if (btnEl) { btnEl.disabled = false; btnEl.textContent = origText; }
-        return;
-      }
-
-      fileSource = backendResult.fileData;
-      if (fileSource) {
-        d.processedFile    = fileSource;
-        d.processedFileExt = backendResult.fileExt || d.processedFileExt || '';
-      }
+    if (!backendResult || backendResult._error) {
+      _dlToast(backendResult?.message || 'No processed file available yet. Ask admin to upload the final file.');
+      if (btnEl) { btnEl.disabled = false; btnEl.textContent = origText; }
+      return;
     }
 
+    const fileSource = backendResult.fileData;
     if (!fileSource) {
       _dlToast('No processed file has been attached by admin yet.');
       if (btnEl) { btnEl.disabled = false; btnEl.textContent = origText; }
@@ -160,7 +155,7 @@ async function decryptAndDownload(docKey, btnEl) {
     const result = decryptFile(fileSource);
     if (!result) throw new Error('Decryption returned null');
 
-    const ext  = result.ext || d.processedFileExt || d.fileExt || '';
+    const ext  = result.ext || backendResult.fileExt || d.processedFileExt || d.fileExt || '';
     const name = d.name.replace(/[^a-z0-9_\-]/gi, '_') + (ext.startsWith('.') ? ext : (ext ? '.'+ext : ''));
 
     const a = document.createElement('a');
@@ -1315,38 +1310,96 @@ function logMovement(documentId, handledBy, location){
   if(currentUser){ logActivity(currentUser.id,`Movement logged for "${d?.name||documentId}" at ${location}`,'#f59e0b'); }
 }
 
-function renderMovementLogs(){
+/* ── Movement log in-memory cache (populated from backend) ── */
+let _movementLogsCache = [];
+
+async function renderMovementLogs(){
   const term=(document.getElementById('movement-search')?.value||'').toLowerCase();
-  let entries=[...movementLogs].reverse();
-  if(term) entries=entries.filter(m=>
-    (m.documentId||'').toLowerCase().includes(term)||
-    (m.handledBy||'').toLowerCase().includes(term)||
-    (m.location||'').toLowerCase().includes(term)
-  );
-  const statEl=document.getElementById('movement-stats-row');
-  if(statEl){
-    const totalMoves=movementLogs.length;
-    const uniqueHandlers=new Set(movementLogs.map(m=>m.handledBy)).size;
-    const uniqueDocs=new Set(movementLogs.map(m=>m.documentId)).size;
-    statEl.innerHTML=`
-      <div class="stat-card"><div class="stat-card-label">Total Movements</div><div class="stat-card-num blue">${totalMoves}</div></div>
-      <div class="stat-card"><div class="stat-card-label">Unique Handlers</div><div class="stat-card-num green">${uniqueHandlers}</div></div>
-      <div class="stat-card"><div class="stat-card-label">Docs Tracked</div><div class="stat-card-num">${uniqueDocs}</div></div>`;
-  }
   const tb=document.getElementById('movement-tbody');
-  if(!entries.length){tb.innerHTML=`<tr><td colspan="6"><div class="empty-msg">No movement logs yet. Admin movements are logged here when QR scans are confirmed.</div></td></tr>`;return;}
-  tb.innerHTML=entries.map(m=>{
-    const doc=docs.find(d=>(d.internalId||d.id)===m.documentId);
-    const docName=doc?doc.name:`<span style="color:var(--muted);font-style:italic">Unknown</span>`;
-    const dispId = doc ? (doc.fullDisplayId||doc.displayId||doc.id) : m.documentId;
-    return `<tr>
-      <td style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted)">${m.displayDate||m.timestamp}</td>
-      <td class="doc-id-cell">${dispId}</td>
-      <td class="doc-name-cell">${docName}</td>
-      <td style="font-size:13px;font-weight:500">${m.handledBy||'-'}</td>
-      <td><span style="font-size:12px;color:#16a34a">${m.location||'-'}</span></td>
-      <td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:20px;font-size:11px;font-weight:700;color:#92400e">${m.action||'Movement'}</span></td>
-    </tr>`;
+  if(!tb) return;
+
+  /* Render whatever we have immediately (fast local paint) */
+  _renderMovementLogsTable(term);
+
+  /* Then fetch fresh data from backend */
+  const token = (typeof getSavedToken === 'function') ? getSavedToken() : null;
+  if(token && typeof apiGetAllMovementLogs === 'function'){
+    try{
+      const result = await apiGetAllMovementLogs(token);
+      if(Array.isArray(result)){
+        _movementLogsCache = result;
+        /* Also merge into legacy movementLogs so history modal stays in sync */
+        result.forEach(function(s){
+          const key = (s.documentId||'') + '|' + (s.timestamp||s.displayDate||'');
+          const exists = movementLogs.some(function(m){
+            return ((m.documentId||'')+'|'+(m.timestamp||m.displayDate||'')) === key;
+          });
+          if(!exists){
+            movementLogs.push({
+              documentId:  s.documentId,
+              handledBy:   s.handledBy,
+              location:    s.location,
+              action:      'Movement',
+              timestamp:   s.timestamp,
+              displayDate: s.displayDate || s.timestamp,
+            });
+          }
+        });
+        _renderMovementLogsTable(term);
+        _renderMovementLogsStats();
+      }
+    } catch(e){
+      console.warn('[renderMovementLogs] fetch failed:', e);
+    }
+  }
+}
+
+function _renderMovementLogsStats(){
+  const statEl=document.getElementById('movement-stats-row');
+  if(!statEl) return;
+  const allLogs = _movementLogsCache.length ? _movementLogsCache : movementLogs;
+  const totalMoves    = allLogs.length;
+  const uniqueHandlers= new Set(allLogs.map(function(m){ return m.handledBy||m.handler||''; })).size;
+  const uniqueDocs    = new Set(allLogs.map(function(m){ return m.documentId; })).size;
+  statEl.innerHTML=
+    '<div class="stat-card"><div class="stat-card-label">Total Movements</div><div class="stat-card-num blue">'+totalMoves+'</div></div>'+
+    '<div class="stat-card"><div class="stat-card-label">Unique Handlers</div><div class="stat-card-num green">'+uniqueHandlers+'</div></div>'+
+    '<div class="stat-card"><div class="stat-card-label">Docs Tracked</div><div class="stat-card-num">'+uniqueDocs+'</div></div>';
+}
+
+function _renderMovementLogsTable(term){
+  const tb=document.getElementById('movement-tbody');
+  if(!tb) return;
+
+  /* Prefer backend cache; fall back to localStorage array */
+  let source = _movementLogsCache.length ? _movementLogsCache : movementLogs;
+  let entries=[...source].reverse();
+  if(term) entries=entries.filter(function(m){
+    return (m.documentId||'').toLowerCase().includes(term)||
+      (m.handledBy||m.handler||'').toLowerCase().includes(term)||
+      (m.location||'').toLowerCase().includes(term)||
+      (m.documentName||'').toLowerCase().includes(term);
+  });
+
+  /* Refresh stats whenever table is painted */
+  _renderMovementLogsStats();
+
+  if(!entries.length){
+    tb.innerHTML='<tr><td colspan="6"><div class="empty-msg">No movement logs yet. Movement entries are auto-created on document registration and status updates.</div></td></tr>';
+    return;
+  }
+  tb.innerHTML=entries.map(function(m){
+    const doc=docs.find(function(d){ return (d.internalId||d.id)===m.documentId; });
+    const docName= m.documentName || (doc ? doc.name : '<span style="color:var(--muted);font-style:italic">Unknown</span>');
+    const dispId = m.displayId || (doc ? (doc.fullDisplayId||doc.displayId||doc.id) : m.documentId);
+    return '<tr>'+
+      '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--muted)">'+(m.displayDate||m.timestamp||'-')+'</td>'+
+      '<td class="doc-id-cell">'+dispId+'</td>'+
+      '<td class="doc-name-cell">'+docName+'</td>'+
+      '<td style="font-size:13px;font-weight:500">'+(m.handledBy||m.handler||'-')+'</td>'+
+      '<td><span style="font-size:12px;color:#16a34a">'+(m.location||'-')+'</span></td>'+
+      '<td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:20px;font-size:11px;font-weight:700;color:#92400e">'+(m.action||'Movement')+'</span></td>'+
+    '</tr>';
   }).join('');
 }
 
@@ -1704,48 +1757,85 @@ function openHistory(docKey){
 }
 
 /* ========================================================
-   NOTIFICATIONS
+   NOTIFICATIONS  — backend-driven, no localStorage
 ======================================================== */
-function addNotification(userId,msg,documentId){
-  if(!notifications[userId]) notifications[userId]=[];
-  notifications[userId].push({id:Date.now(),msg,date:nowStr(),read:false,documentId:documentId||null});
-  save();renderNotifCount();
+
+/* In-memory cache of notifications fetched from backend */
+let _notifsCache = [];
+
+/* addNotification is kept as a no-op shim so legacy calls
+   inside applyUpdate / logMovement don't throw errors.
+   Real notifications are now created by the backend. */
+function addNotification(userId, msg, documentId){ /* no-op: backend creates notifications */ }
+
+async function _fetchNotifications(){
+  if(!currentUser || !currentUser.token) return;
+  try{
+    const result = await apiGetNotifications(currentUser.token);
+    if(Array.isArray(result)){
+      _notifsCache = result;
+    }
+  } catch(e){
+    console.warn('[_fetchNotifications]', e);
+  }
 }
-function renderNotifCount(){
-  if(!currentUser)return;
-  const notifs=(notifications[currentUser.id]||[]).filter(n=>!n.read);
-  const el=document.getElementById('notif-count');
-  if(notifs.length){el.textContent=notifs.length;el.style.display='';}
-  else el.style.display='none';
+
+async function renderNotifCount(){
+  if(!currentUser) return;
+  /* Fetch fresh count from backend */
+  await _fetchNotifications();
+  const unread = _notifsCache.filter(function(n){ return !n.read; }).length;
+  const el = document.getElementById('notif-count');
+  if(!el) return;
+  if(unread){ el.textContent = unread; el.style.display = ''; }
+  else el.style.display = 'none';
 }
-function openNotifModal(){
-  const notifs=(notifications[currentUser.id]||[]).slice().reverse();
-  const nl=document.getElementById('notif-list');
-  if(!notifs.length){nl.innerHTML='<p style="font-size:13px;color:var(--muted);padding:8px 0">No notifications.</p>';}
-  else nl.innerHTML=notifs.map(n=>`
-    <div class="notif-item ${n.read?'read':''}" onclick="handleNotifClick(${n.id})">
-      <div class="notif-item-dot"></div>
-      <div>
-        <div class="notif-item-text">${n.msg}</div>
-        <div class="notif-item-time">${n.date}</div>
-        ${n.documentId?`<div class="notif-item-link">-> View Document</div>`:''}
-      </div>
-    </div>`).join('');
+
+async function openNotifModal(){
+  /* Fetch fresh list from backend before opening */
+  await _fetchNotifications();
+
+  const nl = document.getElementById('notif-list');
+  if(!nl) return;
+
+  if(!_notifsCache.length){
+    nl.innerHTML = '<p style="font-size:13px;color:var(--muted);padding:8px 0">No notifications.</p>';
+  } else {
+    nl.innerHTML = _notifsCache.map(function(n){
+      return '<div class="notif-item '+(n.read?'read':'')+'" onclick="handleNotifClick(\''+n.id+'\')">'+
+        '<div class="notif-item-dot"></div>'+
+        '<div>'+
+          '<div class="notif-item-text">'+n.msg+'</div>'+
+          '<div class="notif-item-time">'+n.date+'</div>'+
+          (n.documentId ? '<div class="notif-item-link">→ View Document</div>' : '')+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }
+
   openModal('notif-modal');
-  setTimeout(()=>markAllRead(),1500);
+  /* Mark all as read on the backend after a short delay */
+  setTimeout(markAllRead, 1500);
 }
-function handleNotifClick(id){
-  const notifs=notifications[currentUser.id]||[];
-  const n=notifs.find(n=>n.id===id);if(!n)return;
-  n.read=true;save();renderNotifCount();
+
+async function handleNotifClick(id){
+  /* Mark single notification read locally */
+  const n = _notifsCache.find(function(x){ return x.id === id; });
+  if(!n) return;
+  n.read = true;
+  renderNotifCount();
   if(n.documentId){ openDocumentFromNotif(n.documentId); }
 }
-function markAllRead(){
-  (notifications[currentUser.id]||[]).forEach(n=>n.read=true);
-  save();renderNotifCount();
-  document.querySelectorAll('.notif-item').forEach(el=>el.classList.add('read'));
-  const nc=document.getElementById('notif-count');
-  if(nc) nc.style.display='none';
+
+async function markAllRead(){
+  if(!currentUser || !currentUser.token) return;
+  try{
+    await apiMarkNotificationsRead(currentUser.token);
+    _notifsCache.forEach(function(n){ n.read = true; });
+  } catch(e){ console.warn('[markAllRead]', e); }
+  const el = document.getElementById('notif-count');
+  if(el) el.style.display = 'none';
+  document.querySelectorAll('.notif-item').forEach(function(el){ el.classList.add('read'); });
 }
 function openDocumentFromNotif(documentId){
   const doc=docs.find(d=>(d.internalId||d.id)===documentId);
@@ -1827,7 +1917,7 @@ styleEl.textContent='@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}';
 document.head.appendChild(styleEl);
 
 const notifBtn=document.getElementById('notif-btn');
-if(notifBtn) notifBtn.onclick=openNotifModal;
+if(notifBtn) notifBtn.onclick = function(){ openNotifModal(); };
 
 async function _appInit() {
   if(initTrackingPage()){ return; }
@@ -2924,6 +3014,8 @@ async function _fullRefresh(silent) {
     /* If user management page is open, refresh it */
     var usersPage = document.getElementById('page-users');
     if (usersPage && usersPage.classList.contains('active')) renderUsers();
+    /* Refresh notification badge on every poll */
+    renderNotifCount();
     if (!silent) console.info('[Poll] Dashboard synced at', new Date().toLocaleTimeString());
   } catch(e) {
     console.warn('[_fullRefresh]', e);

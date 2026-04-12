@@ -199,3 +199,19 @@ async function apiGetAllScanLogs(token) {
 async function apiGetAllMovementLogs(token) {
   return await apiRequest('GET', '/api/documents/movement-logs', null, token || _jwt());
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   NOTIFICATION ENDPOINTS
+══════════════════════════════════════════════════════════════════════ */
+
+/* ── GET /api/notifications ── (protected)
+   Returns the current user's notifications (newest first, limit 50). */
+async function apiGetNotifications(token) {
+  return await apiRequest('GET', '/api/notifications', null, token || _jwt());
+}
+
+/* ── POST /api/notifications/mark-read ── (protected)
+   Marks all of the current user's unread notifications as read. */
+async function apiMarkNotificationsRead(token) {
+  return await apiRequest('POST', '/api/notifications/mark-read', {}, token || _jwt());
+}

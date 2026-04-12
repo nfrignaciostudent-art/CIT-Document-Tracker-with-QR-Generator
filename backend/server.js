@@ -9,8 +9,9 @@ const cors       = require('cors');
 const path       = require('path');
 const connectDB  = require('./config/db');
 
-const authRoutes     = require('./routes/authRoutes');
-const documentRoutes = require('./routes/documentRoutes');
+const authRoutes         = require('./routes/authRoutes');
+const documentRoutes     = require('./routes/documentRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -23,8 +24,9 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 /* ── API Routes ─────────────────────────────────────────────────── */
-app.use('/api/auth',      authRoutes);
-app.use('/api/documents', documentRoutes);
+app.use('/api/auth',          authRoutes);
+app.use('/api/documents',     documentRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'CIT DocTracker API running', group: 'Group 6' });

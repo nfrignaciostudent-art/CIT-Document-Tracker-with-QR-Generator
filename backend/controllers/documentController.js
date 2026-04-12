@@ -16,11 +16,13 @@
      - doc.history: contains only Status Updates and admin Movement entries
 ══════════════════════════════════════════════════════════════════════ */
 
-const path     = require('path');
-const QRCode   = require('qrcode');
+const path         = require('path');
+const QRCode       = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
-const Document = require('../models/Document');
-const ScanLog  = require('../models/ScanLog');
+const Document     = require('../models/Document');
+const ScanLog      = require('../models/ScanLog');
+const Notification = require('../models/Notification');
+const User         = require('../models/User');
 
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
 
@@ -155,15 +157,44 @@ const registerDocument = async (req, res) => {
         processedBy:      null,
         processedAt:      null,
         hasProcessedFile: false,
-        history: history || [{
-          action: 'Status Update', status: 'Received',
-          date:   nowManila,
-          note:   'Document submitted & encrypted with IDEA-128',
-          by:     ownerName || ownerId,
-          location: '', handler: ''
-        }],
+        history: history || [
+          {
+            action:   'Status Update',
+            status:   'Received',
+            date:     nowManila,
+            note:     'Document submitted & encrypted with IDEA-128',
+            by:       ownerName || ownerId,
+            location: '',
+            handler:  ''
+          },
+          {
+            action:   'Movement',
+            status:   'Received',
+            date:     nowManila,
+            note:     'Document submitted at registration',
+            by:       ownerName || ownerId,
+            location: 'Submission Point',
+            handler:  ownerName || ownerId
+          }
+        ],
         date: nowManila
       });
+
+      /* ── Auto-notify all admins about the new document ── */
+      try {
+        const admins = await User.find({ role: 'admin' }).select('userId _id').lean();
+        if (admins.length) {
+          const notifDocs = admins.map(admin => ({
+            userId:     admin.userId || String(admin._id),
+            msg:        `New document registered: "<strong>${doc.name}</strong>" by ${ownerName || ownerId} — ${doc.fullDisplayId}`,
+            documentId: doc.internalId,
+            read:       false,
+          }));
+          await Notification.insertMany(notifDocs);
+        }
+      } catch (notifErr) {
+        console.warn('[registerDocument] Could not create admin notifications:', notifErr.message);
+      }
 
       return res.status(201).json({
         internalId:      doc.internalId,
@@ -340,7 +371,37 @@ const updateDocumentStatus = async (req, res) => {
       hasProcessedFile: !!(resolvedProcessedFile || doc.processedFile)
     });
 
+    /* ── Auto-log a Movement entry for every status change ── */
+    doc.history.push({
+      action:   'Movement',
+      status,
+      date:     nowManila,
+      note:     `Status updated to ${status}` + (note ? ': ' + note : ''),
+      by:       by       || req.user?.username || 'admin',
+      location: location || 'Admin Office',
+      handler:  handler  || by || req.user?.username || 'admin',
+    });
+
     await doc.save();
+
+    /* ── Notify the document owner ── */
+    try {
+      const adminName = req.user ? (req.user.name || req.user.username || 'Admin') : 'Admin';
+      const ownerMsg  =
+        `Your document "<strong>${doc.name}</strong>" status changed to <strong>${status}</strong>` +
+        (resolvedProcessedFile ? ' — Final file attached' : '') +
+        (location ? ' at ' + location : '') +
+        (note     ? ' — ' + note      : '') +
+        ` (by ${adminName})`;
+      await Notification.create({
+        userId:     doc.ownerId,
+        msg:        ownerMsg,
+        documentId: doc.internalId,
+        read:       false,
+      });
+    } catch (notifErr) {
+      console.warn('[updateDocumentStatus] Could not create owner notification:', notifErr.message);
+    }
 
     res.json({
       message:          `Status updated to "${status}"`,
