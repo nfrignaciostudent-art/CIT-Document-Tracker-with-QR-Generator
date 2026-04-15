@@ -1,4 +1,4 @@
-# CIT Document Tracker
+# CIT Document Tracker With QR Generator
 
 A full-stack document tracking system with QR code scanning, IDEA-128 file encryption, and role-based access control.
 
