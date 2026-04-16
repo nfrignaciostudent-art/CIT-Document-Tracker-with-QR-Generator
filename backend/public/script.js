@@ -786,8 +786,21 @@ function switchUVTab(tab){
 }
 
 function renderUVDocs(){
+  /* Build a set of all ID forms for this user.
+     The mismatch: _uvCurrentUid = USR-xxx (userId field from backend user list),
+     but doc.ownerId = MongoDB _id string (set at registration via currentUser.id
+     which equals apiUser._id in _mapBackendUser). We must check both. */
+  var _uvUser = accounts.find(function(a){
+    return a.id === _uvCurrentUid || a.userId === _uvCurrentUid || String(a._id||'') === _uvCurrentUid;
+  });
+  var _uvIds = [_uvCurrentUid];
+  if (_uvUser) {
+    if (_uvUser.id     && _uvIds.indexOf(_uvUser.id)          === -1) _uvIds.push(_uvUser.id);
+    if (_uvUser.userId && _uvIds.indexOf(_uvUser.userId)      === -1) _uvIds.push(_uvUser.userId);
+    if (_uvUser._id    && _uvIds.indexOf(String(_uvUser._id)) === -1) _uvIds.push(String(_uvUser._id));
+  }
   const term=(document.getElementById('uv-search')?.value||'').toLowerCase();
-  let userDocs=docs.filter(d=>d.ownerId===_uvCurrentUid);
+  let userDocs=docs.filter(d=>_uvIds.indexOf(d.ownerId) !== -1);
   if(term){
     userDocs=userDocs.filter(d=>
       (d.fullDisplayId||d.displayId||d.id||'').toLowerCase().includes(term)||
@@ -797,7 +810,7 @@ function renderUVDocs(){
     );
   }
   const tb=document.getElementById('uv-tbody');
-  if(!docs.filter(d=>d.ownerId===_uvCurrentUid).length){
+  if(!docs.filter(d=>_uvIds.indexOf(d.ownerId) !== -1).length){
     tb.innerHTML=`<tr><td colspan="7"><div class="empty-msg">No documents.</div></td></tr>`;return;
   }
   if(!userDocs.length){
@@ -824,7 +837,10 @@ function renderActivityLogs(){
   const body=document.getElementById('actlogs-body');
   let all=[];
   Object.entries(activityLogs).forEach(([uid,logs])=>{
-    const acc=accounts.find(a=>a.id===uid);
+    /* uid is stored as currentUser.id = MongoDB _id string.
+       accounts[] entries merged from backend have a.id = USR-xxx (userId).
+       Must check both fields to resolve the name correctly. */
+    const acc=accounts.find(a=>a.id===uid||a.userId===uid||String(a._id||'')===uid);
     logs.forEach(l=>all.push({...l,uname:(acc?acc.username:uid)}));
   });
   all.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -1919,6 +1935,32 @@ document.head.appendChild(styleEl);
 const notifBtn=document.getElementById('notif-btn');
 if(notifBtn) notifBtn.onclick = function(){ openNotifModal(); };
 
+/* ── _updateTopNavForLoggedIn ──────────────────────────────────────────
+   Called on the public tracking page (?track=xxx) when a user is already
+   logged in (session restored from localStorage) or has just signed in.
+   enterApp() is NOT called on the track page (it would switch to app view),
+   so we update only the topnav to show who is logged in and provide a
+   Sign Out button. This runs on both desktop and mobile.
+──────────────────────────────────────────────────────────────────────── */
+function _updateTopNavForLoggedIn() {
+  if (!currentUser) return;
+  var navRight = document.getElementById('nav-right');
+  if (!navRight) return;
+  var color   = currentUser.color || '#4ade80';
+  var label   = currentUser.name  || currentUser.username || 'User';
+  var initStr = initials(label);
+  navRight.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px">' +
+      '<div style="width:28px;height:28px;border-radius:50%;background:' + color + ';' +
+        'display:grid;place-items:center;font-size:11px;font-weight:700;color:#0d1117;' +
+        'flex-shrink:0">' + initStr + '</div>' +
+      '<span style="font-size:13px;color:rgba(255,255,255,.78);font-weight:500;' +
+        'max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</span>' +
+      '<button class="btn-signin" onclick="logout()" ' +
+        'style="padding:5px 12px;font-size:12px">Sign Out</button>' +
+    '</div>';
+}
+
 async function _appInit() {
   /*
    * FIX (Issue 2 — Auth persistence):
@@ -1931,7 +1973,15 @@ async function _appInit() {
    */
   await tryRestoreSession();
 
-  if(initTrackingPage()){ return; }
+  if(initTrackingPage()){
+    /* Session is restored and we are on the public ?track= page.
+       enterApp() is deliberately NOT called here (it would hide the public view).
+       Instead, update only the topnav to reflect the logged-in user.
+       This fixes the "Sign In buttons still visible after login" bug on both
+       desktop and mobile browsers. */
+    if (currentUser) _updateTopNavForLoggedIn();
+    return;
+  }
 
   if(!accounts.find(a=>a.role==='admin')){
     const adminAcc={id:'USR-ADMIN0',username:'admin',name:'System Admin',password:'admin1234',role:'admin',color:'#fb923c',created:nowStr()};

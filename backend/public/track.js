@@ -522,7 +522,9 @@ function renderPublicTrackResult(d) {
       ? '<span>' + (d.by || '-') + '</span>'
       : '<span class="masked">' + MASK_SHORT + '</span>'],
     ['Purpose',         '<span class="' + (purposeIsMasked ? 'masked' : '') + '">' + docPurpose + '</span>'],
-    ['Assigned Office', '<span>' + office + '</span>'],
+    ['Assigned Office', canSeeFields
+      ? '<span>' + office + '</span>'
+      : '<span class="masked">' + MASK_SHORT + '</span>'],
     ['Priority',        canSeeFields
       ? '<span class="' + _prioCls(d.priority) + '">' + (d.priority || 'Normal') + '</span>'
       : '<span class="masked">' + MASK_SHORT + '</span>'],

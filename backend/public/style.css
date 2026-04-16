@@ -1801,15 +1801,43 @@ button,.btn,.nav-item,.auth-submit,.auth-tab,.btn-back,.btn-log-scan{touch-actio
    UNIFIED RECEIPT CARD — Compact modern redesign
 ================================================================ */
 
+/* ── Fix: ensure result-section has a dark background in public mode so
+   there is no white flash during render and text is always readable ── */
+body.public-mode .result-section {
+  background: #090e0b !important;
+}
+
+/* ── Fix: admin status select on dark track card — options must have an
+   explicit dark background. On iOS Safari and some desktop browsers the
+   option elements inherit the white text color from the parent select,
+   rendering white-on-white inside the native dropdown. ── */
+.cct-admin-select option {
+  background: #0d2318;
+  color: rgba(255,255,255,.85);
+}
+.cct-admin-select:focus {
+  outline: 1px solid rgba(74,222,128,.5);
+}
+
+/* ── Fix: internal track result card timeline text must use dark colors
+   since .card has a white background. The base .ttl-* styles use white
+   text (designed for the dark public track page). The #page-track
+   overrides below ensure the text is readable in the app's light theme. ── */
+#track-search-result .ttl-status-label { color: var(--text) !important; }
+#track-search-result .ttl-meta         { color: var(--muted) !important; }
+#track-search-result .ttl-loc          { color: #16a34a !important; }
+#track-search-result .ttl-note         {
+  background: var(--bg) !important;
+  color: var(--muted) !important;
+  border: 1px solid var(--border) !important;
+}
+
 /* ── Outer wrapper ── */
 .result-section {
   max-width: 780px !important;
   margin: 0 auto !important;
   padding: 20px 16px 40px !important;
 }
-
-/* ── Single card ── */
-.unified-receipt-card {
   background: #0e1a12 !important;
   border: 1px solid rgba(255,255,255,.08) !important;
   border-radius: 12px !important;
