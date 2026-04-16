@@ -546,12 +546,31 @@ function renderDash(){
   const rows=[...myDocs].reverse().slice(0,6);
   const tb=document.getElementById('dash-tbody');
   if(!rows.length){tb.innerHTML=`<tr><td colspan="4"><div class="empty-msg">No documents yet.</div></td></tr>`;}
-  else tb.innerHTML=rows.map(d=>`<tr>
-    <td class="doc-id-cell" title="${d.internalId||d.id}">${d.fullDisplayId||d.displayId||d.id}</td>
-    <td class="doc-name-cell">${d.name}${isAdmin?`<br><span style="font-size:11px;color:var(--muted);font-weight:400">by ${d.ownerName}</span>`:''}</td>
-    <td>${statusBadge(d.status)}</td>
-    <td>${dashActions(d)}</td>
-  </tr>`).join('');
+  else tb.innerHTML=rows.map(d=>{
+    /* Fix 1 — Navigation Shortcut: wrap the file icon + name in a link
+       that navigates to the Public Tracking Page for that document.    */
+    const docKey  = d.internalId || d.id;
+    const trackHref = `?track=${docKey}`;
+    const nameCell = `
+      <a href="${trackHref}"
+         onclick="console.log('[Nav] Navigating to tracking for ID: ${docKey}'); event.preventDefault(); window.location.href='${trackHref}';"
+         title="View public tracking page"
+         style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="flex-shrink:0;opacity:.45">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span>${d.name}${isAdmin?`<br><span style="font-size:11px;color:var(--muted);font-weight:400">by ${d.ownerName}</span>`:''}</span>
+      </a>`;
+    return `<tr>
+      <td class="doc-id-cell" title="${d.internalId||d.id}">${d.fullDisplayId||d.displayId||d.id}</td>
+      <td class="doc-name-cell">${nameCell}</td>
+      <td>${statusBadge(d.status)}</td>
+      <td>${dashActions(d)}</td>
+    </tr>`;
+  }).join('');
 
   const al=document.getElementById('activity-list');
   document.getElementById('my-activity-title').textContent=isAdmin?'System Activity (All Users)':'My Recent Activity';
@@ -720,7 +739,20 @@ function renderVault(){
 
     return `<tr>
       <td class="doc-id-cell" title="Internal: ${d.internalId||d.id}">${d.fullDisplayId||d.displayId||d.id}</td>
-      <td class="doc-name-cell">${d.name}${isAdmin?`<br><span style="font-size:11px;color:var(--muted);font-weight:400"> ${d.ownerName}</span>`:''}</td>
+      <td class="doc-name-cell">
+        <a href="?track=${docKey}"
+           onclick="console.log('[Nav] Navigating to tracking for ID: ${docKey}'); event.preventDefault(); window.location.href='?track=${docKey}';"
+           title="View public tracking page"
+           style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:inherit">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               style="flex-shrink:0;opacity:.45">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span>${d.name}${isAdmin?`<br><span style="font-size:11px;color:var(--muted);font-weight:400"> ${d.ownerName}</span>`:''}</span>
+        </a>
+      </td>
       <td style="font-size:13px">${d.by}</td>
       <td class="enc-cell" title="${d.enc}">${d.enc.slice(0,14)}…</td>
       <td class="dec-cell">${IDEA.decrypt(d.enc,KEY)}</td>
@@ -895,6 +927,15 @@ async function addDocument(){
   btn.disabled=true; btn.textContent='Encrypting…';
 
   const enc  = IDEA.encrypt(name, KEY);
+
+  /* Fix 4 — Purpose Encryption: encrypt the purpose field with the vault
+     CBC key (if available) so the public tracking page cannot show it in
+     plain text.  Plaintext `purpose` is still included in the payload for
+     the backend to use in notifications and scan-log records.           */
+  const encPurpose = (typeof CIT_VAULT !== 'undefined' && CIT_VAULT.hasKey())
+    ? CIT_VAULT.encrypt(purpose)
+    : IDEA.encrypt(purpose, KEY);
+
   const date = nowStr();
 
   let encryptedFileData = null;
@@ -928,6 +969,7 @@ async function addDocument(){
     due:             due || null,
     status:          'Received',
     enc,
+    encPurpose,                          // Fix 4 — encrypted purpose blob
     ownerId:         currentUser.id || currentUser.userId,
     ownerName:       currentUser.username,
     fileData:        encryptedFileData,
@@ -950,6 +992,7 @@ async function addDocument(){
         name, type, by, purpose, priority,
         due:       due || null,
         enc,
+        encPurpose,                        // Fix 4 — send encrypted purpose to backend
         ownerId:   currentUser.id || currentUser.userId,
         ownerName: currentUser.username,
         status:    'Received',
@@ -1040,7 +1083,26 @@ function showReceipt(doc){
   document.getElementById('register-workflow').style.display='none';
   document.getElementById('register-card').style.display='none';
   document.getElementById('register-receipt').style.display='';
-  document.getElementById('receipt-id').textContent      = doc.fullDisplayId || doc.displayId || doc.id;
+
+  /* Fix 1 — Navigation Shortcut on Receipt: clicking the document ID
+     or file icon navigates directly to the public tracking page.      */
+  const _receiptTrackUrl = `?track=${doc.internalId || doc.id}`;
+  const _receiptIdEl = document.getElementById('receipt-id');
+  if (_receiptIdEl) {
+    _receiptIdEl.innerHTML = `
+      <a href="${_receiptTrackUrl}"
+         onclick="console.log('[Nav] Navigating to tracking for ID: ${doc.internalId || doc.id}'); event.preventDefault(); window.location.href='${_receiptTrackUrl}';"
+         title="Open Public Tracking Page"
+         style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;color:inherit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="flex-shrink:0;opacity:.6">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        ${doc.fullDisplayId || doc.displayId || doc.id}
+      </a>`;
+  }
   document.getElementById('receipt-name').textContent    = doc.name;
   document.getElementById('receipt-type').textContent    = doc.type;
   document.getElementById('receipt-by').textContent      = doc.by;
@@ -1920,7 +1982,21 @@ const notifBtn=document.getElementById('notif-btn');
 if(notifBtn) notifBtn.onclick = function(){ openNotifModal(); };
 
 async function _appInit() {
-  if(initTrackingPage()){ return; }
+  /* Fix 2 — Post-Login Auto-Unlock:
+     If there is a ?track= or ?apply= param in the URL this IS the tracking/public page.
+     We must restore the session (and therefore the vault key) FIRST, before
+     initTrackingPage() tries to decrypt document names.  Without this, the user
+     would see ●●●●●●●● even after being logged in because currentUser is still null
+     when initTrackingPage() calls _vaultDecrypt().                              */
+  var _urlParams = new URLSearchParams(window.location.search);
+  if (_urlParams.get('track') || _urlParams.get('apply')) {
+    load();
+    await tryRestoreSession();                       // restore currentUser + vault key
+    var vaultReady = typeof CIT_VAULT !== 'undefined' && CIT_VAULT.hasKey();
+    console.log('[AppInit] Tracking page detected — Vault Activation Successful:', vaultReady);
+    initTrackingPage();
+    return;
+  }
 
   if(!accounts.find(a=>a.role==='admin')){
     const adminAcc={id:'USR-ADMIN0',username:'admin',name:'System Admin',password:'admin1234',role:'admin',color:'#fb923c',created:nowStr()};
