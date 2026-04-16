@@ -2,21 +2,35 @@
    public/js/track.js — Public Document Tracking + Zero-Knowledge Masking
    CIT Document Tracker - Group 6
 
-   VAULT CHANGES:
+   FIXES IN THIS VERSION:
+
+   FIX 1 — QR stale data (Issue 2):
+     initTrackingPage() used to render from the local docs[] cache and
+     return early, never fetching from the backend.  Now it ALWAYS calls
+     _fetchAndRenderPublicDoc() to get fresh data from the database.
+     If a local copy exists, it renders that immediately for fast paint,
+     then re-renders with live data once the backend responds.
+
+   FIX 2 — Ownership-based decryption (Issue 3):
+     _fetchAndRenderPublicDoc() now calls the NEW protected endpoint
+     GET /api/documents/:id/details when a user is logged in.
+     The server checks ownership and returns:
+       • isOwner: true  + plaintext name/purpose  → if owner or admin
+       • isOwner: false + null name/purpose        → if non-owner
+     renderPublicTrackResult() reads d._serverDecrypted and d._isOwnerFlag
+     to decide what to display — the decision is server-side, not client-side.
+
+     Ownership matrix:
+       Not logged in        → public endpoint → encrypted blobs → UI shows mask
+       Logged in as owner   → auth endpoint   → server returns plaintext → shown
+       Logged in, non-owner → auth endpoint   → server returns isOwner:false → mask
+       Logged in as admin   → auth endpoint   → server returns plaintext → shown
+
+   VAULT CHANGES (unchanged):
      renderPublicTrackResult — reads d.enc / d.encPurpose (CBC blobs).
-       If CIT_VAULT has an active key → decrypts transparently.
+       If CIT_VAULT has an active key → decrypts transparently (fallback).
        Otherwise → shows: ●●●●●●●● (Protected by IDEA-128)
        + "Sign In to Unlock" button.
-
-     initTrackingPage / _fetchAndRenderPublicDoc — calls _tryAutoDecrypt()
-       which reads the master key from sessionStorage (survives refresh,
-       deleted on tab close). No password re-entry needed on refresh.
-
-     _handleSignInToUnlock — stores internalId in sessionStorage under
-       'cit_pending_track', opens login modal. After login, auth.js calls
-       _handlePostLoginRedirect() → navigates back to ?track=<id>.
-
-     logout (auth.js) → CIT_VAULT.clearAll() → "Go Back" shows masks.
 ══════════════════════════════════════════════════════════════════════ */
 
 let _pubTrackDocId = null;
@@ -87,6 +101,21 @@ function _buildUnlockBanner(internalId) {
     '</button></div>';
 }
 
+/* ── Banner shown to logged-in non-owners ── */
+function _buildRestrictedBanner() {
+  return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;' +
+    'background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.18);' +
+    'border-radius:8px;margin-bottom:10px">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,.7)"' +
+    ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>' +
+    '<line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+    '<span style="font-size:12px;color:rgba(255,255,255,.5)">' +
+    'Sensitive fields are <strong style="color:rgba(239,68,68,.7)">restricted</strong>. ' +
+    'Only the document owner can view the encrypted details.' +
+    '</span></div>';
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    AUTO SCAN LOG — automatic, silent
 ══════════════════════════════════════════════════════════════════════ */
@@ -114,6 +143,10 @@ function _showScanToast(msg) {
 
 /* ══════════════════════════════════════════════════════════════════════
    initTrackingPage — called on page load from _appInit in script.js
+
+   FIX (Issue 2): Always fetches fresh data from the backend.
+   If a local copy exists, it renders immediately for fast UI response,
+   then re-renders once the backend responds with the latest status/history.
 ══════════════════════════════════════════════════════════════════════ */
 function initTrackingPage() {
   var params     = new URLSearchParams(window.location.search);
@@ -140,6 +173,7 @@ function initTrackingPage() {
 
   load();
 
+  /* FIX: Show local copy immediately for fast paint (good UX) … */
   var localDoc = findDoc(trackParam) ||
     docs.find(function(x){ return x.id === trackParam; }) ||
     docs.find(function(x){ return x.id && x.id.toUpperCase() === trackParam.toUpperCase(); });
@@ -148,41 +182,81 @@ function initTrackingPage() {
     var encKey = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.encryptedIdeaKey : null;
     _tryAutoDecrypt(encKey).then(function() {
       renderPublicTrackResult(localDoc);
+      /* Auto-log scan based on local copy — don't wait for backend */
       setTimeout(function(){ _autoLogQRScan(localDoc); }, 800);
     });
-    return true;
   }
 
+  /* … then ALWAYS fetch fresh data from the backend so QR shows current status.
+     This re-renders the card with live database values, replacing the cached copy. */
   _fetchAndRenderPublicDoc(trackParam);
   return true;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   _fetchAndRenderPublicDoc
+
+   FIX (Issue 3): If the user is logged in, calls the protected
+   GET /api/documents/:id/details endpoint which enforces ownership
+   server-side.  Only falls back to the public endpoint if the user
+   is not authenticated or if the auth endpoint is unreachable.
+══════════════════════════════════════════════════════════════════════ */
 async function _fetchAndRenderPublicDoc(trackParam) {
   var errEl = document.getElementById('search-error');
   if (errEl) { errEl.innerHTML = '<span style="color:rgba(255,255,255,.5)">Looking up document...</span>'; errEl.style.display = 'block'; }
 
   try {
-    var result = await apiTrackDocument(trackParam);
+    var result;
+
+    /* ── Ownership-aware path: logged-in user → use auth endpoint ──
+       The server decides if this user is the owner/admin and returns
+       plaintext name/purpose only if they are.  Non-owners receive
+       only the encrypted blobs (same as unauthenticated visitors).  */
+    var loggedInToken = (typeof currentUser !== 'undefined' && currentUser && currentUser.token)
+      ? currentUser.token
+      : (typeof getSavedToken === 'function' ? getSavedToken() : null);
+
+    if (loggedInToken && typeof apiGetDocumentForOwner === 'function') {
+      result = await apiGetDocumentForOwner(trackParam, loggedInToken);
+      /* If auth endpoint fails for any reason, fall back to public endpoint */
+      if (!result || result._error) {
+        console.warn('[_fetchAndRenderPublicDoc] Auth endpoint failed, falling back to public track');
+        result = await apiTrackDocument(trackParam);
+        /* Clear any ownership flags from the failed auth attempt */
+        if (result && !result._error) {
+          result.isOwner = undefined;
+        }
+      }
+    } else {
+      /* Not logged in — use the public endpoint */
+      result = await apiTrackDocument(trackParam);
+    }
 
     if (!result || result._error || result.message) {
       showPublicError('Document <code style="color:#4ade80">' + trackParam + '</code> was not found.<br>Please check the ID or contact the issuing office.');
+      if (errEl) errEl.style.display = 'none';
       return;
     }
 
+    /* ── Build document object, tagging ownership from server response ── */
     var d = Object.assign({}, result, {
       id:            result.internalId,
       fullDisplayId: result.fullDisplayId || result.displayId,
       name:          result.name    || '',
       purpose:       result.purpose || '',
+      /* Ownership flags set by the server — these drive the render logic */
+      _serverDecrypted: !!(result.isOwner === true && result.name),
+      _isOwnerFlag:     (typeof result.isOwner !== 'undefined') ? result.isOwner : undefined,
     });
 
+    /* Update the in-memory docs cache */
     var existing = docs.findIndex(function(x){ return (x.internalId||x.id) === d.internalId; });
     if (existing >= 0) { docs[existing] = Object.assign({}, docs[existing], d); }
     else { docs.push(d); }
 
     if (errEl) errEl.style.display = 'none';
 
-    /* AUTO-DECRYPT: restore IDEA key from sessionStorage if present */
+    /* Restore vault key from sessionStorage if available (for client-side fallback) */
     var encKey = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.encryptedIdeaKey : null;
     await _tryAutoDecrypt(encKey);
 
@@ -208,18 +282,46 @@ async function handleTrack() {
 
   try {
     load();
-    var d = findDoc(raw) || docs.find(function(x){ return x.id && x.id.toUpperCase() === raw; });
 
-    if (!d) {
-      var r = await apiTrackDocument(raw);
-      if (r && !r._error && !r.message) {
-        d = Object.assign({}, r, { id:r.internalId, fullDisplayId:r.fullDisplayId||r.displayId, name:r.name||'', purpose:r.purpose||'' });
-        var idx = docs.findIndex(function(x){ return (x.internalId||x.id) === d.internalId; });
-        if (idx >= 0) { docs[idx] = Object.assign({}, docs[idx], d); } else { docs.push(d); }
+    /* Use auth endpoint if logged in, public endpoint otherwise */
+    var loggedInToken = (typeof currentUser !== 'undefined' && currentUser && currentUser.token)
+      ? currentUser.token
+      : (typeof getSavedToken === 'function' ? getSavedToken() : null);
+
+    var d = null;
+    var result = null;
+
+    if (loggedInToken && typeof apiGetDocumentForOwner === 'function') {
+      result = await apiGetDocumentForOwner(raw, loggedInToken);
+      if (!result || result._error) {
+        result = await apiTrackDocument(raw);
+      }
+    } else {
+      /* Try local first, then public API */
+      d = findDoc(raw) || docs.find(function(x){ return x.id && x.id.toUpperCase() === raw; });
+      if (!d) {
+        result = await apiTrackDocument(raw);
       }
     }
 
-    if (!d) { errEl.innerHTML = 'Document <strong>' + raw + '</strong> not found. Check the ID and try again.'; errEl.style.display = 'block'; return; }
+    if (result && !result._error && !result.message) {
+      d = Object.assign({}, result, {
+        id:            result.internalId,
+        fullDisplayId: result.fullDisplayId || result.displayId,
+        name:          result.name    || '',
+        purpose:       result.purpose || '',
+        _serverDecrypted: !!(result.isOwner === true && result.name),
+        _isOwnerFlag:     (typeof result.isOwner !== 'undefined') ? result.isOwner : undefined,
+      });
+      var idx = docs.findIndex(function(x){ return (x.internalId||x.id) === d.internalId; });
+      if (idx >= 0) { docs[idx] = Object.assign({}, docs[idx], d); } else { docs.push(d); }
+    }
+
+    if (!d) {
+      errEl.innerHTML = 'Document <strong>' + raw + '</strong> not found. Check the ID and try again.';
+      errEl.style.display = 'block';
+      return;
+    }
 
     var encKey = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.encryptedIdeaKey : null;
     await _tryAutoDecrypt(encKey);
@@ -320,6 +422,11 @@ function _injectCompactCardStyles() {
 
 /* ══════════════════════════════════════════════════════════════════════
    renderPublicTrackResult — compact dark card with privacy masking
+
+   FIX (Issue 3): Ownership-based display logic:
+     1. If d._serverDecrypted === true: use server-returned plaintext (owner/admin)
+     2. If d._isOwnerFlag === false:    show restricted banner + masks (non-owner)
+     3. Otherwise:                      fall back to client vault decrypt (public/offline)
 ══════════════════════════════════════════════════════════════════════ */
 function renderPublicTrackResult(d) {
   _pubTrackDocId = d.internalId || d.id;
@@ -327,9 +434,27 @@ function renderPublicTrackResult(d) {
 
   var vaultOn = _vaultActive();
 
-  /* Decrypt or mask sensitive fields */
-  var docName    = d.enc        ? _vaultDecrypt(d.enc)        : (d.name    || MASK_SHORT);
-  var docPurpose = d.encPurpose ? _vaultDecrypt(d.encPurpose) : (d.purpose || MASK_SHORT);
+  /* ── Ownership-aware decryption ────────────────────────────────
+     Priority order:
+       1. Server confirmed owner/admin → use plaintext from server response
+       2. Server confirmed non-owner   → always show masked (no client decrypt)
+       3. Offline / no auth info       → use client-side vault key (fallback)  */
+  var docName, docPurpose;
+
+  if (d._serverDecrypted && d.name) {
+    /* Case 1: Owner or admin — server returned plaintext */
+    docName    = d.name;
+    docPurpose = d.purpose || '';
+  } else if (d._isOwnerFlag === false) {
+    /* Case 2: Logged in but NOT the owner — server explicitly denied */
+    docName    = PRIVACY_MASK;
+    docPurpose = PRIVACY_MASK;
+  } else {
+    /* Case 3: Public visitor or offline — try client-side vault */
+    docName    = d.enc        ? _vaultDecrypt(d.enc)        : (d.name    || MASK_SHORT);
+    docPurpose = d.encPurpose ? _vaultDecrypt(d.encPurpose) : (d.purpose || MASK_SHORT);
+  }
+
   var nameIsMasked    = (docName    === PRIVACY_MASK || docName    === MASK_SHORT);
   var purposeIsMasked = (docPurpose === PRIVACY_MASK || docPurpose === MASK_SHORT);
 
@@ -465,8 +590,19 @@ function renderPublicTrackResult(d) {
       '</div>';
   }
 
-  /* Privacy unlock banner */
-  var unlockBanner = vaultOn ? '' : _buildUnlockBanner(docKey);
+  /* ── Privacy banner ────────────────────────────────────────────
+     - Owner/admin (server confirmed)  → no banner
+     - Non-owner (server denied)       → restricted banner
+     - Not logged in                   → sign-in banner           */
+  var unlockBanner = '';
+  if (d._serverDecrypted) {
+    unlockBanner = ''; // owner confirmed by server
+  } else if (d._isOwnerFlag === false) {
+    unlockBanner = _buildRestrictedBanner(); // non-owner: access denied
+  } else if (!vaultOn) {
+    unlockBanner = _buildUnlockBanner(docKey); // not logged in: offer sign-in
+  }
+
   var titleCls  = nameIsMasked ? 'cct-title masked' : 'cct-title';
   var titleText = nameIsMasked ? MASK_SHORT : docName;
 
@@ -534,9 +670,18 @@ async function _cctAdminUpdate(docId) {
     var result = await apiUpdateDocumentStatus(docId, { status:newStatus, note:note||('Status updated to '+newStatus+' by admin'), by:currentUser.name||currentUser.username }, currentUser.token);
     if (result && result._error) { errEl.textContent = result.message||'Update failed.'; errEl.style.display = 'block'; return; }
     if (result === null) { errEl.textContent = 'Cannot reach server.'; errEl.style.display = 'block'; return; }
-    var fresh = await apiTrackDocument(docId);
+    /* Re-fetch using auth endpoint so ownership is preserved in re-render */
+    var fresh = await apiGetDocumentForOwner(docId, currentUser.token);
+    if (!fresh || fresh._error) fresh = await apiTrackDocument(docId);
     if (fresh && !fresh._error) {
-      var nd = Object.assign({}, fresh, { id:fresh.internalId, fullDisplayId:fresh.fullDisplayId||fresh.displayId, name:fresh.name||'', purpose:fresh.purpose||'' });
+      var nd = Object.assign({}, fresh, {
+        id:            fresh.internalId,
+        fullDisplayId: fresh.fullDisplayId || fresh.displayId,
+        name:          fresh.name    || '',
+        purpose:       fresh.purpose || '',
+        _serverDecrypted: !!(fresh.isOwner === true && fresh.name),
+        _isOwnerFlag:     (typeof fresh.isOwner !== 'undefined') ? fresh.isOwner : undefined,
+      });
       var idx = docs.findIndex(function(x){ return (x.internalId||x.id) === nd.internalId; });
       if (idx >= 0) { docs[idx] = Object.assign({}, docs[idx], nd); } else { docs.push(nd); }
       renderPublicTrackResult(nd);
@@ -579,9 +724,22 @@ async function searchByTrackingId() {
   var d = findDoc(raw) || docs.find(function(x){ return x.id && x.id.toUpperCase() === raw; });
   if (!d) {
     toast('Searching server...');
-    var apiResult = await apiTrackDocument(raw);
+    /* Use auth endpoint since we're always logged in for internal search */
+    var loggedInToken = (typeof currentUser !== 'undefined' && currentUser && currentUser.token)
+      ? currentUser.token : (typeof getSavedToken === 'function' ? getSavedToken() : null);
+    var apiResult = loggedInToken
+      ? await apiGetDocumentForOwner(raw, loggedInToken)
+      : await apiTrackDocument(raw);
+    if (!apiResult || apiResult._error) apiResult = await apiTrackDocument(raw);
     if (apiResult && !apiResult._error && !apiResult.message) {
-      d = Object.assign({}, apiResult, { id:apiResult.internalId, fullDisplayId:apiResult.fullDisplayId||apiResult.displayId, name:apiResult.name||'', purpose:apiResult.purpose||'' });
+      d = Object.assign({}, apiResult, {
+        id:            apiResult.internalId,
+        fullDisplayId: apiResult.fullDisplayId || apiResult.displayId,
+        name:          apiResult.name    || '',
+        purpose:       apiResult.purpose || '',
+        _serverDecrypted: !!(apiResult.isOwner === true && apiResult.name),
+        _isOwnerFlag:     (typeof apiResult.isOwner !== 'undefined') ? apiResult.isOwner : undefined,
+      });
       var existing = docs.findIndex(function(x){ return (x.internalId||x.id) === d.internalId; });
       if (existing >= 0) { docs[existing] = Object.assign({}, docs[existing], d); } else { docs.push(d); }
     }
@@ -593,9 +751,12 @@ async function searchByTrackingId() {
     return;
   }
 
-  /* Internal view: user is authenticated — decrypt for display */
-  var docName    = d.enc        ? (typeof CIT_VAULT !== 'undefined' && CIT_VAULT.hasKey() ? CIT_VAULT.decrypt(d.enc)        : (d.name    || MASK_SHORT)) : (d.name    || raw);
-  var sc         = statusColorMap[d.status] || '#64748b';
+  /* Internal view: use server-decrypted name if available, else vault */
+  var docName = (d._serverDecrypted && d.name)
+    ? d.name
+    : (d.enc ? (typeof CIT_VAULT !== 'undefined' && CIT_VAULT.hasKey() ? CIT_VAULT.decrypt(d.enc) : (d.name || MASK_SHORT)) : (d.name || raw));
+
+  var sc         = typeof statusColorMap !== 'undefined' ? (statusColorMap[d.status] || '#64748b') : '#64748b';
   var workflow   = ['Received','Processing','For Approval','Approved','Released'];
   var curIdx     = workflow.indexOf(d.status);
   var isRejected = d.status === 'Rejected';

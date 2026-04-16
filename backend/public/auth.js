@@ -18,6 +18,14 @@
                          "Go Back" in browser after logout → keys gone,
                          sensitive fields appear as ●●●●●●●●.
 
+   NEW (Issue 4):
+     handleLogoClick   — Global logo click handler. When in app view
+                         (logged in): navigates to the dashboard page.
+                         When in public view: shows the hero/track section,
+                         hides any open result, clears the search input.
+                         Auto-wired on DOMContentLoaded to common logo
+                         element selectors.
+
    MODE DETECTION (unchanged):
      Backend online  → JWT-based auth (MongoDB)
      Backend offline → localStorage fallback accounts[]
@@ -341,6 +349,86 @@ function _handlePostLoginRedirect() {
     }
   } catch (e) {}
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LOGO REDIRECT  (Issue 4)
+
+   handleLogoClick() — global function for logo click behaviour.
+     • App view  (logged in):  navigate to the dashboard page.
+     • Public view (logged out): show the hero/track section and clear
+                                 any open result + search field.
+
+   Auto-wired: DOMContentLoaded scans the DOM for common logo selectors
+   and attaches the handler automatically.  You can also call it manually
+   by adding  onclick="handleLogoClick()"  to any element in your HTML.
+══════════════════════════════════════════════════════════════════════ */
+function handleLogoClick() {
+  if (typeof currentUser !== 'undefined' && currentUser) {
+    /* ── App view: navigate to dashboard ── */
+    if (typeof showPage === 'function') {
+      showPage('dashboard', document.getElementById('nav-dashboard'));
+    }
+  } else {
+    /* ── Public view: reset to hero / track section ── */
+    var resultSection = document.getElementById('result-section');
+    if (resultSection) resultSection.style.display = 'none';
+
+    var heroEl = document.getElementById('hero');
+    if (heroEl) heroEl.style.display = '';
+
+    var docInput = document.getElementById('doc-input');
+    if (docInput) { docInput.value = ''; docInput.focus(); }
+
+    var errEl = document.getElementById('search-error');
+    if (errEl) errEl.style.display = 'none';
+
+    /* Clear the ?track= param from the URL without a page reload */
+    try { window.history.replaceState({}, '', window.location.pathname); } catch (e) {}
+  }
+}
+
+/* ── Auto-wire: find the logo element and attach handleLogoClick ──── */
+document.addEventListener('DOMContentLoaded', function () {
+  /* Ordered list of selectors to try — first match wins.
+     If none match, add onclick="handleLogoClick()" to your logo element. */
+  var logoSelectors = [
+    '#logo-link',
+    '#logo',
+    '.logo-link',
+    '.brand-logo',
+    '#brand',
+    '.navbar-brand',
+    '#topnav .logo',
+    '#topnav .brand',
+    '#topnav a[href="#"]',
+    '.site-logo',
+    '[data-logo]',
+    '#topnav > a',                 // common: first anchor in topnav is the logo
+    '#sidebar .logo',
+    '#sidebar-logo',
+    '.sidebar-brand',
+  ];
+
+  var wired = false;
+  for (var i = 0; i < logoSelectors.length; i++) {
+    var el = document.querySelector(logoSelectors[i]);
+    if (el) {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        handleLogoClick();
+      });
+      wired = true;
+      console.info('[auth] Logo wired to handleLogoClick via selector: ' + logoSelectors[i]);
+      break;
+    }
+  }
+
+  if (!wired) {
+    console.info('[auth] Logo element not found via auto-wire selectors. ' +
+      'Add onclick="handleLogoClick()" to your logo element manually.');
+  }
+});
 
 /* ══════════════════════════════════════════════════════════════════════
    ENTER APP  (unchanged except for heartbeat wiring at bottom)

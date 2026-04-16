@@ -10,6 +10,12 @@
      apiGetAllScanLogs()    - fetches from scan_logs collection (QR auto events)
      apiGetAllMovementLogs()- fetches admin movement entries from doc.history
 
+   NEW:
+     apiGetDocumentForOwner() - protected. Returns plaintext name/purpose if
+                                requester is the document owner or admin.
+                                Returns only encrypted blobs for non-owners.
+                                Used by the track page for logged-in users.
+
    Returns:
      - Response JSON  if request succeeded (2xx)
      - { _error, status, message }  if server returned an error (4xx/5xx)
@@ -126,6 +132,21 @@ async function apiGetAllDocuments(token, ownerId, role) {
 
 async function apiTrackDocument(documentId) {
   return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}`);
+}
+
+/* ── GET /api/documents/:id/details (JWT required) ─────────────────
+   NEW: Ownership-aware track endpoint.
+   Returns plaintext name + purpose IF requester is the owner or admin.
+   Returns only encrypted blobs (isOwner: false) for non-owners.
+   The track page calls this instead of apiTrackDocument when the
+   user is logged in, so decryption decisions are made server-side. */
+async function apiGetDocumentForOwner(documentId, token) {
+  return await apiRequest(
+    'GET',
+    `/api/documents/${encodeURIComponent(documentId)}/details`,
+    null,
+    token || _jwt()
+  );
 }
 
 async function apiGetOriginalFile(documentId) {

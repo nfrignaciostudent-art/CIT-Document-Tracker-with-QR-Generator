@@ -12,6 +12,12 @@
                         have the IDEA key to display them.  Public visitors
                         see ●●●●●●●● (Protected by IDEA-128) in the UI.
 
+     getDocumentForOwner (NEW, PROTECTED) — returns plaintext name/purpose
+                        ONLY if the requester is the document owner or admin.
+                        Non-owners receive only encrypted blobs, same as
+                        the public endpoint. This enforces server-side
+                        ownership before any sensitive field is revealed.
+
      getAllDocuments (AUTH) — still returns plaintext `name`/`purpose` for
                         authenticated users (JWT required), so the existing
                         document list UI in script.js keeps working unchanged.
@@ -264,6 +270,91 @@ const trackDocument = async (req, res) => {
     });
   } catch (err) {
     console.error('[trackDocument]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   GET /api/documents/:id/details  (PROTECTED — JWT required)
+
+   OWNERSHIP-BASED DECRYPTION — Server-side enforcement:
+     • Owner or Admin  → returns plaintext `name` + `purpose` in addition
+                         to the encrypted blobs.  isOwner: true.
+     • Logged-in but NOT owner → same as public: only encrypted blobs.
+                         isOwner: false.  name and purpose are null.
+
+   This endpoint is called by the track page when a user is logged in,
+   replacing the public trackDocument endpoint for authenticated requests.
+   The decision of what to reveal is made SERVER-SIDE, so the client
+   never has to trust the vault key alone for ownership gating.
+══════════════════════════════════════════════════════════════════════ */
+const getDocumentForOwner = async (req, res) => {
+  try {
+    const query = req.params.documentId;
+
+    const doc = await Document.findOne({
+      $or: [
+        { internalId:    query },
+        { displayId:     query },
+        { fullDisplayId: query },
+      ],
+    }).select('-filePath -originalFile -processedFile -fileData');
+
+    if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
+
+    /* ── Ownership check ── */
+    const requesterId = req.user.userId || String(req.user._id);
+    const isAdmin     = req.user.role === 'admin';
+    const isOwner     = isAdmin ||
+                        doc.ownerId === requesterId ||
+                        doc.ownerId === String(req.user._id);
+
+    /* ── Public fields (same as trackDocument) ── */
+    const publicFields = {
+      internalId:    doc.internalId,
+      displayId:     doc.displayId,
+      verifyCode:    doc.verifyCode,
+      fullDisplayId: doc.fullDisplayId,
+      enc:           doc.enc,
+      encPurpose:    doc.encPurpose || '',
+      type:          doc.type,
+      by:            doc.by,
+      priority:      doc.priority,
+      status:        doc.status,
+      ownerId:       doc.ownerId,
+      ownerName:     doc.ownerName,
+      qrCode:        doc.qrCode,
+      hasOriginalFile:  !!(doc.originalFile || doc.filePath),
+      hasProcessedFile: !!(doc.processedFile),
+      fileExt:          doc.fileExt,
+      processedFileExt: doc.processedFileExt,
+      processedBy:      doc.processedBy,
+      processedAt:      doc.processedAt,
+      history:          doc.history,
+      date:             doc.date,
+      due:              doc.due,
+    };
+
+    if (isOwner) {
+      /* Owner or admin: include plaintext name + purpose from the database */
+      return res.json({
+        ...publicFields,
+        name:    doc.name,     // plaintext — safe to reveal to owner/admin
+        purpose: doc.purpose,  // plaintext — safe to reveal to owner/admin
+        isOwner: true,
+      });
+    }
+
+    /* Non-owner: return only public encrypted fields, name/purpose stay null */
+    return res.json({
+      ...publicFields,
+      name:    null,
+      purpose: null,
+      isOwner: false,
+    });
+
+  } catch (err) {
+    console.error('[getDocumentForOwner]', err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -600,4 +691,6 @@ module.exports = {
   registerDocument, trackDocument, downloadDocument, getOriginalFile,
   updateDocumentStatus, getAllDocuments, deleteDocument,
   logScan, addMovementLog, getAllScanLogs, getAllMovementLogs,
+  /* NEW: ownership-based details endpoint */
+  getDocumentForOwner,
 };
