@@ -1838,6 +1838,7 @@ body.public-mode .result-section {
   margin: 0 auto !important;
   padding: 20px 16px 40px !important;
 }
+.unified-receipt {
   background: #0e1a12 !important;
   border: 1px solid rgba(255,255,255,.08) !important;
   border-radius: 12px !important;
