@@ -799,6 +799,22 @@ function renderUVDocs(){
     if (_uvUser.userId && _uvIds.indexOf(_uvUser.userId)      === -1) _uvIds.push(_uvUser.userId);
     if (_uvUser._id    && _uvIds.indexOf(String(_uvUser._id)) === -1) _uvIds.push(String(_uvUser._id));
   }
+  /* ISSUE 2 FIX: doc.ownerId is set to the MongoDB _id at registration time
+     (currentUser.id = apiUser._id from _mapBackendUser), but _uvCurrentUid is
+     the "USR-xxx" userId. Look up _backendUsers to get the MongoDB _id and add
+     it to _uvIds so the filter below actually finds matching documents. */
+  if (typeof _backendUsers !== 'undefined' && _backendUsers) {
+    var _bu = _backendUsers.find(function(u) {
+      return u.userId === _uvCurrentUid ||
+             String(u._id || '') === _uvCurrentUid ||
+             (_uvUser && u.username === _uvUser.username);
+    });
+    if (_bu) {
+      var _buMongoId = String(_bu._id || '');
+      if (_buMongoId && _uvIds.indexOf(_buMongoId) === -1) _uvIds.push(_buMongoId);
+      if (_bu.userId  && _uvIds.indexOf(_bu.userId) === -1) _uvIds.push(_bu.userId);
+    }
+  }
   const term=(document.getElementById('uv-search')?.value||'').toLowerCase();
   let userDocs=docs.filter(d=>_uvIds.indexOf(d.ownerId) !== -1);
   if(term){
@@ -826,7 +842,37 @@ function renderUVDocs(){
 }
 
 function renderUVLogs(){
-  const logs=(activityLogs[_uvCurrentUid]||[]).slice().reverse();
+  /* ISSUE 2 FIX: activityLogs is keyed by currentUser.id = MongoDB _id, but
+     _uvCurrentUid is "USR-xxx". Build the same full ID set as renderUVDocs
+     so we find logs regardless of which ID format was used as the key. */
+  var _uvUser2 = accounts.find(function(a){
+    return a.id === _uvCurrentUid || a.userId === _uvCurrentUid || String(a._id||'') === _uvCurrentUid;
+  });
+  var _uvLogIds = [_uvCurrentUid];
+  if (_uvUser2) {
+    if (_uvUser2.id     && _uvLogIds.indexOf(_uvUser2.id)          === -1) _uvLogIds.push(_uvUser2.id);
+    if (_uvUser2.userId && _uvLogIds.indexOf(_uvUser2.userId)      === -1) _uvLogIds.push(_uvUser2.userId);
+    if (_uvUser2._id    && _uvLogIds.indexOf(String(_uvUser2._id)) === -1) _uvLogIds.push(String(_uvUser2._id));
+  }
+  if (typeof _backendUsers !== 'undefined' && _backendUsers) {
+    var _bu2 = _backendUsers.find(function(u) {
+      return u.userId === _uvCurrentUid ||
+             String(u._id || '') === _uvCurrentUid ||
+             (_uvUser2 && u.username === _uvUser2.username);
+    });
+    if (_bu2) {
+      var _buId2 = String(_bu2._id || '');
+      if (_buId2 && _uvLogIds.indexOf(_buId2) === -1) _uvLogIds.push(_buId2);
+      if (_bu2.userId && _uvLogIds.indexOf(_bu2.userId) === -1) _uvLogIds.push(_bu2.userId);
+    }
+  }
+  /* Merge logs from all matching ID keys */
+  var mergedLogs = [];
+  _uvLogIds.forEach(function(id) {
+    var l = activityLogs[id];
+    if (l && l.length) mergedLogs = mergedLogs.concat(l);
+  });
+  const logs = mergedLogs.slice().sort(function(a,b){ return new Date(b.date)-new Date(a.date); });
   const body=document.getElementById('uv-logs-body');
   if(!logs.length){body.innerHTML='<p style="font-size:13px;color:var(--muted)">No activity yet.</p>';return;}
   body.innerHTML=logs.map(l=>`<div class="activity-item"><div><div class="activity-text">${l.msg}</div><div class="activity-time">${l.date}</div></div></div>`).join('');
@@ -840,8 +886,18 @@ function renderActivityLogs(){
     /* uid is stored as currentUser.id = MongoDB _id string.
        accounts[] entries merged from backend have a.id = USR-xxx (userId).
        Must check both fields to resolve the name correctly. */
-    const acc=accounts.find(a=>a.id===uid||a.userId===uid||String(a._id||'')===uid);
-    logs.forEach(l=>all.push({...l,uname:(acc?acc.username:uid)}));
+    let acc=accounts.find(a=>a.id===uid||a.userId===uid||String(a._id||'')===uid);
+    /* ISSUE 3 FIX: if not found in accounts[], fall back to _backendUsers which
+       has the MongoDB _id as u._id. Without this, uid (a 24-char hex string)
+       is displayed raw, which looks like "encrypted text" in the activity log. */
+    if (!acc && typeof _backendUsers !== 'undefined' && _backendUsers) {
+      const bu = _backendUsers.find(u => u.userId===uid || String(u._id||'')===uid);
+      if (bu) acc = bu;
+    }
+    let uname = acc ? (acc.username || acc.name || uid) : uid;
+    /* Safety net: if uname is still a raw MongoDB ObjectId (24 hex chars), show 'unknown' */
+    if (/^[a-f0-9]{24}$/.test(uname)) uname = 'unknown';
+    logs.forEach(l=>all.push({...l,uname}));
   });
   all.sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(!all.length){body.innerHTML='<p style="font-size:13px;color:var(--muted)">No activity yet.</p>';return;}

@@ -470,6 +470,15 @@ function logout() {
 
   currentUser = null;
 
+  /* ── ISSUE 1 FIX: reset nav-right back to Sign In button ──────────
+     _updateTopNavForLoggedIn() replaces nav-right with the user's
+     avatar + "Sign Out" button. logout() must restore it so the topnav
+     shows "Sign In" again WITHOUT a page reload.                       */
+  const navRight = document.getElementById('nav-right');
+  if (navRight) {
+    navRight.innerHTML = '<button class="btn-signin" onclick="openAuth(\'login\')">Sign In</button>';
+  }
+
   document.getElementById('app-view').style.display    = 'none';
   document.getElementById('public-view').style.display = '';
   document.getElementById('topnav').style.display      = '';
