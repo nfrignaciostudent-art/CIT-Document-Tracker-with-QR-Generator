@@ -221,15 +221,13 @@ const trackDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
 
-    /* Fix 3 (server-side) — .lean() avoids Mongoose's internal object
-       caching so every request fetches a fresh plain JS object.       */
     const doc = await Document.findOne({
       $or: [
         { internalId:    query },
         { displayId:     query },
         { fullDisplayId: query },
       ],
-    }).select('-filePath -originalFile -processedFile -fileData').lean();
+    }).select('-filePath -originalFile -processedFile -fileData');
 
     if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
 

@@ -146,9 +146,7 @@ function initTrackingPage() {
 
   if (localDoc) {
     var encKey = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.encryptedIdeaKey : null;
-    _tryAutoDecrypt(encKey).then(function(vaultOk) {
-      /* Fix 5 — Debug: vault activation status */
-      console.log('[Track] Vault Activation Successful:', vaultOk);
+    _tryAutoDecrypt(encKey).then(function() {
       renderPublicTrackResult(localDoc);
       setTimeout(function(){ _autoLogQRScan(localDoc); }, 800);
     });
@@ -165,9 +163,6 @@ async function _fetchAndRenderPublicDoc(trackParam) {
 
   try {
     var result = await apiTrackDocument(trackParam);
-
-    /* Fix 5 — Debug: log raw server response */
-    console.log('[Track] Data received from server:', result);
 
     if (!result || result._error || result.message) {
       showPublicError('Document <code style="color:#4ade80">' + trackParam + '</code> was not found.<br>Please check the ID or contact the issuing office.');
@@ -187,14 +182,9 @@ async function _fetchAndRenderPublicDoc(trackParam) {
 
     if (errEl) errEl.style.display = 'none';
 
-    /* Fix 2 — AUTO-DECRYPT: restore IDEA key from sessionStorage if present.
-       currentUser is now populated by tryRestoreSession() which was called
-       in _appInit() BEFORE initTrackingPage(), so encryptedIdeaKey is available. */
+    /* AUTO-DECRYPT: restore IDEA key from sessionStorage if present */
     var encKey = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.encryptedIdeaKey : null;
-    var vaultOk = await _tryAutoDecrypt(encKey);
-
-    /* Fix 5 — Debug: report vault activation result */
-    console.log('[Track] Vault Activation Successful:', vaultOk);
+    await _tryAutoDecrypt(encKey);
 
     renderPublicTrackResult(d);
     setTimeout(function(){ _autoLogQRScan(d); }, 800);

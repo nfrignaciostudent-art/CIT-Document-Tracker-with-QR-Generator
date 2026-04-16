@@ -125,9 +125,7 @@ async function apiGetAllDocuments(token, ownerId, role) {
 }
 
 async function apiTrackDocument(documentId) {
-  /* Fix 3 — Cache-Busting: append timestamp so mobile browsers always
-     fetch fresh data instead of serving a stale cached response.       */
-  return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}?t=${Date.now()}`);
+  return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}`);
 }
 
 async function apiGetOriginalFile(documentId) {
