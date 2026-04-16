@@ -583,7 +583,7 @@ function dashActions(d){
   let menuItems='';
 
   if(hasProcessed && d.status==='Released'){
-    menuItems+=`<button class="dropdown-item" onclick="downloadDocFile('${docKey}', this)">⬇ Download Final</button>`;
+    menuItems+=`<button class="dropdown-item" onclick="downloadDocFile('${docKey}', this)"> Download File</button>`;
   } else if(d.status==='Released' && !hasProcessed){
     menuItems+=`<button class="dropdown-item" disabled title="Released but no processed file attached yet">No File</button>`;
   } else if(docHasOriginalFile(d)){
@@ -1661,7 +1661,7 @@ function renderScanResult(d){
           <button onclick="decryptAndDownload('${d.internalId||d.id}',this)"
              style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;background:#22c55e;color:#0d1117;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Final File
+            Download File
           </button>
           <p style="font-size:10px;color:rgba(255,255,255,.2);margin-top:10px">Decrypted locally using IDEA-128 on authorized download</p>
         </div>`;

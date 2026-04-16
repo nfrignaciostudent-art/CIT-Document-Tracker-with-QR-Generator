@@ -52,7 +52,7 @@ function buildQR(docKey, baseUrl, targetElId) {
   if (urlTextEl)    urlTextEl.textContent  = trackUrl;
   if (urlPreviewEl) urlPreviewEl.style.display = 'block';
   if (hintEl) {
-    hintEl.textContent = 'Permanent URL · Display ID: ' + (d.fullDisplayId||d.displayId||d.id) + ' · Never changes';
+    hintEl.textContent = ' · Display ID: ' + (d.fullDisplayId||d.displayId||d.id) + ' · ';
     hintEl.style.display = '';
   }
 
