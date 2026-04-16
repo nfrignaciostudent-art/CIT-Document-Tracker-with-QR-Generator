@@ -131,7 +131,8 @@ async function apiGetAllDocuments(token, ownerId, role) {
 }
 
 async function apiTrackDocument(documentId) {
-  return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}`);
+  /* Add _ts to bust browser cache — QR scans must always reflect live DB state */
+  return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}?_ts=${Date.now()}`);
 }
 
 /* ── GET /api/documents/:id/details (JWT required) ─────────────────
@@ -143,7 +144,8 @@ async function apiTrackDocument(documentId) {
 async function apiGetDocumentForOwner(documentId, token) {
   return await apiRequest(
     'GET',
-    `/api/documents/${encodeURIComponent(documentId)}/details`,
+    /* Add _ts to bust browser cache — ownership check must hit live DB */
+    `/api/documents/${encodeURIComponent(documentId)}/details?_ts=${Date.now()}`,
     null,
     token || _jwt()
   );

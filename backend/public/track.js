@@ -144,9 +144,18 @@ function _showScanToast(msg) {
 /* ══════════════════════════════════════════════════════════════════════
    initTrackingPage — called on page load from _appInit in script.js
 
-   FIX (Issue 2): Always fetches fresh data from the backend.
-   If a local copy exists, it renders immediately for fast UI response,
-   then re-renders once the backend responds with the latest status/history.
+   FIX (Issue 2 — Auth persistence on track page):
+     _appInit() used to return early when initTrackingPage() returned true,
+     BEFORE calling tryRestoreSession(). This meant currentUser was always
+     null on the ?track= page, even for logged-in users.
+     
+     Fix: tryRestoreSession() is now called BEFORE initTrackingPage() in
+     _appInit (see script.js). initTrackingPage itself also defensively
+     calls it (via _fetchAndRenderPublicDoc which reads getSavedToken()).
+
+   FIX (Issue 4 — QR stale data): Always fetches fresh data from the backend.
+   If a local copy exists, it renders that immediately for fast paint,
+   then re-renders with live data once the backend responds.
 ══════════════════════════════════════════════════════════════════════ */
 function initTrackingPage() {
   var params     = new URLSearchParams(window.location.search);
@@ -436,21 +445,18 @@ function renderPublicTrackResult(d) {
 
   /* ── Ownership-aware decryption ────────────────────────────────
      Priority order:
-       1. Server confirmed owner/admin → use plaintext from server response
-       2. Server confirmed non-owner   → always show masked (no client decrypt)
-       3. Offline / no auth info       → use client-side vault key (fallback)  */
+       1. Server confirmed owner/admin (_serverDecrypted) → use plaintext from server
+       2. Server confirmed non-owner   (_isOwnerFlag===false) → mask everything
+       3. Public / unauthenticated     → try client-side vault, else mask         */
   var docName, docPurpose;
 
   if (d._serverDecrypted && d.name) {
-    /* Case 1: Owner or admin — server returned plaintext */
     docName    = d.name;
     docPurpose = d.purpose || '';
   } else if (d._isOwnerFlag === false) {
-    /* Case 2: Logged in but NOT the owner — server explicitly denied */
     docName    = PRIVACY_MASK;
     docPurpose = PRIVACY_MASK;
   } else {
-    /* Case 3: Public visitor or offline — try client-side vault */
     docName    = d.enc        ? _vaultDecrypt(d.enc)        : (d.name    || MASK_SHORT);
     docPurpose = d.encPurpose ? _vaultDecrypt(d.encPurpose) : (d.purpose || MASK_SHORT);
   }
@@ -458,79 +464,114 @@ function renderPublicTrackResult(d) {
   var nameIsMasked    = (docName    === PRIVACY_MASK || docName    === MASK_SHORT);
   var purposeIsMasked = (docPurpose === PRIVACY_MASK || docPurpose === MASK_SHORT);
 
+  /*
+   * Access control for non-encrypted fields.
+   * The public API endpoint no longer returns status, by, priority, date, history.
+   * These are only available when the server confirms ownership (isOwner:true).
+   * For public visitors and non-owners, every field is shown as restricted.
+   */
+  var canSeeFields = d._serverDecrypted === true;
+
   var STATUS_COLORS = {
     'Received':'#4ade80','Processing':'#60a5fa','For Approval':'#a78bfa',
     'Approved':'#34d399','Signed':'#34d399','Released':'#4ade80',
     'Rejected':'#f87171','Pending':'#fbbf24'
   };
-  var sc         = STATUS_COLORS[d.status] || '#94a3b8';
-  var isReleased = d.status === 'Released';
-  var isRejected = d.status === 'Rejected';
+
+  /* Use real status only if owner/admin confirmed server-side */
+  var docStatus  = canSeeFields ? (d.status || 'Unknown') : null;
+  var sc         = docStatus ? (STATUS_COLORS[docStatus] || '#94a3b8') : '#64748b';
+  var isReleased = docStatus === 'Released';
+  var isRejected = docStatus === 'Rejected';
   var workflow   = ['Received','Processing','For Approval','Approved','Released'];
-  var curIdx     = workflow.indexOf(d.status);
+  var curIdx     = docStatus ? workflow.indexOf(docStatus) : -1;
   var dispId     = d.fullDisplayId || d.displayId || d.id;
   var office     = (typeof docOfficeMap !== 'undefined' ? docOfficeMap[d.type] : null) || 'Document Control Office';
-  var relEntry   = [].concat(d.history || []).reverse().find(function(h){ return h.status === 'Released'; });
-  var lastLoc    = getLatestLocationPublic(d);
+  var relEntry   = canSeeFields ? ([].concat(d.history || []).reverse().find(function(h){ return h.status === 'Released'; })) : null;
+  var lastLoc    = canSeeFields ? getLatestLocationPublic(d) : { location:'', handler:'' };
   var docKey     = d.internalId || d.id;
   var trackUrl   = window.location.href.split('?')[0].replace(/\/+$/, '') + '?track=' + docKey;
 
-  /* Progress breadcrumb */
-  var progressHtml = isRejected
-    ? '<span class="p-rej">✕ Rejected</span>'
-    : workflow.map(function(step, i) {
-        var done = curIdx > i, curr = curIdx === i;
-        var cls  = done ? 'p-done' : curr ? 'p-active' : '';
-        return (i > 0 ? '<span style="margin:0 3px;opacity:.3">›</span>' : '') +
-               '<span class="' + cls + '">' + step + '</span>';
-      }).join('');
+  /* Progress breadcrumb — masked when no ownership */
+  var progressHtml;
+  if (!canSeeFields) {
+    progressHtml = '<span style="color:rgba(255,255,255,.25);font-style:italic">' + MASK_SHORT + '</span>';
+  } else if (isRejected) {
+    progressHtml = '<span class="p-rej">✕ Rejected</span>';
+  } else {
+    progressHtml = workflow.map(function(step, i) {
+      var done = curIdx > i, curr = curIdx === i;
+      var cls  = done ? 'p-done' : curr ? 'p-active' : '';
+      return (i > 0 ? '<span style="margin:0 3px;opacity:.3">›</span>' : '') +
+             '<span class="' + cls + '">' + step + '</span>';
+    }).join('');
+  }
 
   function _prioCls(p) {
     return { High:'prio-high', Urgent:'prio-urgent', Low:'prio-low' }[p] || '';
   }
 
-  /* Details fields */
+  /* Status badge — masked for non-owners */
+  var statusLabel  = canSeeFields ? docStatus : MASK_SHORT;
+  var statusBadgeSc = canSeeFields ? sc : '#64748b';
+  var pulsing = canSeeFields && !isRejected && !isReleased;
+
+  /* Details fields — masked for non-owners */
   var fields = [
-    ['Submitted By',    '<span>' + (d.by || '-') + '</span>'],
+    ['Submitted By',    canSeeFields
+      ? '<span>' + (d.by || '-') + '</span>'
+      : '<span class="masked">' + MASK_SHORT + '</span>'],
     ['Purpose',         '<span class="' + (purposeIsMasked ? 'masked' : '') + '">' + docPurpose + '</span>'],
     ['Assigned Office', '<span>' + office + '</span>'],
-    ['Priority',        '<span class="' + _prioCls(d.priority) + '">' + (d.priority || 'Normal') + '</span>'],
-    ['Date Filed',      '<span>' + (d.date || '-') + '</span>'],
-    ['Release Date',    relEntry
-      ? '<span class="val-released">' + relEntry.date + '</span>'
-      : '<span class="val-pending">Pending</span>'],
+    ['Priority',        canSeeFields
+      ? '<span class="' + _prioCls(d.priority) + '">' + (d.priority || 'Normal') + '</span>'
+      : '<span class="masked">' + MASK_SHORT + '</span>'],
+    ['Date Filed',      canSeeFields
+      ? '<span>' + (d.date || '-') + '</span>'
+      : '<span class="masked">' + MASK_SHORT + '</span>'],
+    ['Release Date',    canSeeFields
+      ? (relEntry
+          ? '<span class="val-released">' + relEntry.date + '</span>'
+          : '<span class="val-pending">Pending</span>')
+      : '<span class="masked">' + MASK_SHORT + '</span>'],
   ];
   var fieldsHtml = fields.map(function(f) {
     return '<div class="cct-field"><label>' + f[0] + '</label>' + f[1] + '</div>';
   }).join('');
 
-  /* History */
+  /* History — only shown to owner/admin; masked for everyone else */
   var STATUS_DOT_COLORS = {
     'Received':'#60a5fa','Processing':'#a78bfa','For Approval':'#fbbf24',
     'Signed':'#34d399','Approved':'#34d399','Released':'#4ade80','Rejected':'#f87171','Pending':'#fbbf24'
   };
-  var hist = (d.history || [])
-    .filter(function(h){ return h.action === 'Status Update' || h.action === 'Movement' || !h.action; })
-    .map(function(h){ return { _type:h.action==='Movement'?'movement':'status', status:h.status||'', by:h.by||'-', date:h.date||'', location:h.location||'', handler:h.handler||'', note:h.note||'' }; })
-    .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+  var histHtml;
+  if (!canSeeFields) {
+    histHtml = '<div style="text-align:center;padding:10px 0">' +
+      '<span style="font-size:11px;color:rgba(255,255,255,.25);font-style:italic">' + MASK_SHORT + ' — Activity history restricted</span>' +
+      '</div>';
+  } else {
+    var hist = (d.history || [])
+      .filter(function(h){ return h.action === 'Status Update' || h.action === 'Movement' || !h.action; })
+      .map(function(h){ return { _type:h.action==='Movement'?'movement':'status', status:h.status||'', by:h.by||'-', date:h.date||'', location:h.location||'', handler:h.handler||'', note:h.note||'' }; })
+      .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+    histHtml = hist.length === 0
+      ? '<div class="cct-h-meta">No history recorded yet.</div>'
+      : hist.map(function(h) {
+          var isMove   = h._type === 'movement';
+          var dotColor = isMove ? '#fbbf24' : (STATUS_DOT_COLORS[h.status] || '#60a5fa');
+          return '<div class="cct-hist-item">' +
+            '<div class="cct-h-line" style="background:' + dotColor + '"></div>' +
+            '<div style="flex:1;min-width:0;padding-bottom:4px">' +
+            '<span class="cct-h-tag ' + (isMove ? 'move' : 'stat') + '">' + (isMove ? 'Movement' : 'Status Update') + '</span>' +
+            '<div class="cct-h-title">' + (isMove ? 'Handled by ' + h.by : h.status) + '</div>' +
+            '<div class="cct-h-meta">' + (isMove ? '' : 'By ' + h.by + ' · ') + h.date + '</div>' +
+            ((h.location||h.handler) ? '<div class="cct-h-loc">' + [h.location,h.handler].filter(Boolean).join(' · ') + '</div>' : '') +
+            (h.note ? '<div class="cct-h-note">"' + h.note + '"</div>' : '') +
+            '</div></div>';
+        }).join('');
+  }
 
-  var histHtml = hist.length === 0
-    ? '<div class="cct-h-meta">No history recorded yet.</div>'
-    : hist.map(function(h) {
-        var isMove   = h._type === 'movement';
-        var dotColor = isMove ? '#fbbf24' : (STATUS_DOT_COLORS[h.status] || '#60a5fa');
-        return '<div class="cct-hist-item">' +
-          '<div class="cct-h-line" style="background:' + dotColor + '"></div>' +
-          '<div style="flex:1;min-width:0;padding-bottom:4px">' +
-          '<span class="cct-h-tag ' + (isMove ? 'move' : 'stat') + '">' + (isMove ? 'Movement' : 'Status Update') + '</span>' +
-          '<div class="cct-h-title">' + (isMove ? 'Handled by ' + h.by : h.status) + '</div>' +
-          '<div class="cct-h-meta">' + (isMove ? '' : 'By ' + h.by + ' · ') + h.date + '</div>' +
-          ((h.location||h.handler) ? '<div class="cct-h-loc">' + [h.location,h.handler].filter(Boolean).join(' · ') + '</div>' : '') +
-          (h.note ? '<div class="cct-h-note">"' + h.note + '"</div>' : '') +
-          '</div></div>';
-      }).join('');
-
-  /* File section */
+  /* File section — download only available to owner/admin for released docs */
   var hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.hasOriginalFile);
   var hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.hasProcessedFile);
   var fileHtml = '';
@@ -540,10 +581,11 @@ function renderPublicTrackResult(d) {
       fileHtml += '<div class="cct-file-row">' +
         '<div class="cct-file-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>' +
         '<div style="flex:1;min-width:0"><div class="cct-file-name">Original File <span class="cct-file-sub">(Submitted)</span></div>' +
-        '<div class="cct-file-meta">Submitted by ' + (d.by || 'user') + '</div></div>' +
+        '<div class="cct-file-meta">IDEA-128-CBC encrypted at rest — Reference only</div></div>' +
         '<span class="cct-file-badge">Reference Only</span></div>';
     }
-    if (hasProcessed && isReleased) {
+    if (hasProcessed && isReleased && canSeeFields) {
+      /* Download available only to confirmed owner/admin */
       fileHtml += '<div class="cct-file-row">' +
         '<div class="cct-file-icon final"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="3"/></svg></div>' +
         '<div style="flex:1;min-width:0"><div class="cct-file-name final">Final File <span class="cct-file-sub">(Approved)</span></div>' +
@@ -553,21 +595,25 @@ function renderPublicTrackResult(d) {
         '<button onclick="decryptAndDownload(\'' + docKey + '\',this)" class="cct-dl-btn">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
         'Download Final File</button><div class="cct-dl-hint">Decrypted locally · IDEA-128-CBC</div></div>';
-    } else if (!isReleased) {
-      fileHtml += '<div class="cct-lock"><div class="cct-lock-title">No processed file attached</div>' +
-        '<div class="cct-lock-desc">The admin hasn\'t uploaded the final file yet.<br>' +
-        'Download becomes available when status is <strong style="color:#4ade80">Released</strong>.<br>' +
-        '<span style="color:rgba(255,255,255,.5);font-size:11px">Current: <strong style="color:rgba(255,255,255,.85)">' + d.status + '</strong></span></div></div>';
+    } else if (hasProcessed && isReleased && !canSeeFields) {
+      /* File exists and is released, but viewer is not owner */
+      fileHtml += '<div class="cct-lock"><div class="cct-lock-title" style="color:rgba(239,68,68,.7)">Access Restricted</div>' +
+        '<div class="cct-lock-desc">Sign in as the document owner to download the final file.</div></div>';
+    } else if (!isReleased && canSeeFields) {
+      fileHtml += '<div class="cct-lock"><div class="cct-lock-title">Final File Pending</div>' +
+        '<div class="cct-lock-desc">Admin hasn\'t uploaded the final file yet.<br>' +
+        'Download available when status is <strong style="color:#4ade80">Released</strong>.<br>' +
+        '<span style="color:rgba(255,255,255,.5);font-size:11px">Current: <strong style="color:rgba(255,255,255,.85)">' + docStatus + '</strong></span></div></div>';
     }
     fileHtml += '</div>';
   }
 
-  /* Admin panel */
+  /* Admin update panel (only for confirmed admins who are logged in) */
   var adminHtml = '';
-  if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') {
+  if (canSeeFields && typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') {
     var STATUSES = ['Received','Processing','For Approval','Signed','Approved','Released','Rejected'];
     var opts = STATUSES.map(function(s){
-      return '<option value="' + s + '"' + (s === d.status ? ' selected' : '') + '>' + s + '</option>';
+      return '<option value="' + s + '"' + (s === docStatus ? ' selected' : '') + '>' + s + '</option>';
     }).join('');
     adminHtml = '<div class="cct-admin">' +
       '<div class="cct-admin-label">' +
@@ -581,26 +627,26 @@ function renderPublicTrackResult(d) {
       '<div class="cct-admin-err" id="cct-admin-err"></div></div>';
   }
 
-  /* Location pills */
+  /* Location pills — only when fields available */
   var locPillsHtml = '';
-  if (lastLoc.location || lastLoc.handler) {
+  if (canSeeFields && (lastLoc.location || lastLoc.handler)) {
     locPillsHtml = '<div class="cct-loc-pills">' +
       (lastLoc.location ? '<span class="cct-loc-pill">' + lastLoc.location + '</span>' : '') +
       (lastLoc.handler  ? '<span class="cct-loc-pill">' + lastLoc.handler  + '</span>' : '') +
       '</div>';
   }
 
-  /* ── Privacy banner ────────────────────────────────────────────
-     - Owner/admin (server confirmed)  → no banner
-     - Non-owner (server denied)       → restricted banner
-     - Not logged in                   → sign-in banner           */
+  /* ── Privacy / access banner ────────────────────────────────────
+     - Owner/admin server-confirmed → no banner
+     - Non-owner (logged in)        → restricted banner
+     - Not logged in                → sign-in-to-unlock banner   */
   var unlockBanner = '';
   if (d._serverDecrypted) {
-    unlockBanner = ''; // owner confirmed by server
+    unlockBanner = '';
   } else if (d._isOwnerFlag === false) {
-    unlockBanner = _buildRestrictedBanner(); // non-owner: access denied
+    unlockBanner = _buildRestrictedBanner();
   } else if (!vaultOn) {
-    unlockBanner = _buildUnlockBanner(docKey); // not logged in: offer sign-in
+    unlockBanner = _buildUnlockBanner(docKey);
   }
 
   var titleCls  = nameIsMasked ? 'cct-title masked' : 'cct-title';
@@ -612,9 +658,9 @@ function renderPublicTrackResult(d) {
     '<div class="cct-header"><div>' +
     '<div class="' + titleCls + '">' + titleText + '</div>' +
     '<div class="cct-meta">' + dispId + ' &nbsp;·&nbsp; ' + (d.type || '') + '</div></div>' +
-    '<span class="cct-badge" style="color:' + sc + ';background:' + sc + '1a;border:1px solid ' + sc + '40">' +
-    '<span class="cct-badge-dot' + (!isRejected && !isReleased ? ' pulsing' : '') + '" style="background:' + sc + '"></span>' +
-    d.status + '</span></div>' +
+    '<span class="cct-badge" style="color:' + statusBadgeSc + ';background:' + statusBadgeSc + '1a;border:1px solid ' + statusBadgeSc + '40">' +
+    '<span class="cct-badge-dot' + (pulsing ? ' pulsing' : '') + '" style="background:' + statusBadgeSc + '"></span>' +
+    statusLabel + '</span></div>' +
     locPillsHtml +
     '<div class="cct-progress">' + progressHtml + '</div>' +
     '<hr class="cct-divider">' +

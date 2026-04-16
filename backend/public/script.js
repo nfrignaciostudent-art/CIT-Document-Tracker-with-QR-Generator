@@ -1920,6 +1920,17 @@ const notifBtn=document.getElementById('notif-btn');
 if(notifBtn) notifBtn.onclick = function(){ openNotifModal(); };
 
 async function _appInit() {
+  /*
+   * FIX (Issue 2 — Auth persistence):
+   * tryRestoreSession() MUST be called before initTrackingPage() so that
+   * currentUser is populated when the ?track= page is loaded.
+   * Previously, _appInit returned early from initTrackingPage() without
+   * ever calling tryRestoreSession(), so currentUser was always null on the
+   * public tracking page — breaking server-side ownership checks and the
+   * admin panel on the track card.
+   */
+  await tryRestoreSession();
+
   if(initTrackingPage()){ return; }
 
   if(!accounts.find(a=>a.role==='admin')){
@@ -1930,7 +1941,8 @@ async function _appInit() {
     save();
   }
 
-  const restored = await tryRestoreSession();
+  /* tryRestoreSession() was already called above — use currentUser directly */
+  const restored = !!currentUser;
 
   if(restored && currentUser){
     const token = getSavedToken();

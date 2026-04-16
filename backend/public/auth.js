@@ -351,40 +351,51 @@ function _handlePostLoginRedirect() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   LOGO REDIRECT  (Issue 4)
+   LOGO REDIRECT  (Issue 5)
 
-   handleLogoClick() — global function for logo click behaviour.
-     • App view  (logged in):  navigate to the dashboard page.
-     • Public view (logged out): show the hero/track section and clear
-                                 any open result + search field.
+   handleLogoClick() — clicking the logo ALWAYS navigates to the
+   "Track Your Document" section, regardless of login state.
 
-   Auto-wired: DOMContentLoaded scans the DOM for common logo selectors
-   and attaches the handler automatically.  You can also call it manually
-   by adding  onclick="handleLogoClick()"  to any element in your HTML.
+   • App view  (logged in):  shows the 'track' page in the sidebar if it
+                              exists; otherwise shows the public hero/track
+                              section by toggling to public view briefly.
+                              If there is a page-track element we use that.
+   • Public view (logged out): resets the hero / track section.
+
+   Auto-wired: DOMContentLoaded scans the DOM for common logo selectors.
 ══════════════════════════════════════════════════════════════════════ */
 function handleLogoClick() {
+  /* ── App view: navigate to the Track Document page inside the app ── */
   if (typeof currentUser !== 'undefined' && currentUser) {
-    /* ── App view: navigate to dashboard ── */
+    /* Try the in-app track page first */
+    var trackPage = document.getElementById('page-track');
+    var trackNav  = document.getElementById('nav-track');
+    if (trackPage && typeof showPage === 'function') {
+      showPage('track', trackNav);
+      return;
+    }
+    /* Fallback: show dashboard if no dedicated track page in app */
     if (typeof showPage === 'function') {
       showPage('dashboard', document.getElementById('nav-dashboard'));
     }
-  } else {
-    /* ── Public view: reset to hero / track section ── */
-    var resultSection = document.getElementById('result-section');
-    if (resultSection) resultSection.style.display = 'none';
-
-    var heroEl = document.getElementById('hero');
-    if (heroEl) heroEl.style.display = '';
-
-    var docInput = document.getElementById('doc-input');
-    if (docInput) { docInput.value = ''; docInput.focus(); }
-
-    var errEl = document.getElementById('search-error');
-    if (errEl) errEl.style.display = 'none';
-
-    /* Clear the ?track= param from the URL without a page reload */
-    try { window.history.replaceState({}, '', window.location.pathname); } catch (e) {}
+    return;
   }
+
+  /* ── Public view: reset hero / track section ── */
+  var resultSection = document.getElementById('result-section');
+  if (resultSection) resultSection.style.display = 'none';
+
+  var heroEl = document.getElementById('hero');
+  if (heroEl) heroEl.style.display = '';
+
+  var docInput = document.getElementById('doc-input');
+  if (docInput) { docInput.value = ''; docInput.focus(); }
+
+  var errEl = document.getElementById('search-error');
+  if (errEl) errEl.style.display = 'none';
+
+  /* Clear the ?track= param from the URL without a page reload */
+  try { window.history.replaceState({}, '', window.location.pathname); } catch (e) {}
 }
 
 /* ── Auto-wire: find the logo element and attach handleLogoClick ──── */
