@@ -499,20 +499,33 @@ function logout() {
 
 /* ── Setup sidebar ────────────────────────────────────────────────── */
 function setupSidebar() {
-  const isAdmin = currentUser.role === 'admin';
+  const role    = currentUser.role || 'user';
+  const isAdmin   = role === 'admin';
+  const isStaff   = role === 'staff';
+  const isFaculty = role === 'faculty';
+  const isStaffOrFaculty = isStaff || isFaculty;
+
+  /* ── Role badge label & CSS class ── */
+  const badgeLabel = { admin: 'ADMIN', staff: 'STAFF', faculty: 'FACULTY', user: 'USER' }[role] || 'USER';
+  const badgeClass = { admin: 'role-admin', staff: 'role-staff', faculty: 'role-faculty', user: 'role-user' }[role] || 'role-user';
 
   document.getElementById('user-info-bar').innerHTML = `
     <div class="user-avatar" style="background:${currentUser.color || '#4ade80'}">${initials(currentUser.name || currentUser.username)}</div>
     <div>
       <div class="user-name">${currentUser.name || currentUser.username}</div>
-      <span class="user-role-badge ${isAdmin ? 'role-admin' : 'role-user'}">${isAdmin ? 'ADMIN' : 'USER'}</span>
+      <span class="user-role-badge ${badgeClass}">${badgeLabel}</span>
     </div>`;
 
+  /* ── Admin-only nav items ── */
   document.getElementById('nav-users').style.display     = isAdmin ? '' : 'none';
   document.getElementById('nav-actlogs').style.display   = isAdmin ? '' : 'none';
   document.getElementById('nav-movements').style.display = isAdmin ? '' : 'none';
-  const scanlogsNav  = document.getElementById('nav-scanlogs');
+  const scanlogsNav = document.getElementById('nav-scanlogs');
   if (scanlogsNav) scanlogsNav.style.display = isAdmin ? '' : 'none';
-  const adminCard    = document.getElementById('admin-settings-card');
+  const adminCard = document.getElementById('admin-settings-card');
   if (adminCard) adminCard.style.display = isAdmin ? '' : 'none';
+
+  /* ── Hide "Register Doc" for staff & faculty (they process, not submit) ── */
+  const navRegister = document.getElementById('nav-register');
+  if (navRegister) navRegister.style.display = isStaffOrFaculty ? 'none' : '';
 }
