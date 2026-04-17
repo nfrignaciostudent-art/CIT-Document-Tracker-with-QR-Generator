@@ -144,8 +144,12 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ message: 'Incorrect username/employee ID or password.' });
     }
 
-    user.lastLogin = new Date();
-    await user.save();
+    /* ── FIX: use findByIdAndUpdate instead of user.save() ──────────
+       user.save() triggers full Mongoose validation, which fails for
+       legacy accounts that were created before 'userId' became a
+       required field.  findByIdAndUpdate bypasses that validation and
+       only updates the lastLogin field.                              */
+    await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
 
     const token = generateToken(user._id);
     res.json(_publicUser(user, token));
