@@ -2,29 +2,36 @@
    models/Document.js — Document Schema
    CIT Document Tracker - Group 6
 
-   ZERO-KNOWLEDGE VAULT — ENCRYPTION FIELDS:
-     enc        (existing) — IDEA-128-CBC encrypted documentName.
-                             NEW FORMAT: JSON { iv, data } string.
-                             LEGACY FORMAT: plain uppercase hex (ECB).
-                             decryptSmart() in idea-cbc.js handles both.
-     encPurpose (new)      — IDEA-128-CBC encrypted purpose field.
-                             Same format as enc.
-     name       (existing) — plaintext, used only by the backend for
-                             notifications, search, QR generation.
-                             NOT returned by trackDocument to public callers.
-     purpose    (existing) — plaintext, used only by the backend.
-                             NOT returned by trackDocument to public callers.
+   STAFF / FACULTY WORKFLOW ADDITION:
+     current_stage — tracks WHERE in the role-based pipeline a document
+                     currently sits.  Drives role-filtered document lists:
+                       'staff'     → visible to staff (status: Received)
+                       'faculty'   → visible to faculty (status: Processing,
+                                     awaiting faculty review)
+                       'admin'     → visible to admin for final release
+                                     (faculty has approved; status: Processing)
+                       'completed' → terminal; document is Released or Rejected
 
-   This dual-storage approach lets the backend keep working (it needs
-   plaintext for notifications/search) while the public API only exposes
-   the encrypted blobs — forcing the browser to have the IDEA key in
-   order to display the sensitive fields.
+                     Set automatically by the workflow endpoint
+                     POST /api/documents/update-status.
+                     The existing PATCH /:id/status (admin-only) preserves
+                     current_stage so legacy admin actions stay compatible.
 
-   Dual-ID Standard (unchanged):
-     internalId    - ULID primary key; used in QR codes
-     displayId     - DOC-YYYYMMDD-XXXX; user-facing
-     verifyCode    - 4-char FNV anti-tamper suffix
-     fullDisplayId - displayId-verifyCode (shown on receipts)
+   WORKFLOW STATUS SUBSET (strict, enforced in update-status controller):
+     New documents → 'Received'   (current_stage: 'staff')
+     Staff action  → 'Processing' (current_stage: 'faculty')
+     Faculty approve → 'Processing' (current_stage: 'admin')  ← same status, stage advances
+     Faculty reject  → 'Rejected'   (current_stage: 'completed')
+     Admin release   → 'Released'   (current_stage: 'completed')
+
+   BACKWARD COMPATIBILITY:
+     The status enum retains all 8 original values so that existing
+     documents stored in MongoDB are not invalidated.  The new workflow
+     only emits the 4 required statuses; old values are read-only legacy.
+
+   ZERO-KNOWLEDGE VAULT FIELDS (unchanged — see original comments):
+     enc / encPurpose — IDEA-128-CBC encrypted blobs returned to clients.
+     name / purpose   — plaintext used server-side only.
 ══════════════════════════════════════════════════════════════════════ */
 
 const mongoose = require('mongoose');
@@ -52,22 +59,41 @@ const DocumentSchema = new mongoose.Schema({
   name:    { type: String, required: true, trim: true },
   purpose: { type: String, required: true, trim: true },
 
-  /* ── IDEA-128-CBC encrypted fields (returned to public callers) ─
-     Format: JSON string  { "iv": "<16-char hex>", "data": "<HEX>" }
-     Legacy:  plain uppercase hex (ECB — handled by decryptSmart)    */
-  enc:        { type: String, required: true },   // encrypted documentName
-  encPurpose: { type: String, default: '' },      // encrypted purpose (empty for legacy docs)
+  /* ── IDEA-128-CBC encrypted fields ─────────────────────────── */
+  enc:        { type: String, required: true },
+  encPurpose: { type: String, default: '' },
 
-  /* ── Non-sensitive metadata (returned to all callers) ─────────── */
+  /* ── Non-sensitive metadata ─────────────────────────────────── */
   type:     { type: String, required: true, enum: ['Academic', 'Laboratory', 'Administrative', 'Financial', 'Medical', 'Other'] },
-  by:       { type: String, required: true, trim: true },   // submitter's name
+  by:       { type: String, required: true, trim: true },
   priority: { type: String, enum: ['Low', 'Normal', 'High', 'Urgent'], default: 'Normal' },
   due:      { type: String, default: null },
 
   status: {
     type: String,
-    enum: ['Received', 'Pending', 'Processing', 'For Approval', 'Signed', 'Approved', 'Released', 'Rejected'],
+    /* Retains all 8 legacy values + the 4 strict workflow values.
+       New documents only receive: Received | Processing | Rejected | Released */
+    enum: [
+      'Received', 'Pending', 'Processing', 'For Approval',
+      'Signed', 'Approved', 'Released', 'Rejected',
+    ],
     default: 'Received',
+  },
+
+  /**
+   * current_stage — drives role-based document visibility.
+   * 'staff'     : waiting for staff to process (status = Received)
+   * 'faculty'   : waiting for faculty review   (status = Processing)
+   * 'admin'     : waiting for admin release    (status = Processing, faculty approved)
+   * 'completed' : terminal state               (status = Released | Rejected)
+   *
+   * Legacy documents inserted before this field was added default to
+   * 'staff' so they appear in the staff queue rather than being hidden.
+   */
+  current_stage: {
+    type: String,
+    enum: ['staff', 'faculty', 'admin', 'completed'],
+    default: 'staff',
   },
 
   ownerId:   { type: String, required: true },
@@ -97,5 +123,6 @@ const DocumentSchema = new mongoose.Schema({
 
 DocumentSchema.index({ internalId: 1 });
 DocumentSchema.index({ displayId: 1 });
+DocumentSchema.index({ current_stage: 1 });   // supports stage-filtered queries
 
 module.exports = mongoose.model('Document', DocumentSchema);
