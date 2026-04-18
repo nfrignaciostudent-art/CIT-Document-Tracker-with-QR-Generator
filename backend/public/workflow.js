@@ -13,13 +13,18 @@
           openWorkflowAction(docKey, action)
           submitWorkflowAction()
 
+        Staff  actions : process | hold | unhold | return
+        Faculty actions: approve | reject | request_revision
+        Admin  actions : release | reject | send_back  (send_back injected into admin menu)
+
      3. Adds admin "Create Staff / Faculty" UI:
           openCreateUserModal()
           submitCreateUser()
 
      4. Patches renderStats()  — staff/faculty see their queue stats.
-     5. Patches renderDash()   — staff/faculty see their queue rows.
-     6. Patches dashActions()  — staff/faculty get role-appropriate buttons.
+                                  Staff now includes On Hold count.
+     5. Patches renderDash()   — staff/faculty see their workflow queue.
+     6. Patches dashActions()  — all roles get full role-appropriate buttons.
      7. Patches renderUsers()  — injects "Create Staff / Faculty" button.
 
    ALL patches guard against admin/user regression — original functions
@@ -35,8 +40,10 @@ let _wfAction = null;
 
 /**
  * openWorkflowAction(docKey, action)
- * Opens the confirm-action modal for staff/faculty workflow transitions.
- * action ∈ { 'process', 'approve', 'reject' }
+ * Opens the confirm-action modal for staff/faculty/admin workflow transitions.
+ * action ∈ { 'process', 'hold', 'unhold', 'return',
+ *             'approve', 'reject', 'request_revision',
+ *             'send_back' }
  */
 function openWorkflowAction(docKey, action) {
   const d = docs.find(x => (x.internalId || x.id) === docKey);
@@ -45,13 +52,32 @@ function openWorkflowAction(docKey, action) {
   _wfDocKey = docKey;
   _wfAction = action;
 
-  /* Labels per action */
+  /* Labels + config per action */
   const cfg = {
     process: {
       title:    'Process Document',
       desc:     'Mark this document as processed and forward it to Faculty for review.',
       btnText:  'Process & Forward to Faculty',
       btnClass: 'btn btn-primary',
+    },
+    hold: {
+      title:    'Place Document On Hold',
+      desc:     'Pause processing of this document pending additional requirements. The submitter will be notified.',
+      btnText:  'Place on Hold',
+      btnClass: 'btn btn-yellow-soft',
+    },
+    unhold: {
+      title:    'Release from Hold',
+      desc:     'Release this document from hold. It will return to Received status and re-enter the processing queue.',
+      btnText:  'Release from Hold',
+      btnClass: 'btn btn-primary',
+    },
+    return: {
+      title:       'Return Document to User',
+      desc:        'Return this document to the submitter for corrections. A reason is required — the submitter will be notified and must submit a new request.',
+      btnText:     'Return to User',
+      btnClass:    'btn btn-red-soft',
+      requireNote: true,
     },
     approve: {
       title:    'Approve Document',
@@ -65,6 +91,19 @@ function openWorkflowAction(docKey, action) {
       btnText:  'Confirm Rejection',
       btnClass: 'btn btn-red-soft',
     },
+    request_revision: {
+      title:       'Request Revision from Staff',
+      desc:        'Send this document back to staff for corrections. A note describing the required revision is required.',
+      btnText:     'Request Revision',
+      btnClass:    'btn btn-yellow-soft',
+      requireNote: true,
+    },
+    send_back: {
+      title:    'Send Back to Faculty',
+      desc:     'Return this document to faculty for additional review. Admin will need to re-approve after faculty re-reviews.',
+      btnText:  'Send Back to Faculty',
+      btnClass: 'btn btn-yellow-soft',
+    },
   }[action] || { title: action, desc: '', btnText: action, btnClass: 'btn btn-primary' };
 
   /* Populate modal */
@@ -76,7 +115,20 @@ function openWorkflowAction(docKey, action) {
     d.fullDisplayId || d.displayId || docKey;
   document.getElementById('wf-modal-status').textContent =
     'Current status: ' + d.status + ' / Stage: ' + (d.current_stage || '—');
-  document.getElementById('wf-modal-note').value = '';
+
+  const noteEl  = document.getElementById('wf-modal-note');
+  const noteLbl = document.getElementById('wf-modal-note-label');
+  noteEl.value  = '';
+  /* Show required indicator for actions that must have a note */
+  if (noteLbl) {
+    noteLbl.innerHTML = cfg.requireNote
+      ? 'Note / Reason <span style="color:#ef4444">*</span>'
+      : 'Note (optional)';
+  }
+  noteEl.placeholder = cfg.requireNote
+    ? 'Required — describe the reason…'
+    : 'Optional note…';
+
   document.getElementById('wf-modal-error').style.display = 'none';
 
   const btn = document.getElementById('wf-submit-btn');
@@ -102,6 +154,15 @@ async function submitWorkflowAction() {
   const errEl = document.getElementById('wf-modal-error');
   const btn   = document.getElementById('wf-submit-btn');
 
+  /* Client-side required-note check */
+  const requireNoteActions = ['return', 'request_revision'];
+  if (requireNoteActions.includes(_wfAction) && !note) {
+    errEl.textContent = 'A reason / note is required for this action.';
+    errEl.style.display = 'block';
+    document.getElementById('wf-modal-note').focus();
+    return;
+  }
+
   btn.disabled    = true;
   btn.textContent = 'Submitting…';
   errEl.style.display = 'none';
@@ -120,7 +181,6 @@ async function submitWorkflowAction() {
   if (!result) {
     errEl.textContent = 'Cannot reach server. Please check your connection.';
     errEl.style.display = 'block';
-    btn.textContent = document.getElementById('wf-submit-btn').textContent; // restore label
     return;
   }
   if (result._error) {
@@ -147,12 +207,23 @@ async function submitWorkflowAction() {
   closeModal('wf-action-modal');
 
   /* Log activity locally */
-  const verb = { process: 'processed', approve: 'approved', reject: 'rejected' }[_wfAction] || _wfAction;
+  const verbMap = {
+    process:          'processed',
+    hold:             'placed on hold',
+    unhold:           'released from hold',
+    return:           'returned to user',
+    approve:          'approved',
+    reject:           'rejected',
+    request_revision: 'sent back for revision',
+    send_back:        'sent back to faculty',
+  };
+  const verb = verbMap[_wfAction] || _wfAction;
   if (typeof logActivity === 'function') {
     logActivity(
       currentUser.id,
       `${verb.charAt(0).toUpperCase() + verb.slice(1)} document "${d.name || d.fullDisplayId}"`,
-      _wfAction === 'reject' ? '#ef4444' : '#22c55e'
+      ['reject', 'return'].includes(_wfAction) ? '#ef4444' :
+      ['hold', 'request_revision', 'send_back'].includes(_wfAction) ? '#f59e0b' : '#22c55e'
     );
   }
 
@@ -161,9 +232,8 @@ async function submitWorkflowAction() {
   toast(`Document ${verb} successfully.`);
 
   /*
-   * After a successful workflow action, staff/faculty no longer "own"
-   * this document in their queue — it has moved to the next stage.
-   * Re-sync from the backend after a brief delay so the list is accurate.
+   * After a successful workflow action the document may have moved
+   * to a different stage — re-sync from backend so the list is accurate.
    */
   setTimeout(function () {
     if (typeof _syncDocsFromBackend === 'function') {
@@ -293,23 +363,23 @@ async function submitCreateUser() {
 
     /*
      * docs[] is pre-filtered by the backend for this role:
-     *   staff   → current_stage = 'staff'   (status = Received)
+     *   staff   → current_stage = 'staff'   (includes Received, On Hold, and revision-returned)
      *   faculty → current_stage = 'faculty' (status = Processing)
      */
-    var total    = docs.length;
-    var pending  = docs.filter(function (d) {
-      return role === 'staff'
-        ? (d.status === 'Received'   && d.current_stage === 'staff')
-        : (d.status === 'Processing' && d.current_stage === 'faculty');
-    }).length;
-    var processed = docs.filter(function (d) {
-      return role === 'staff'
-        ? d.status === 'Processing'
-        : d.current_stage === 'admin' || d.status === 'Released';
-    }).length;
-    var rejected = docs.filter(function (d) {
-      return d.status === 'Rejected';
-    }).length;
+    var total = docs.length;
+
+    var pending, processed, rejected, onHold;
+    if (role === 'staff') {
+      pending   = docs.filter(function (d) { return d.status === 'Received'; }).length;
+      onHold    = docs.filter(function (d) { return d.status === 'On Hold'; }).length;
+      processed = docs.filter(function (d) { return d.current_stage !== 'staff'; }).length;
+      rejected  = docs.filter(function (d) { return d.status === 'Rejected' || d.status === 'Returned'; }).length;
+    } else {
+      pending   = docs.filter(function (d) { return d.status === 'Processing' && d.current_stage === 'faculty'; }).length;
+      onHold    = 0;
+      processed = docs.filter(function (d) { return d.current_stage === 'admin' || d.status === 'Released'; }).length;
+      rejected  = docs.filter(function (d) { return d.status === 'Rejected'; }).length;
+    }
 
     var queueLabel     = role === 'staff' ? 'Awaiting Processing' : 'Awaiting Review';
     var processedLabel = role === 'staff' ? 'Forwarded to Faculty' : 'Forwarded to Admin';
@@ -317,6 +387,13 @@ async function submitCreateUser() {
 
     var statsEl = document.getElementById('stats-row');
     if (statsEl) {
+      var onHoldCard = role === 'staff'
+        ? '<div class="stat-card">' +
+            '<div class="stat-card-label">On Hold</div>' +
+            '<div class="stat-card-num" style="color:#f59e0b">' + onHold + '</div>' +
+          '</div>'
+        : '';
+
       statsEl.innerHTML =
         '<div class="stat-card">' +
           '<div class="stat-card-label">Total Assigned</div>' +
@@ -326,12 +403,13 @@ async function submitCreateUser() {
           '<div class="stat-card-label">' + queueLabel + '</div>' +
           '<div class="stat-card-num yellow">' + pending + '</div>' +
         '</div>' +
+        onHoldCard +
         '<div class="stat-card">' +
           '<div class="stat-card-label">' + processedLabel + '</div>' +
           '<div class="stat-card-num blue">' + processed + '</div>' +
         '</div>' +
         '<div class="stat-card">' +
-          '<div class="stat-card-label">Rejected</div>' +
+          '<div class="stat-card-label">Rejected / Returned</div>' +
           '<div class="stat-card-num red">' + rejected + '</div>' +
         '</div>';
     }
@@ -412,7 +490,7 @@ async function submitCreateUser() {
 }());
 
 /* ══════════════════════════════════════════════════════════════════════
-   5. PATCH dashActions() — workflow buttons for staff / faculty
+   5. PATCH dashActions() — workflow buttons for staff / faculty / admin
 ══════════════════════════════════════════════════════════════════════ */
 (function () {
   var _orig = window.dashActions;
@@ -424,24 +502,60 @@ async function submitCreateUser() {
 
     /* ── STAFF ─────────────────────────────────────────────────── */
     if (role === 'staff') {
-      var canProcess = d.status === 'Received' && d.current_stage === 'staff';
+      /*
+       * canProcess: Received/staff (initial) OR Processing/staff (after faculty revision)
+       * canHold:    Received/staff only
+       * canUnhold:  On Hold/staff only
+       * canReturn:  any staff-stage document
+       */
+      var canProcess = d.current_stage === 'staff' &&
+                       (d.status === 'Received' || d.status === 'Processing');
+      var canHold    = d.status === 'Received' && d.current_stage === 'staff';
+      var canUnhold  = d.status === 'On Hold'  && d.current_stage === 'staff';
+      var canReturn  = d.current_stage === 'staff';
+
       var items =
         '<button class="dropdown-item" ' +
           'onclick="closeAllActionMenus(); openHistory(\'' + docKey + '\')">' +
           'View History' +
         '</button>';
+
       if (canProcess) {
         items +=
           '<button class="dropdown-item" ' +
             'style="color:#3b82f6;font-weight:700" ' +
             'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'process\')">' +
-            '&#9654;&nbsp; Process Document' +
+            '&#9654;&nbsp; ' + (d.status === 'Processing' ? 'Re-forward to Faculty' : 'Process Document') +
           '</button>';
-      } else {
+      }
+      if (canHold) {
+        items +=
+          '<button class="dropdown-item" ' +
+            'style="color:#f59e0b;font-weight:600" ' +
+            'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'hold\')">' +
+            '&#9646;&#9646;&nbsp; Place on Hold' +
+          '</button>';
+      }
+      if (canUnhold) {
+        items +=
+          '<button class="dropdown-item" ' +
+            'style="color:#22c55e;font-weight:600" ' +
+            'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'unhold\')">' +
+            '&#9654;&nbsp; Release from Hold' +
+          '</button>';
+      }
+      if (canReturn) {
+        items +=
+          '<button class="dropdown-item danger" ' +
+            'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'return\')">' +
+            '&#8617;&nbsp; Return to User' +
+          '</button>';
+      }
+      if (!canProcess && !canHold && !canUnhold) {
         items +=
           '<button class="dropdown-item" disabled ' +
-            'title="Document is not in the staff processing stage">' +
-            'Already Processed' +
+            'title="No workflow actions available for this document\'s current state">' +
+            'No Actions Available' +
           '</button>';
       }
       return _buildMenu(docKey, items);
@@ -462,6 +576,11 @@ async function submitCreateUser() {
             'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'approve\')">' +
             '&#10003;&nbsp; Approve' +
           '</button>' +
+          '<button class="dropdown-item" ' +
+            'style="color:#f59e0b;font-weight:600" ' +
+            'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'request_revision\')">' +
+            '&#9998;&nbsp; Request Revision' +
+          '</button>' +
           '<button class="dropdown-item danger" ' +
             'onclick="closeAllActionMenus(); openWorkflowAction(\'' + docKey + '\',\'reject\')">' +
             '&#10007;&nbsp; Reject' +
@@ -476,7 +595,25 @@ async function submitCreateUser() {
       return _buildMenu(docKey, items);
     }
 
-    /* ── ADMIN / USER: original behaviour unchanged ─────────────── */
+    /* ── ADMIN ─────────────────────────────────────────────────────
+       For documents sitting in the admin stage, inject a
+       "Send Back to Faculty" option into the standard admin menu.
+    ───────────────────────────────────────────────────────────────── */
+    if (role === 'admin') {
+      var origHtml = _orig.apply(this, arguments);
+      if (d.current_stage === 'admin') {
+        var sendBackBtn =
+          '<button class="dropdown-item" ' +
+          'style="color:#f59e0b;font-weight:600" ' +
+          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'send_back\')">' +
+          '&#8617;&nbsp; Send Back to Faculty</button>';
+        /* Inject before the closing double-div of the action menu */
+        origHtml = origHtml.replace(/<\/div>\s*<\/div>\s*$/, sendBackBtn + '</div></div>');
+      }
+      return origHtml;
+    }
+
+    /* ── USER: original behaviour unchanged ─────────────────────── */
     return _orig.apply(this, arguments);
   };
 

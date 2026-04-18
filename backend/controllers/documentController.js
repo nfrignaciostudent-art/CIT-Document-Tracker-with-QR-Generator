@@ -15,16 +15,23 @@
      Returns the authenticated user's documents sorted newest-first.
      Does NOT expose file blobs (same exclusions as getAllDocuments).
 
-   updateDocumentStatusByRole (NEW)
+   updateDocumentStatusByRole (ENHANCED)
      POST /api/documents/update-status  (staff | faculty | admin)
      Enforces strict role-based status transition rules:
-       Staff   : Received     → Processing   (current_stage: faculty)
-       Faculty : Processing   → Processing   (current_stage: admin)    ← approve
-               : Processing   → Rejected     (current_stage: completed) ← reject
-       Admin   : Processing   → Released     (current_stage: completed)
-                 (+ existing PATCH /:id/status is preserved for full admin control)
+       Staff   : Received/staff  → process        → Processing / faculty
+               : Received/staff  → hold           → On Hold    / staff
+               : staff stage     → return (note!) → Returned   / completed
+               : On Hold/staff   → unhold         → Received   / staff
+               : Processing/staff → process       → Processing / faculty  (after revision)
+       Faculty : Processing/faculty → approve         → Processing / admin
+               :                  → reject            → Rejected  / completed
+               :                  → request_revision  → Processing / staff  (note required)
+       Admin   : Processing/admin  → release (file!) → Released   / completed
+               :                  → reject            → Rejected  / completed
+               :                  → send_back         → Processing / faculty
      Any other transition is rejected with HTTP 403.
-     All transitions append a history entry and fire a notification.
+     All transitions append a history entry and fire notifications (owner +
+     role-targeted notifications for revision/send_back).
 
    getAllDocuments (UPDATED)
      GET /api/documents
@@ -442,35 +449,33 @@ const getAllDocuments = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /api/documents/update-status  (NEW — staff | faculty | admin)
+   POST /api/documents/update-status  (staff | faculty | admin)
 
-   Strict role-based workflow transition table:
+   Enhanced role-based workflow transition table:
 
-   ┌─────────────────┬──────────────────────┬──────────────────────────────┐
-   │ Caller role     │ Required current doc  │ Allowed action               │
-   ├─────────────────┼──────────────────────┼──────────────────────────────┤
-   │ staff           │ status=Received,      │ action=process               │
-   │                 │ stage=staff           │ → status=Processing,         │
-   │                 │                       │   stage=faculty              │
-   ├─────────────────┼──────────────────────┼──────────────────────────────┤
-   │ faculty         │ status=Processing,    │ action=approve               │
-   │                 │ stage=faculty         │ → status=Processing,         │
-   │                 │                       │   stage=admin                │
-   │                 │                       │──────────────────────────────│
-   │                 │                       │ action=reject                │
-   │                 │                       │ → status=Rejected,           │
-   │                 │                       │   stage=completed            │
-   ├─────────────────┼──────────────────────┼──────────────────────────────┤
-   │ admin           │ status=Processing,    │ action=release               │
-   │                 │ stage=admin           │ → status=Released,           │
-   │                 │                       │   stage=completed            │
-   │                 │ (also allows direct   │ action=reject                │
-   │                 │  reject at any stage) │ → status=Rejected,           │
-   │                 │                       │   stage=completed            │
-   └─────────────────┴──────────────────────┴──────────────────────────────┘
+   ┌─────────────────┬──────────────────────────┬──────────────────────────────────────────┐
+   │ Caller role     │ Required document state   │ Action → Result                          │
+   ├─────────────────┼──────────────────────────┼──────────────────────────────────────────┤
+   │ staff           │ stage=staff,              │ process        → Processing / faculty    │
+   │                 │ status=Received           │ hold           → On Hold    / staff      │
+   │                 │     OR Processing         │ return         → Returned   / completed  │
+   │                 │ stage=staff, any status   │   (note req.)                            │
+   │                 │ stage=staff, On Hold      │ unhold         → Received   / staff      │
+   ├─────────────────┼──────────────────────────┼──────────────────────────────────────────┤
+   │ faculty         │ Processing / faculty      │ approve        → Processing / admin      │
+   │                 │                           │ reject         → Rejected   / completed  │
+   │                 │                           │ request_revision → Processing / staff    │
+   │                 │                           │   (note req.)                            │
+   ├─────────────────┼──────────────────────────┼──────────────────────────────────────────┤
+   │ admin           │ Processing / admin        │ release (file req.) → Released/completed │
+   │                 │ (any for reject)          │ reject              → Rejected/completed │
+   │                 │ Processing / admin        │ send_back      → Processing / faculty    │
+   └─────────────────┴──────────────────────────┴──────────────────────────────────────────┘
 
    Body: { documentId, action, note?, location? }
-   action values: 'process' | 'approve' | 'reject' | 'release'
+   Staff  actions : 'process' | 'hold' | 'unhold' | 'return'
+   Faculty actions: 'approve' | 'reject' | 'request_revision'
+   Admin  actions : 'release' | 'reject' | 'send_back'
 ══════════════════════════════════════════════════════════════════════ */
 const updateDocumentStatusByRole = async (req, res) => {
   try {
@@ -497,36 +502,105 @@ const updateDocumentStatusByRole = async (req, res) => {
     let newStage         = doc.current_stage;
     let historyNote      = note || '';
     let notificationMsg  = '';
+    /* Extra notifications for staff when faculty sends back */
+    let staffNotificationMsg = '';
 
     /* ══════════════════════════════════════════════════════════════
        STAFF transitions
+       Allowed actions: process | hold | unhold | return
     ══════════════════════════════════════════════════════════════ */
     if (callerRole === 'staff') {
-      if (action !== 'process') {
+      const staffActions = ['process', 'hold', 'unhold', 'return'];
+      if (!staffActions.includes(action)) {
         return res.status(403).json({
-          message: 'Staff can only perform the "process" action.',
+          message: `Staff allowed actions: ${staffActions.join(', ')}.`,
         });
       }
-      if (doc.status !== 'Received' || doc.current_stage !== 'staff') {
-        return res.status(400).json({
-          message: `Cannot process: document must be in Received / staff stage. ` +
-                   `Current: ${doc.status} / ${doc.current_stage}.`,
-        });
+
+      /* ── process: forward to faculty ── */
+      if (action === 'process') {
+        /* Allow from Received/staff (initial) OR Processing/staff (after revision request) */
+        if (doc.current_stage !== 'staff') {
+          return res.status(400).json({
+            message: `Cannot process: document must be in staff stage. ` +
+                     `Current: ${doc.status} / ${doc.current_stage}.`,
+          });
+        }
+        if (!['Received', 'Processing'].includes(doc.status)) {
+          return res.status(400).json({
+            message: `Cannot process: document must be Received or Processing. ` +
+                     `Current status: ${doc.status}.`,
+          });
+        }
+        newStatus   = 'Processing';
+        newStage    = 'faculty';
+        historyNote = note || `Processed by staff: ${callerName}. Forwarded to faculty.`;
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been processed by staff ` +
+                          `and forwarded to faculty review.`;
       }
-      newStatus   = 'Processing';
-      newStage    = 'faculty';
-      historyNote = note || `Processed by staff: ${callerName}`;
-      notificationMsg = `Your document "<strong>${doc.name}</strong>" has been processed by staff ` +
-                        `and forwarded to faculty review.`;
+
+      /* ── hold: pause document pending requirements ── */
+      else if (action === 'hold') {
+        if (doc.current_stage !== 'staff' || doc.status !== 'Received') {
+          return res.status(400).json({
+            message: `Cannot hold: document must be in Received / staff stage. ` +
+                     `Current: ${doc.status} / ${doc.current_stage}.`,
+          });
+        }
+        newStatus   = 'On Hold';
+        newStage    = 'staff';
+        historyNote = note || `Placed on hold by staff: ${callerName}.`;
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been placed ` +
+                          `<strong>On Hold</strong> by staff.` +
+                          (note ? ` Reason: ${note}` : ' Pending additional requirements.');
+      }
+
+      /* ── unhold: release from hold back to Received ── */
+      else if (action === 'unhold') {
+        if (doc.status !== 'On Hold' || doc.current_stage !== 'staff') {
+          return res.status(400).json({
+            message: `Cannot release from hold: document must be On Hold / staff stage. ` +
+                     `Current: ${doc.status} / ${doc.current_stage}.`,
+          });
+        }
+        newStatus   = 'Received';
+        newStage    = 'staff';
+        historyNote = note || `Released from hold by staff: ${callerName}.`;
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been released from hold. ` +
+                          `It is now back in <strong>Received</strong> status.`;
+      }
+
+      /* ── return: send document back to user for corrections ── */
+      else if (action === 'return') {
+        if (doc.current_stage !== 'staff') {
+          return res.status(400).json({
+            message: `Cannot return: document must be in staff stage. ` +
+                     `Current: ${doc.status} / ${doc.current_stage}.`,
+          });
+        }
+        if (!note || !note.trim()) {
+          return res.status(400).json({
+            message: 'A reason/note is required when returning a document to the user.',
+          });
+        }
+        newStatus   = 'Returned';
+        newStage    = 'completed';
+        historyNote = `Returned to user by staff: ${callerName}. Reason: ${note}`;
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been ` +
+                          `<strong>returned</strong> by staff. Reason: ${note} — ` +
+                          `Please submit a new request with the required corrections.`;
+      }
     }
 
     /* ══════════════════════════════════════════════════════════════
        FACULTY transitions
+       Allowed actions: approve | reject | request_revision
     ══════════════════════════════════════════════════════════════ */
     else if (callerRole === 'faculty') {
-      if (!['approve', 'reject'].includes(action)) {
+      const facultyActions = ['approve', 'reject', 'request_revision'];
+      if (!facultyActions.includes(action)) {
         return res.status(403).json({
-          message: 'Faculty can only perform "approve" or "reject" actions.',
+          message: `Faculty allowed actions: ${facultyActions.join(', ')}.`,
         });
       }
       if (doc.status !== 'Processing' || doc.current_stage !== 'faculty') {
@@ -535,33 +609,61 @@ const updateDocumentStatusByRole = async (req, res) => {
                    `Current: ${doc.status} / ${doc.current_stage}.`,
         });
       }
+
+      /* ── approve: advance to admin ── */
       if (action === 'approve') {
-        newStatus   = 'Processing';  // status stays Processing
-        newStage    = 'admin';       // stage advances to admin
+        newStatus   = 'Processing';
+        newStage    = 'admin';
         historyNote = note || `Approved by faculty: ${callerName}. Forwarded to admin for release.`;
         notificationMsg = `Your document "<strong>${doc.name}</strong>" has been approved by faculty ` +
                           `and is now awaiting admin release.`;
-      } else {
-        /* reject */
+      }
+
+      /* ── reject: terminal rejection ── */
+      else if (action === 'reject') {
         newStatus   = 'Rejected';
         newStage    = 'completed';
         historyNote = note || `Rejected by faculty: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" was <strong>rejected</strong> ` +
-                          `by faculty` + (note ? `: ${note}` : '.');
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" was ` +
+                          `<strong>rejected</strong> by faculty` +
+                          (note ? `: ${note}` : '.');
+      }
+
+      /* ── request_revision: send back to staff for corrections ── */
+      else if (action === 'request_revision') {
+        if (!note || !note.trim()) {
+          return res.status(400).json({
+            message: 'A note describing the required revision is required.',
+          });
+        }
+        newStatus   = 'Processing';
+        newStage    = 'staff';       // returns to staff queue
+        historyNote = `Revision requested by faculty: ${callerName}. Note: ${note}`;
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been sent back ` +
+                          `to staff for revision by faculty.` +
+                          (note ? ` Note: ${note}` : '');
+        /* Also notify all staff members that a revision is needed */
+        staffNotificationMsg =
+          `Faculty <strong>${callerName}</strong> requested revision on document ` +
+          `"<strong>${doc.name}</strong>" — ${doc.fullDisplayId || doc.displayId}. ` +
+          (note ? `Note: ${note}` : '');
       }
     }
 
     /* ══════════════════════════════════════════════════════════════
        ADMIN transitions
+       Allowed actions: release | reject | send_back
     ══════════════════════════════════════════════════════════════ */
     else if (callerRole === 'admin') {
-      if (!['release', 'reject'].includes(action)) {
+      const adminActions = ['release', 'reject', 'send_back'];
+      if (!adminActions.includes(action)) {
         return res.status(403).json({
-          message: 'Admin workflow actions are "release" or "reject". ' +
+          message: 'Admin workflow actions: "release", "reject", or "send_back". ' +
                    'For full status control use PATCH /api/documents/:id/status.',
         });
       }
 
+      /* ── release: finalize and make available for download ── */
       if (action === 'release') {
         if (doc.current_stage !== 'admin') {
           return res.status(400).json({
@@ -569,7 +671,6 @@ const updateDocumentStatusByRole = async (req, res) => {
                      `Current stage: ${doc.current_stage}.`,
           });
         }
-        /* Require a processed file to be present before releasing */
         if (!doc.processedFile && !doc.hasProcessedFile) {
           return res.status(400).json({
             message: 'Cannot release: please upload the final processed file first via ' +
@@ -582,13 +683,37 @@ const updateDocumentStatusByRole = async (req, res) => {
         notificationMsg = `Your document "<strong>${doc.name}</strong>" has been ` +
                           `<strong>Released</strong>.` +
                           (location ? ` (${location})` : '');
-      } else {
-        /* admin reject — allowed at any stage */
+      }
+
+      /* ── reject: terminal rejection (allowed at any stage) ── */
+      else if (action === 'reject') {
         newStatus   = 'Rejected';
         newStage    = 'completed';
         historyNote = note || `Rejected by admin: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" was <strong>rejected</strong> ` +
-                          `by admin` + (note ? `: ${note}` : '.');
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" was ` +
+                          `<strong>rejected</strong> by admin` +
+                          (note ? `: ${note}` : '.');
+      }
+
+      /* ── send_back: return to faculty for additional review ── */
+      else if (action === 'send_back') {
+        if (doc.current_stage !== 'admin') {
+          return res.status(400).json({
+            message: `Cannot send back: document must be in admin stage. ` +
+                     `Current stage: ${doc.current_stage}.`,
+          });
+        }
+        newStatus   = 'Processing';
+        newStage    = 'faculty';
+        historyNote = note || `Sent back to faculty by admin: ${callerName}.`;
+        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been sent back ` +
+                          `to faculty for additional review by admin.` +
+                          (note ? ` Note: ${note}` : '');
+        /* Notify all faculty that a document was returned to them */
+        staffNotificationMsg =
+          `Admin <strong>${callerName}</strong> returned document ` +
+          `"<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) to faculty for review.` +
+          (note ? ` Note: ${note}` : '');
       }
     }
 
@@ -628,6 +753,32 @@ const updateDocumentStatusByRole = async (req, res) => {
       });
     } catch (notifErr) {
       console.warn('[updateDocumentStatusByRole] Notification failed:', notifErr.message);
+    }
+
+    /* ── Notify staff (when faculty requests revision) or
+          faculty (when admin sends back) ── */
+    if (staffNotificationMsg) {
+      try {
+        const targetRole = (action === 'request_revision' || action === 'send_back' && newStage === 'faculty')
+          ? (newStage === 'staff' ? 'staff' : 'faculty')
+          : null;
+        // Determine recipient role from the new stage
+        const recipientRole = newStage === 'staff' ? 'staff' : (newStage === 'faculty' ? 'faculty' : null);
+        if (recipientRole) {
+          const recipients = await User.find({ role: recipientRole }).select('userId _id').lean();
+          if (recipients.length) {
+            const notifDocs = recipients.map(u => ({
+              userId:     u.userId || String(u._id),
+              msg:        staffNotificationMsg,
+              documentId: doc.internalId,
+              read:       false,
+            }));
+            await Notification.insertMany(notifDocs);
+          }
+        }
+      } catch (notifErr) {
+        console.warn('[updateDocumentStatusByRole] Secondary notification failed:', notifErr.message);
+      }
     }
 
     res.json({

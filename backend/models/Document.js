@@ -19,10 +19,16 @@
 
    WORKFLOW STATUS SUBSET (strict, enforced in update-status controller):
      New documents → 'Received'   (current_stage: 'staff')
-     Staff action  → 'Processing' (current_stage: 'faculty')
-     Faculty approve → 'Processing' (current_stage: 'admin')  ← same status, stage advances
+     Staff action  → 'Processing' (current_stage: 'faculty')   ← process
+                  → 'On Hold'    (current_stage: 'staff')      ← hold
+                  → 'Returned'   (current_stage: 'completed')  ← return to user
+     Staff unhold  → 'Received'   (current_stage: 'staff')     ← unhold
+     Faculty approve → 'Processing' (current_stage: 'admin')   ← same status, stage advances
+     Faculty request_revision → 'Processing' (current_stage: 'staff') ← sent back to staff
      Faculty reject  → 'Rejected'   (current_stage: 'completed')
      Admin release   → 'Released'   (current_stage: 'completed')
+     Admin send_back → 'Processing' (current_stage: 'faculty') ← sent back to faculty
+     Admin reject    → 'Rejected'   (current_stage: 'completed')
 
    BACKWARD COMPATIBILITY:
      The status enum retains all 8 original values so that existing
@@ -71,11 +77,15 @@ const DocumentSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    /* Retains all 8 legacy values + the 4 strict workflow values.
-       New documents only receive: Received | Processing | Rejected | Released */
+    /* Retains all 8 legacy values + the 4 strict workflow values +
+       2 new branch statuses introduced by the enhanced workflow:
+         Returned — staff returned document to user for corrections
+         On Hold  — staff placed document on hold pending requirements
+       New documents only receive: Received | Processing | Rejected | Released | Returned | On Hold */
     enum: [
       'Received', 'Pending', 'Processing', 'For Approval',
       'Signed', 'Approved', 'Released', 'Rejected',
+      'Returned', 'On Hold',                             // NEW
     ],
     default: 'Received',
   },
