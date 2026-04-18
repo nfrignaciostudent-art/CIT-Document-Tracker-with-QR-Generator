@@ -146,9 +146,9 @@ function openWorkflowAction(docKey, action) {
       btnClass: 'btn btn-primary',
     },
     request_revision: {
-      title:       'Request Revision from Staff',
-      desc:        'Send this document back to staff with revision notes. Staff must address your comments and re-forward before faculty review continues. A detailed note is required.',
-      btnText:     'Request Revision',
+      title:       'Request Revision from Requester',
+      desc:        'Send this document back to the requester (document owner) for correction and re-upload. The user will be notified and must submit a corrected file before the document re-enters the workflow. A detailed note describing the required changes is required.',
+      btnText:     'Request Resubmission from User',
       btnClass:    'btn btn-yellow-soft',
       requireNote: true,
     },
@@ -292,7 +292,7 @@ async function submitWorkflowAction() {
     return_to_requester:  'returned to requester',
     approve:              'approved',
     reject:               'rejected',
-    request_revision:     'requested revision for',
+    request_revision:     'requested resubmission from requester for',
     release:              'approved and released',
     send_back:            'sent back to faculty',
   };

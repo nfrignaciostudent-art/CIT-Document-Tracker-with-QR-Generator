@@ -32,7 +32,7 @@
    ├──────────┼──────────────────────────────────┼────────────────────────────────────────────┤
    │ faculty  │ Under Evaluation                 │ approve           → Pending Final Approval  │
    │          │ Sent Back for Reevaluation        │ reject            → Rejected               │
-   │          │                                  │ request_revision  → Revision Requested      │
+   │          │                                  │ request_revision  → Action Required: Resubmission (user) │
    ├──────────┼──────────────────────────────────┼────────────────────────────────────────────┤
    │ admin    │ Pending Final Approval            │ release           → Approved and Released   │
    │          │                                  │ reject            → Rejected               │
@@ -245,23 +245,28 @@ const WORKFLOW_TRANSITIONS = {
     },
 
     /**
-     * request_revision — Faculty sends back to staff for corrections.
-     * Under Evaluation | Sent Back for Reevaluation → Revision Requested (staff stage)
-     * NOTE REQUIRED: must describe the required revision.
+     * request_revision — Faculty returns document directly to the owner (user)
+     * for correction and re-upload.
+     * Under Evaluation | Sent Back for Reevaluation → Action Required: Resubmission (user stage)
+     * NOTE REQUIRED: must describe what the user needs to correct.
+     *
+     * The user must then upload a corrected file via POST /api/documents/resubmit,
+     * which resets the document to Submitted → current_role: staff, re-entering
+     * the workflow from the beginning (staff initial review).
+     * Staff are NOT notified here — they receive notification only after the
+     * user resubmits via resubmitDocument().
      */
     request_revision: {
       from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
-      to:           'Revision Requested',
-      toRole:       'staff',
+      to:           'Action Required: Resubmission',
+      toRole:       'user',
       noteRequired: true,
-      notifyRole:   'staff',
+      notifyRole:   null,
       ownerMsg: (doc, caller, note) =>
-        `Your document "<strong>${doc.name}</strong>" has been sent back to staff ` +
-        `for revision by faculty. Revision note: <em>${note}</em>`,
-      roleMsg: (doc, caller, note) =>
-        `Faculty <strong>${caller}</strong> has requested revision on document ` +
-        `"<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}). ` +
-        `Required changes: <em>${note}</em>`,
+        `<strong>Action Required:</strong> Faculty <strong>${caller}</strong> has requested ` +
+        `a revision on your document "<strong>${doc.name}</strong>". ` +
+        `Please correct and resubmit your file to continue. ` +
+        `Faculty note: <em>${note}</em>`,
     },
   },
 
