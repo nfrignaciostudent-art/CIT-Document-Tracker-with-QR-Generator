@@ -607,8 +607,20 @@ function renderStats(){
 /* Dashboard */
 function renderDash(){
   const isAdmin=currentUser.role==='admin';
-  const myDocs=isAdmin?docs:docs.filter(d=>d.ownerId===currentUser.id);
-  const rows=[...myDocs].reverse().slice(0,6);
+  /* FIX 1: match ownerId against both currentUser.id (MongoDB _id) and
+     currentUser.userId (USR-xxx) so backend-synced docs always appear
+     regardless of which ID format was stored at registration time. */
+  const myDocs=isAdmin?docs:docs.filter(d=>
+    d.ownerId===currentUser.id || d.ownerId===currentUser.userId
+  );
+  /* FIX 2: backend returns docs sorted newest-first; .reverse() flips that
+     to oldest-first, hiding newly submitted documents. Sort explicitly by
+     createdAt (backend field) or date (local fallback) descending instead. */
+  const rows=[...myDocs].sort(function(a,b){
+    var da=new Date(a.createdAt||a.date||0);
+    var db=new Date(b.createdAt||b.date||0);
+    return db-da;
+  }).slice(0,6);
   const tb=document.getElementById('dash-tbody');
   if(!rows.length){tb.innerHTML=`<tr><td colspan="4"><div class="empty-msg">No documents yet.</div></td></tr>`;}
   else tb.innerHTML=rows.map(d=>`<tr>
@@ -2384,79 +2396,206 @@ function renderUserOverview() {
 }
 
 /* ================================================================
-   FEATURE 3 — PENDING / URGENT DOCUMENTS SECTION
-   Detects stuck docs by checking last history entry date.
-   Warning (yellow) = 1–2 days.  Urgent (red) = 3+ days.
+/* ================================================================
+   FEATURE 3 — AGING DOCUMENTS (Queue Wait-Time Indicator)
+
+   Purpose: show how long each document has been waiting in its
+   CURRENT workflow stage — NOT a document category or status type.
+
+   Correct meaning:
+     "Pending"  = document is sitting in its assigned role queue
+     "Urgent"   = it has been there longer than the expected threshold
+
+   Time is measured from when the document ENTERED its current status
+   (last history entry whose .status matches doc.status), not from the
+   most-recent log entry of any kind.
+
+   Thresholds (per spec):
+     0–2 days  → Normal   (green  — within expected turnaround)
+     3–5 days  → Warning  (amber  — slow processing)
+     6+  days  → Urgent   (red    — attention needed)
+
+   Role-scoped pools:
+     Admin   → all active-workflow docs (any current_role != 'completed')
+     Staff   → docs with current_role === 'staff'
+     Faculty → docs with current_role === 'faculty'
+
+   Rules (strict):
+     - Do NOT filter by legacy status names (Pending, Processing, etc.)
+     - Do NOT use the priority field for this logic
+     - This is purely a time-in-current-status indicator
 ================================================================ */
-function _getDocLastUpdated(doc) {
+
+/* Active (non-terminal) workflow statuses — includes legacy for compat */
+var _AGING_ACTIVE_STATUSES = [
+  'Submitted', 'Under Initial Review', 'Action Required: Resubmission',
+  'Under Evaluation', 'Revision Requested', 'Pending Final Approval',
+  'Sent Back for Reevaluation',
+  /* legacy */ 'Received', 'Processing', 'For Approval', 'Pending', 'On Hold', 'Signed',
+];
+
+/* Role → human-readable queue label shown in admin view */
+var _AGING_ROLE_LABEL = {
+  staff:   'Staff Queue',
+  faculty: 'Faculty Queue',
+  admin:   'Admin Queue',
+  user:    'Awaiting User',
+};
+
+/**
+ * _getDocStatusAge(doc)
+ * Returns days the document has been in its CURRENT status.
+ * Scans history backwards for the most recent entry whose .status matches
+ * doc.status — that timestamp marks when this stage began.
+ * Falls back to doc.createdAt / doc.date if no matching entry exists.
+ */
+function _getDocStatusAge(doc) {
+  var current   = doc.status;
+  var enteredAt = null;
+
   if (doc.history && doc.history.length) {
-    var latest = null;
-    doc.history.forEach(function(h) {
-      if (!h.date) return;
-      try {
-        var d = new Date(h.date);
-        if (!isNaN(d) && (!latest || d > latest)) latest = d;
-      } catch(e){}
-    });
-    if (latest) return latest;
+    for (var i = doc.history.length - 1; i >= 0; i--) {
+      var h = doc.history[i];
+      if (h.status === current && h.date) {
+        try {
+          var d = new Date(h.date);
+          if (!isNaN(d)) { enteredAt = d; break; }
+        } catch(e) {}
+      }
+    }
   }
-  if (doc.date) { try { var d2 = new Date(doc.date); if (!isNaN(d2)) return d2; } catch(e){} }
-  return null;
+
+  /* Fallback: document creation timestamp */
+  if (!enteredAt) {
+    var fb = doc.createdAt || doc.date;
+    if (fb) { try { enteredAt = new Date(fb); } catch(e) {} }
+  }
+
+  if (!enteredAt || isNaN(enteredAt)) return 0;
+  return Math.floor((Date.now() - enteredAt.getTime()) / 86400000);
+}
+
+/**
+ * _agingTier(days)
+ * Returns display metadata for a given wait-time in days.
+ * 0-2 → Normal, 3-5 → Warning, 6+ → Urgent
+ */
+function _agingTier(days) {
+  if (days >= 6) return { label: 'Urgent',  itemCls: 'urgent-red',    dayCls: 'urgent-days-red',    color: '#ef4444' };
+  if (days >= 3) return { label: 'Warning', itemCls: 'urgent-yellow', dayCls: 'urgent-days-yellow', color: '#f59e0b' };
+  return              { label: 'Normal',  itemCls: 'urgent-normal', dayCls: 'urgent-days-normal', color: '#22c55e' };
+}
+
+/**
+ * _buildAgingPool(role)
+ * Returns the correct document pool scoped to the caller's role.
+ * Admin sees all active queues; staff/faculty see only their queue.
+ */
+function _buildAgingPool(role) {
+  var activeDocs = docs.filter(function(d) {
+    return _AGING_ACTIVE_STATUSES.includes(d.status) &&
+           d.current_role !== 'completed';
+  });
+  if (role === 'staff')   return activeDocs.filter(function(d){ return d.current_role === 'staff'; });
+  if (role === 'faculty') return activeDocs.filter(function(d){ return d.current_role === 'faculty'; });
+  return activeDocs; /* admin: all active queues */
+}
+
+/**
+ * _buildAgingItem(x, showRole)
+ * Renders one aging document card row.
+ * x = { doc, days, since }
+ * showRole: show which queue the doc is waiting in (admin view only).
+ */
+function _buildAgingItem(x, showRole) {
+  var d        = x.doc;
+  var tier     = _agingTier(x.days);
+  var docKey   = d.internalId || d.id;
+  var sinceStr = x.since
+    ? x.since.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+    : '-';
+  var roleLabel = showRole ? (_AGING_ROLE_LABEL[d.current_role] || d.current_role || '') : '';
+
+  return '<div class="urgent-doc-item ' + tier.itemCls + '">' +
+    '<div class="urgent-doc-main">' +
+      '<div class="urgent-doc-name">' + (d.name || '(encrypted)') + '</div>' +
+      '<div class="urgent-doc-id">' + (d.fullDisplayId || d.displayId || d.id) + '</div>' +
+      '<div class="urgent-doc-meta">' +
+        statusBadge(d.status) +
+        (showRole && roleLabel
+          ? '<span style="font-size:10px;font-weight:600;color:rgba(255,255,255,.45);' +
+            'padding:1px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);' +
+            'border-radius:20px;margin-left:4px">' + roleLabel + '</span>'
+          : '') +
+        '<span class="urgent-since" style="margin-left:6px">In queue since ' + sinceStr + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="urgent-doc-right">' +
+      '<span class="urgent-days ' + tier.dayCls + '" ' +
+        'title="' + tier.label + ': ' + x.days + ' day' + (x.days !== 1 ? 's' : '') + ' in current status">' +
+        x.days + 'd' +
+      '</span>' +
+      '<span style="display:block;text-align:center;font-size:9px;font-weight:700;' +
+        'color:' + tier.color + ';margin-top:2px;letter-spacing:.4px;text-transform:uppercase">' +
+        tier.label +
+      '</span>' +
+      '<button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px" ' +
+        'onclick="closeAllActionMenus();showPage(\'vault\',document.getElementById(\'nav-vault\'));' +
+        'setTimeout(function(){openHistory(\'' + docKey + '\')},160)">View</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/**
+ * _buildAgingItems(pool, limit, showRole)
+ * Converts pool → sorted aging entries. Includes docs waiting >= 1 day.
+ */
+function _buildAgingItems(pool, limit, showRole) {
+  return pool
+    .map(function(d) {
+      var days  = _getDocStatusAge(d);
+      var since = null;
+      if (d.history) {
+        for (var i = d.history.length - 1; i >= 0; i--) {
+          var h = d.history[i];
+          if (h.status === d.status && h.date) {
+            try { since = new Date(h.date); } catch(e) {}
+            if (since) break;
+          }
+        }
+      }
+      if (!since) { try { since = new Date(d.createdAt || d.date); } catch(e) {} }
+      return { doc: d, days: days, since: since };
+    })
+    .filter(function(x){ return x.days >= 1; })
+    .sort(function(a, b){ return b.days - a.days; })
+    .slice(0, limit || 6);
 }
 
 function renderUrgentDocs() {
   var el = document.getElementById('urgent-docs-list');
   if (!el) return;
 
-  var isAdmin = currentUser && currentUser.role === 'admin';
-  var pool = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id; });
+  var role  = currentUser && currentUser.role;
+  var pool  = _buildAgingPool(role);
+  var items = _buildAgingItems(pool, 5, role === 'admin');
 
-  var staluses = ['Pending', 'Processing', 'Received', 'For Approval'];
-  var nowMs = Date.now();
-
-  var urgentDocs = pool
-    .filter(function(d){ return staluses.includes(d.status); })
-    .map(function(d) {
-      var last = _getDocLastUpdated(d);
-      var daysAgo = last ? Math.floor((nowMs - last.getTime()) / 86400000) : 0;
-      return { doc: d, daysAgo: daysAgo, lastDate: last };
-    })
-    .filter(function(x){ return x.daysAgo >= 1; })
-    .sort(function(a, b){ return b.daysAgo - a.daysAgo; })
-    .slice(0, 5);
-
-  if (!urgentDocs.length) {
+  if (!items.length) {
     el.innerHTML =
       '<div class="urgent-empty">' +
-        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 8px;opacity:.3"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
-        '<p>No delayed documents. All caught up!</p>' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"' +
+        ' style="display:block;margin:0 auto 8px;opacity:.3">' +
+        '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+        '<polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+        '<p>No documents currently waiting in queue.</p>' +
       '</div>';
     return;
   }
 
-  el.innerHTML = urgentDocs.map(function(x) {
-    var d = x.doc;
-    var isUrgent = x.daysAgo >= 3;
-    var docKey = d.internalId || d.id;
-    var lastStr = x.lastDate ? x.lastDate.toLocaleDateString('en-PH', {month:'short',day:'numeric'}) : '-';
-    var sc = statusColorMap[d.status] || '#64748b';
-    return '<div class="urgent-doc-item ' + (isUrgent ? 'urgent-red' : 'urgent-yellow') + '">' +
-      '<div class="urgent-doc-main">' +
-        '<div class="urgent-doc-name">' + d.name + '</div>' +
-        '<div class="urgent-doc-id">' + (d.fullDisplayId || d.displayId || d.id) + '</div>' +
-        '<div class="urgent-doc-meta">' +
-          statusBadge(d.status) +
-          '<span class="urgent-since">No movement since ' + lastStr + '</span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="urgent-doc-right">' +
-        '<span class="urgent-days ' + (isUrgent ? 'urgent-days-red' : 'urgent-days-yellow') + '">' + x.daysAgo + ' day' + (x.daysAgo !== 1 ? 's' : '') + '</span>' +
-        '<button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px" ' +
-          'onclick="closeAllActionMenus();showPage(\'vault\',document.getElementById(\'nav-vault\'));setTimeout(function(){openHistory(\'' + docKey + '\')},160)">View</button>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  el.innerHTML = items.map(function(x){ return _buildAgingItem(x, role === 'admin'); }).join('');
 }
+
 
 /* ================================================================
    HOOK INTO EXISTING renderAll + enterApp
@@ -2587,57 +2726,38 @@ function renderStats() {
     : 'Welcome back, ' + (currentUser.name || currentUser.username);
 }
 
-/* ── 2. Swap right card to Pending/Urgent for admin ── */
+/* ── 2. Admin right card: Aging Documents (queue wait-time indicator) ──
+   Shows all active-workflow documents ordered by days waiting in their
+   current status. Not a status category — purely a time-in-queue view.
+   showRole=true so admin can see which team needs to act on each item.  */
 function _renderUrgentInDashCard() {
   var titleEl = document.getElementById('my-activity-title');
-  if (titleEl) titleEl.textContent = 'Pending / Urgent Docs';
+  if (titleEl) titleEl.textContent = 'Aging Documents';
 
   var listEl = document.getElementById('activity-list');
   if (!listEl) return;
 
-  var staluses = ['Pending','Processing','Received','For Approval'];
-  var nowMs = Date.now();
-  var pool = docs;
+  var pool  = _buildAgingPool('admin');
+  var items = _buildAgingItems(pool, 6, true);
 
-  var urgentDocs = pool
-    .filter(function(d){ return staluses.includes(d.status); })
-    .map(function(d) {
-      var last = _getDocLastUpdated(d);
-      var daysAgo = last ? Math.floor((nowMs - last.getTime()) / 86400000) : 0;
-      return { doc: d, daysAgo: daysAgo, last: last };
-    })
-    .filter(function(x){ return x.daysAgo >= 1; })
-    .sort(function(a,b){ return b.daysAgo - a.daysAgo; })
-    .slice(0, 6);
-
-  if (!urgentDocs.length) {
+  if (!items.length) {
     listEl.style.padding = '';
-    listEl.innerHTML = '<div class="urgent-empty" style="padding:20px 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 8px;opacity:.3"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><p>No delayed documents!</p></div>';
+    listEl.innerHTML =
+      '<div class="urgent-empty" style="padding:20px 0">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"' +
+        ' style="display:block;margin:0 auto 8px;opacity:.3">' +
+        '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+        '<polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+        '<p>No documents currently waiting in queue.</p>' +
+      '</div>';
     return;
   }
 
   listEl.style.padding = '0';
-  listEl.innerHTML = urgentDocs.map(function(x) {
-    var d = x.doc;
-    var isUrgent = x.daysAgo >= 3;
-    var docKey = d.internalId || d.id;
-    var lastStr = x.last ? x.last.toLocaleDateString('en-PH',{month:'short',day:'numeric'}) : '-';
-    return '<div class="urgent-doc-item ' + (isUrgent?'urgent-red':'urgent-yellow') + '">' +
-      '<div class="urgent-doc-main">' +
-        '<div class="urgent-doc-name">' + d.name + '</div>' +
-        '<div class="urgent-doc-id">' + (d.fullDisplayId||d.displayId||d.id) + '</div>' +
-        '<div class="urgent-doc-meta">' + statusBadge(d.status) +
-          '<span class="urgent-since">Since ' + lastStr + '</span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="urgent-doc-right">' +
-        '<span class="urgent-days ' + (isUrgent?'urgent-days-red':'urgent-days-yellow') + '">' + x.daysAgo + 'd</span>' +
-        '<button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px" ' +
-          'onclick="closeAllActionMenus();showPage(\'vault\',document.getElementById(\'nav-vault\'));setTimeout(function(){openHistory(\'' + docKey + '\')},160)">View</button>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  listEl.innerHTML = items.map(function(x){ return _buildAgingItem(x, true); }).join('');
 }
+
 
 /* ── 3. Fixed renderUserOverview — accurate active count ── */
 function renderUserOverview() {
@@ -2686,16 +2806,6 @@ function renderUserOverview() {
           }).join('') +
         '</div>'
       : '<p style="font-size:13px;color:var(--muted);padding:12px 0">No users registered yet.</p>');
-}
-
-/* ── 4. renderUrgentDocs: now admin-only, renders into dash-grid-2 left card ── */
-function renderUrgentDocs() {
-  var el = document.getElementById('urgent-docs-list');
-  if (!el) return;
-  /* Hide card for non-admins */
-  var card = document.getElementById('card-urgent-docs');
-  if (card) card.style.display = (currentUser && currentUser.role === 'admin') ? 'none' : 'none';
-  /* Urgent is now rendered in the dash-grid right card for admin via _renderUrgentInDashCard */
 }
 
 /* ── 5. dash-grid-2 visibility: admin = User Overview only; user = hidden ── */
