@@ -718,7 +718,19 @@ function downloadDocFile(docKey, btnEl) {
    VAULT - with clickable file badges
 ======================================================== */
 function renderVault(){
-  const isAdmin=currentUser.role==='admin';
+  const role = currentUser.role;
+
+  /* Staff and faculty work through the workflow queue — they do not
+     have a document vault.  Return early with a clear empty state
+     rather than accidentally leaking any cached doc data. */
+  if (role === 'staff' || role === 'faculty') {
+    const tb = document.getElementById('vault-tbody');
+    if (tb) tb.innerHTML =
+      '<tr><td colspan="10"><div class="empty-msg">Document vault is not available for your role.</div></td></tr>';
+    return;
+  }
+
+  const isAdmin=role==='admin';
   const term=(document.getElementById('vault-search')?.value||'').toLowerCase();
   const userFilter=document.getElementById('vault-user-filter')?.value||'';
   const uf=document.getElementById('vault-user-filter');

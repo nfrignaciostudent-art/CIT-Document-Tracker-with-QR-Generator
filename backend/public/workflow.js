@@ -600,7 +600,6 @@ async function submitCreateUser() {
       return _orig.apply(this, arguments);
     }
 
-    var total = docs.length;
     var statsEl = document.getElementById('stats-row');
     if (!statsEl) return;
 
@@ -608,11 +607,13 @@ async function submitCreateUser() {
     var subEl   = document.getElementById('dash-subtitle');
 
     if (role === 'staff') {
-      /* Staff queue stats — docs with current_role: 'staff' */
-      var submitted    = docs.filter(function (d) { return d.status === 'Submitted'; }).length;
-      var underReview  = docs.filter(function (d) { return d.status === 'Under Initial Review'; }).length;
-      var revisionReq  = docs.filter(function (d) { return d.status === 'Revision Requested'; }).length;
-      var forwarded    = 0;   /* Not in staff queue once forwarded */
+      /* Staff queue stats — strictly scoped to current_role: 'staff'.
+         This prevents stale localStorage data from inflating counts. */
+      var queueDocs   = docs.filter(function (d) { return d.current_role === 'staff'; });
+      var total       = queueDocs.length;
+      var submitted   = queueDocs.filter(function (d) { return d.status === 'Submitted'; }).length;
+      var underReview = queueDocs.filter(function (d) { return d.status === 'Under Initial Review'; }).length;
+      var revisionReq = queueDocs.filter(function (d) { return d.status === 'Revision Requested'; }).length;
 
       statsEl.innerHTML =
         '<div class="stat-card">' +
@@ -636,9 +637,12 @@ async function submitCreateUser() {
       if (subEl)   subEl.textContent   = 'Welcome, ' + (currentUser.name || currentUser.username);
 
     } else if (role === 'faculty') {
-      /* Faculty queue stats — docs with current_role: 'faculty' */
-      var underEval  = docs.filter(function (d) { return d.status === 'Under Evaluation'; }).length;
-      var sentBack   = docs.filter(function (d) { return d.status === 'Sent Back for Reevaluation'; }).length;
+      /* Faculty queue stats — strictly scoped to current_role: 'faculty'.
+         This prevents stale localStorage data from inflating counts. */
+      var queueDocs = docs.filter(function (d) { return d.current_role === 'faculty'; });
+      var total     = queueDocs.length;
+      var underEval = queueDocs.filter(function (d) { return d.status === 'Under Evaluation'; }).length;
+      var sentBack  = queueDocs.filter(function (d) { return d.status === 'Sent Back for Reevaluation'; }).length;
 
       statsEl.innerHTML =
         '<div class="stat-card">' +
@@ -674,7 +678,27 @@ async function submitCreateUser() {
       return _orig.apply(this, arguments);
     }
 
-    var rows = docs.slice().reverse().slice(0, 10);
+    /* ── Priority weight for sorting: higher urgency appears first ── */
+    var PRIORITY_WEIGHT = { Urgent: 4, High: 3, Normal: 2, Low: 1 };
+
+    /* ── Strictly filter to this role's queue only.
+       This guards against stale localStorage data leaking across
+       role boundaries. The backend already enforces current_role
+       scoping, but this client-side filter is an explicit safety net. ── */
+    var roleFilter = (role === 'staff') ? 'staff' : 'faculty';
+    var queueDocs  = docs
+      .filter(function (d) { return d.current_role === roleFilter; })
+      .sort(function (a, b) {
+        /* Sort by priority descending (Urgent → High → Normal → Low),
+           then by submission date descending (newest first) as a tiebreaker.
+           Priority ONLY affects ordering within this role's own queue —
+           it is never used as a cross-role visibility filter. */
+        var pDiff = (PRIORITY_WEIGHT[b.priority] || 2) - (PRIORITY_WEIGHT[a.priority] || 2);
+        if (pDiff !== 0) return pDiff;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+
+    var rows = queueDocs.slice(0, 10);
     var tb   = document.getElementById('dash-tbody');
     if (!tb) return;
 
