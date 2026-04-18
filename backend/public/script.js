@@ -659,7 +659,7 @@ function dashActions(d){
     menuItems+=`<button class="dropdown-item" onclick="closeAllActionMenus(); openUpdate('${docKey}')">Update</button>`;
     menuItems+=`<button class="dropdown-item" onclick="closeAllActionMenus(); openQR('${docKey}')">QR</button>`;
     menuItems+=`<button class="dropdown-item" onclick="closeAllActionMenus(); openHistory('${docKey}')">History</button>`;
-    menuItems+=`<button class="dropdown-item danger" onclick="closeAllActionMenus(); deleteDoc('${docKey}')">Delete</button>`;
+    /* Delete removed from quick-action dropdown — use Update modal for status changes */
   } else if(isOwner){
     menuItems+=`<button class="dropdown-item" onclick="closeAllActionMenus(); openQR('${docKey}')">QR</button>`;
     menuItems+=`<button class="dropdown-item" onclick="closeAllActionMenus(); openHistory('${docKey}')">History</button>`;
@@ -720,6 +720,7 @@ function downloadDocFile(docKey, btnEl) {
 ======================================================== */
 function renderVault(){
   const isAdmin=currentUser.role==='admin';
+  const isStaffOrFaculty = currentUser.role === 'staff' || currentUser.role === 'faculty';
   const term=(document.getElementById('vault-search')?.value||'').toLowerCase();
   const userFilter=document.getElementById('vault-user-filter')?.value||'';
   const uf=document.getElementById('vault-user-filter');
@@ -731,7 +732,11 @@ function renderVault(){
       uf.value=userFilter;
     }
   }
-  let rows=isAdmin?docs:docs.filter(d=>d.ownerId===currentUser.id);
+  /* Admin sees everything; staff/faculty see their current_role queue
+     (docs[] is already pre-filtered by the backend); users see own docs. */
+  let rows = isAdmin || isStaffOrFaculty
+    ? docs
+    : docs.filter(d=>d.ownerId===currentUser.id);
   if(isAdmin&&userFilter) rows=rows.filter(d=>d.ownerId===userFilter);
   if(term) rows=rows.filter(d=>{
     const disp=(d.fullDisplayId||d.displayId||d.id||'').toLowerCase();
@@ -748,7 +753,8 @@ function renderVault(){
     const docKey = d.internalId || d.id;
     const hasOrig = docHasOriginalFile(d);
     const hasProc = docHasProcessedFile(d);
-    const canView = isAdmin || d.ownerId === currentUser.id;
+    /* Staff and faculty can view original files for documents in their queue */
+    const canView = isAdmin || isStaffOrFaculty || d.ownerId === currentUser.id;
 
     /* -- File badges are now clickable buttons -- */
     const fileHtml = hasProc

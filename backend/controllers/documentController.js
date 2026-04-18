@@ -1112,7 +1112,7 @@ const getOriginalFile = async (req, res) => {
     const query = req.params.documentId;
     const doc   = await Document.findOne({
       $or: [{ internalId: query }, { displayId: query }],
-    }).select('internalId ownerId name fileExt originalFileExt originalFile filePath');
+    }).select('internalId ownerId name fileExt originalFileExt originalFile filePath current_role');
 
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
@@ -1120,7 +1120,17 @@ const getOriginalFile = async (req, res) => {
     const isOwner = req.user && (
       String(req.user._id) === doc.ownerId || req.user.userId === doc.ownerId
     );
-    if (!isAdmin && !isOwner) return res.status(403).json({ message: 'Access denied.' });
+    /* Staff and faculty need to read the original file to review documents
+       assigned to their role queue.  Allow access when the doc's current_role
+       matches the caller's role (staff sees staff-queue docs, faculty sees
+       faculty-queue docs).  Admin and owner always have access. */
+    const callerRole = req.user && req.user.role;
+    const isQueueHandler =
+      (callerRole === 'staff'   && (doc.current_role === 'staff'))   ||
+      (callerRole === 'faculty' && (doc.current_role === 'faculty' || doc.current_role === 'admin'));
+
+    if (!isAdmin && !isOwner && !isQueueHandler)
+      return res.status(403).json({ message: 'Access denied.' });
 
     const fileData = doc.originalFile || doc.filePath;
     if (!fileData) return res.status(404).json({ message: 'No original file attached.' });

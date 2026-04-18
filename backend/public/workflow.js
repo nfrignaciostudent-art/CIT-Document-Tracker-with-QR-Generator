@@ -856,10 +856,9 @@ async function submitCreateUser() {
       var origHtml = _orig.apply(this, arguments);
 
       if (status === 'Pending Final Approval' && cRole === 'admin') {
+        /* Approve & Release is handled inside the Update modal.
+           Keep only Send Back to Faculty and Reject as quick workflow actions. */
         var adminItems =
-          '<button class="dropdown-item" style="color:#22c55e;font-weight:700" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'release\')">' +
-          '&#10003;&nbsp; Approve &amp; Release</button>' +
           '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" ' +
           'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'send_back\')">' +
           '&#8617;&nbsp; Send Back to Faculty</button>' +
@@ -928,6 +927,14 @@ async function submitCreateUser() {
   /* Only patch further for 'user' role — staff/faculty already patched above */
   var _patched = window.renderDash;
   window.renderDash = function () {
+    /* ── FIX: Always scrub the banner first.
+       If a 'user' was logged in before, the banner element may still be in
+       the DOM when an admin / staff / faculty logs in.  The early-return
+       below used to skip the cleanup entirely, leaving a stale red banner
+       on every non-user dashboard until the next manual refresh. ── */
+    var _existingBanner = document.getElementById('wf-action-required-banner');
+    if (_existingBanner) _existingBanner.remove();
+
     if (!currentUser || currentUser.role !== 'user') {
       return _patched.apply(this, arguments);
     }
