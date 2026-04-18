@@ -678,8 +678,8 @@ function dashActions(d){
        Backend is the single source of truth — hasProcessedFile comes from it. */
   const _docIsReleased = d.status === 'Approved and Released' || d.status === 'Released';
   if(hasProcessed && _docIsReleased){
-    menuItems+=`<button class="dropdown-item" style="color:#22c55e;font-weight:700" onclick="closeAllActionMenus();viewFile('${docKey}','processed',this)">&#128065;&nbsp; View File</button>`;
-    menuItems+=`<button class="dropdown-item" onclick="downloadDocFile('${docKey}', this)">&#8595;&nbsp; Download File</button>`;
+    menuItems+=`<button class="dropdown-item" style="color:#22c55e;font-weight:700" onclick="closeAllActionMenus();viewFile('${docKey}','processed',this)">View File</button>`;
+    menuItems+=`<button class="dropdown-item" onclick="downloadDocFile('${docKey}', this)">Download File</button>`;
   } else if(_docIsReleased && !hasProcessed){
     menuItems+=`<button class="dropdown-item" disabled title="Released but no processed file attached yet">No File</button>`;
   } else if(docHasOriginalFile(d)){

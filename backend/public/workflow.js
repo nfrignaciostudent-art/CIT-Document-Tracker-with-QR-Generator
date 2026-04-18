@@ -867,21 +867,44 @@ async function submitCreateUser() {
 
     /* ── USER ───────────────────────────────────────────────────── */
     if (role === 'user') {
+      var status = d.status, cRole = d.current_role;
+      var hasProcessed = (typeof docHasProcessedFile === 'function')
+        ? docHasProcessedFile(d)
+        : !!(d.hasProcessedFile || d.processedFile);
+      var isReleased = status === 'Approved and Released' || status === 'Released';
+
+      /* CRITICAL FIX: Handle released docs FIRST — before the allowedActions
+         check.  The backend always returns allowedActions = [] for released
+         docs (no user FSM transitions exist at that terminal stage).
+         _renderFromAllowedActions() would therefore show "No Actions Available"
+         and the user would never see their final document.
+
+         Rule: when the document is released, always show View File + Download
+         regardless of what allowedActions contains.  Backend is still the
+         source of truth for hasProcessedFile — we never assume it locally. */
+      if (isReleased) {
+        var items = _histBtn(docKey);
+        if (hasProcessed) {
+          items += '<button class="dropdown-item" style="color:#22c55e;font-weight:700" ' +
+            'onclick="closeAllActionMenus();viewFile(\'' + docKey + '\',\'processed\',this)">View File</button>';
+          items += '<button class="dropdown-item" ' +
+            'onclick="closeAllActionMenus();decryptAndDownload(\'' + docKey + '\',this)">Download File</button>';
+        } else {
+          items += '<button class="dropdown-item" disabled ' +
+            'title="Admin has not yet uploaded the final processed file">File Pending</button>';
+        }
+        return _buildMenu(docKey, items);
+      }
+
       if (Array.isArray(d.allowedActions)) {
         return _renderFromAllowedActions(role, docKey, d);
       }
-      /* Fallback */
-      var status = d.status, cRole = d.current_role;
+
+      /* Fallback for legacy/offline docs */
       var needsResubmit = status === 'Action Required: Resubmission' && cRole === 'user';
-      var isTerminal    = ['Approved and Released', 'Rejected', 'Returned to Requester'].includes(status);
       var items = _histBtn(docKey);
       if (needsResubmit) {
-        items += '<button class="dropdown-item" style="color:#f97316;font-weight:700" onclick="closeAllActionMenus();openResubmitModal(\'' + docKey + '\')">&#8593;&nbsp; Submit Correction</button>';
-      } else if (isTerminal) {
-        var termLabel = status === 'Approved and Released' ? 'Download File' : 'View Details';
-        items += '<button class="dropdown-item" style="color:#4ade80;font-weight:600" onclick="closeAllActionMenus();' +
-          (status === 'Approved and Released' ? 'decryptAndDownload(\'' + docKey + '\',this)' : 'openHistory(\'' + docKey + '\')') +
-          '">' + termLabel + '</button>';
+        items += '<button class="dropdown-item" style="color:#f97316;font-weight:700" onclick="closeAllActionMenus();openResubmitModal(\'' + docKey + '\')">Submit Correction</button>';
       } else {
         items += '<button class="dropdown-item" disabled>Awaiting ' + (WF_STATUS_OWNER[status] || 'review') + '</button>';
       }
