@@ -613,23 +613,10 @@
       <div class="field"><label>Document Name</label><input type="text" id="upd-name" readonly style="background:#f8fafc;color:var(--muted)"></div>
       <div class="field"><label>New Status</label>
         <select id="upd-status" onchange="onUpdateStatusChange(this.value)">
-          <optgroup label="Workflow Statuses">
-            <option>Submitted</option>
-            <option>Under Initial Review</option>
-            <option>Action Required: Resubmission</option>
-            <option>Returned to Requester</option>
-            <option>Under Evaluation</option>
-            <option>Revision Requested</option>
-            <option>Pending Final Approval</option>
-            <option>Sent Back for Reevaluation</option>
-            <option>Approved and Released</option>
-            <option>Rejected</option>
-          </optgroup>
-          <optgroup label="Legacy">
-            <option>Received</option>
-            <option>Processing</option>
-            <option>Released</option>
-          </optgroup>
+          <option>Received</option>
+          <option>Processing</option>
+          <option>Released</option>
+          <option>Rejected</option>
         </select>
       </div>
       <div class="field"><label>Current Location</label>

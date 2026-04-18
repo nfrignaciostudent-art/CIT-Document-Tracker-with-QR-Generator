@@ -600,7 +600,9 @@ async function submitCreateUser() {
       return _orig.apply(this, arguments);
     }
 
-    var total = docs.length;
+    /* ── QUEUE FIX: scope all counts to this role's current_role queue only ── */
+    var queueDocs = docs.filter(function(d) { return d.current_role === role; });
+    var total = queueDocs.length;
     var statsEl = document.getElementById('stats-row');
     if (!statsEl) return;
 
@@ -609,9 +611,9 @@ async function submitCreateUser() {
 
     if (role === 'staff') {
       /* Staff queue stats — docs with current_role: 'staff' */
-      var submitted    = docs.filter(function (d) { return d.status === 'Submitted'; }).length;
-      var underReview  = docs.filter(function (d) { return d.status === 'Under Initial Review'; }).length;
-      var revisionReq  = docs.filter(function (d) { return d.status === 'Revision Requested'; }).length;
+      var submitted    = queueDocs.filter(function (d) { return d.status === 'Submitted'; }).length;
+      var underReview  = queueDocs.filter(function (d) { return d.status === 'Under Initial Review'; }).length;
+      var revisionReq  = queueDocs.filter(function (d) { return d.status === 'Revision Requested'; }).length;
       var forwarded    = 0;   /* Not in staff queue once forwarded */
 
       statsEl.innerHTML =
@@ -637,8 +639,8 @@ async function submitCreateUser() {
 
     } else if (role === 'faculty') {
       /* Faculty queue stats — docs with current_role: 'faculty' */
-      var underEval  = docs.filter(function (d) { return d.status === 'Under Evaluation'; }).length;
-      var sentBack   = docs.filter(function (d) { return d.status === 'Sent Back for Reevaluation'; }).length;
+      var underEval  = queueDocs.filter(function (d) { return d.status === 'Under Evaluation'; }).length;
+      var sentBack   = queueDocs.filter(function (d) { return d.status === 'Sent Back for Reevaluation'; }).length;
 
       statsEl.innerHTML =
         '<div class="stat-card">' +
@@ -674,7 +676,19 @@ async function submitCreateUser() {
       return _orig.apply(this, arguments);
     }
 
-    var rows = docs.slice().reverse().slice(0, 10);
+    /* ── QUEUE FIX: only show docs assigned to this role via current_role.
+       Docs[] may still contain stale entries on the very first render
+       (before _syncDocsFromBackend completes).  This client-side guard
+       ensures cross-role docs never appear in the dashboard table even
+       during that brief window.  Sort by priority so urgent docs come first. */
+    var queueRole = role; /* 'staff' or 'faculty' */
+    var priorityOrder = { Urgent: 4, High: 3, Normal: 2, Low: 1 };
+    var rows = docs
+      .filter(function(d) { return d.current_role === queueRole; })
+      .sort(function(a, b) {
+        return (priorityOrder[b.priority] || 2) - (priorityOrder[a.priority] || 2);
+      })
+      .slice(0, 10);
     var tb   = document.getElementById('dash-tbody');
     if (!tb) return;
 
@@ -856,15 +870,12 @@ async function submitCreateUser() {
       var origHtml = _orig.apply(this, arguments);
 
       if (status === 'Pending Final Approval' && cRole === 'admin') {
-        /* Approve & Release is handled inside the Update modal.
-           Keep only Send Back to Faculty and Reject as quick workflow actions. */
+        /* Only Send Back to Faculty is kept as a quick dropdown action.
+           Approve & Release and Reject are handled inside the Update modal. */
         var adminItems =
           '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" ' +
           'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'send_back\')">' +
-          '&#8617;&nbsp; Send Back to Faculty</button>' +
-          '<button class="dropdown-item danger" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'reject\')">' +
-          '&#10007;&nbsp; Reject</button>';
+          '&#8617;&nbsp; Send Back to Faculty</button>';
         origHtml = origHtml.replace(/<\/div>\s*<\/div>\s*$/, adminItems + '</div></div>');
       }
 

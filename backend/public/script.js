@@ -3175,9 +3175,30 @@ async function _syncDocsFromBackend() {
   try {
     var token   = currentUser.token || getSavedToken();
     var isAdmin = currentUser.role === 'admin';
+    var isStaffOrFaculty = currentUser.role === 'staff' || currentUser.role === 'faculty';
     var ownerId = isAdmin ? null : (currentUser.id || currentUser.userId);
     var result  = await apiGetAllDocuments(token, ownerId, currentUser.role);
     if (!Array.isArray(result)) return;
+
+    /* ── ROLE ISOLATION FIX ────────────────────────────────────────────
+       For staff and faculty the backend already enforces current_role
+       filtering.  We must NOT merge their result into the existing
+       docs[] because the array may contain stale docs loaded from
+       localStorage (a previous admin/user session) that lack the
+       _backendSynced flag and therefore survive the filter below.
+       Instead, for staff/faculty we REPLACE docs[] completely with the
+       backend result — their file blobs are never in localStorage under
+       their session so nothing valuable is lost.
+    ─────────────────────────────────────────────────────────────────── */
+    if (isStaffOrFaculty) {
+      docs = result.map(function(bd) {
+        return Object.assign({}, bd, {
+          id:              bd.internalId,
+          _backendSynced:  true,
+        });
+      });
+      return;
+    }
 
     result.forEach(function(bd) {
       var idx = docs.findIndex(function(d) { return (d.internalId || d.id) === bd.internalId; });
@@ -3185,6 +3206,7 @@ async function _syncDocsFromBackend() {
         var local = docs[idx];
         docs[idx] = Object.assign({}, bd, {
           id:               bd.internalId,
+          _backendSynced:   true,
           originalFile:     local.originalFile    || bd.originalFile    || null,
           processedFile:    local.processedFile   || bd.processedFile   || null,
           fileData:         local.fileData        || bd.fileData        || null,
@@ -3194,7 +3216,7 @@ async function _syncDocsFromBackend() {
           hasProcessedFile: local.processedFile ? true : (bd.hasProcessedFile || false),
         });
       } else {
-        docs.push(Object.assign({}, bd, { id: bd.internalId }));
+        docs.push(Object.assign({}, bd, { id: bd.internalId, _backendSynced: true }));
       }
     });
     /* Remove local-only docs that were deleted from backend */
