@@ -838,16 +838,12 @@ const getAllDocuments = async (req, res) => {
     let filter = {};
 
     if (callerRole === 'admin') {
-      /* DESIGN RULE (Option B): Admin dashboard shows ONLY documents that
-         are pending admin action (current_role: 'admin') and terminal
-         documents (current_role: 'completed') for archival visibility.
-         Admin MUST NOT see documents still in staff or faculty stages. */
-      filter = {
-        $or: [
-          { current_role: 'admin' },
-          { current_role: 'completed' },
-        ],
-      };
+      /* Admin sees ALL documents — no stage filter.
+         The dashboard table and stats are rendered by the frontend
+         using the original script.js renderStats/renderDash functions.
+         Routing between roles is controlled ONLY by explicit FSM actions
+         (send_back via POST /update-status), NOT by status changes. */
+      filter = {};
     } else if (callerRole === 'staff') {
       /* Staff sees documents in the staff role:
          Submitted, Under Initial Review, Revision Requested */
@@ -1079,7 +1075,7 @@ const updateDocumentStatus = async (req, res) => {
     const nowManila = manilaTimestamp();
     doc.status = status;
 
-    /* Sync current_role and current_stage based on new status */
+    /* Status → role mapping (used for non-admin callers only) */
     const statusToRole = {
       'Submitted':                       { role: 'staff',     stage: 'staff' },
       'Under Initial Review':            { role: 'staff',     stage: 'staff' },
@@ -1091,17 +1087,28 @@ const updateDocumentStatus = async (req, res) => {
       'Sent Back for Reevaluation':      { role: 'faculty',   stage: 'faculty' },
       'Approved and Released':           { role: 'completed', stage: 'completed' },
       'Rejected':                        { role: 'completed', stage: 'completed' },
-      /* Legacy mappings */
+      /* Legacy */
       'Released':                        { role: 'completed', stage: 'completed' },
       'Processing':                      { role: 'faculty',   stage: 'faculty' },
       'On Hold':                         { role: 'staff',     stage: 'staff' },
       'Received':                        { role: 'staff',     stage: 'staff' },
     };
-    const mapping = statusToRole[status];
-    if (mapping) {
-      doc.current_role  = mapping.role;
-      doc.current_stage = mapping.stage;
+
+    /* DESIGN RULE: When Admin manually changes status via this PATCH endpoint
+       (the Update modal), the document MUST NOT be auto-routed to a different
+       role.  current_role ONLY changes when Admin explicitly clicks
+       "Send Back to Faculty" (the 'send_back' FSM action via POST /update-status).
+       For all other callers (non-admin), apply the normal statusToRole map. */
+    const isAdminCaller = req.user && req.user.role === 'admin';
+    if (!isAdminCaller) {
+      const mapping = statusToRole[status];
+      if (mapping) {
+        doc.current_role  = mapping.role;
+        doc.current_stage = mapping.stage;
+      }
     }
+    /* Admin-initiated status changes leave current_role/current_stage
+       untouched — document stays in Admin's queue until send_back is used. */
 
     if (resolvedProcessedFile) {
       doc.processedFile    = resolvedProcessedFile;

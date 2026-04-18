@@ -605,10 +605,10 @@
       <div class="field"><label>Document Name</label><input type="text" id="upd-name" readonly style="background:#f8fafc;color:var(--muted)"></div>
       <div class="field"><label>New Status</label>
         <select id="upd-status" onchange="onUpdateStatusChange(this.value)">
-          <option>Received</option>
-          <option>Processing</option>
-          <option>Released</option>
-          <option>Rejected</option>
+          <option value="Pending">Pending</option>
+          <option value="Received">Received</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Released">Released</option>
         </select>
       </div>
       <div class="field"><label>Current Location</label>

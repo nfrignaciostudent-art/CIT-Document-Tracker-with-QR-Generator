@@ -668,50 +668,6 @@ async function submitCreateUser() {
   };
 }());
 
-/* ══════════════════════════════════════════════════════════════════════
-   4b. PATCH renderStats() — ADMIN queue stats
-   DESIGN RULE (Option B): Admin sees ONLY pending-approval docs
-   and completed docs for archival context. All counts are scoped to
-   current_role === 'admin' to prevent cross-stage leakage.
-══════════════════════════════════════════════════════════════════════ */
-(function () {
-  var _orig = window.renderStats;
-
-  window.renderStats = function () {
-    if (!currentUser || currentUser.role !== 'admin') {
-      return _orig.apply(this, arguments);
-    }
-
-    var statsEl = document.getElementById('stats-row');
-    if (!statsEl) return;
-
-    var titleEl = document.getElementById('dash-title');
-    var subEl   = document.getElementById('dash-subtitle');
-
-    /* Only count docs in the admin's active queue (current_role: 'admin') */
-    var adminQueue   = docs.filter(function (d) { return d.current_role === 'admin'; });
-    var completedAll = docs.filter(function (d) { return d.current_role === 'completed'; });
-    var released     = completedAll.filter(function (d) { return d.status === 'Approved and Released'; }).length;
-    var rejected     = completedAll.filter(function (d) { return d.status === 'Rejected'; }).length;
-
-    statsEl.innerHTML =
-      '<div class="stat-card">' +
-        '<div class="stat-card-label">Pending Release</div>' +
-        '<div class="stat-card-num" style="color:#38bdf8">' + adminQueue.length + '</div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-card-label">Released</div>' +
-        '<div class="stat-card-num" style="color:#22c55e">' + released + '</div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-card-label">Rejected</div>' +
-        '<div class="stat-card-num" style="color:#be123c">' + rejected + '</div>' +
-      '</div>';
-
-    if (titleEl) titleEl.textContent = 'Admin Dashboard';
-    if (subEl)   subEl.textContent   = 'Welcome, ' + (currentUser.name || currentUser.username);
-  };
-}());
 
 /* ══════════════════════════════════════════════════════════════════════
    5. PATCH renderDash() — staff / faculty workflow queue view
@@ -754,81 +710,6 @@ async function submitCreateUser() {
 
         /* Status badge with new colors */
         var statusColor = WF_STATUS_COLOR[d.status] || '#64748b';
-        var shortLabel  = WF_STATUS_SHORT[d.status]  || d.status;
-        var badge =
-          '<span style="display:inline-flex;align-items:center;gap:5px;' +
-          'font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;' +
-          'background:' + statusColor + '22;color:' + statusColor + ';' +
-          'border:1px solid ' + statusColor + '44">' + shortLabel + '</span>';
-
-        return '<tr>' +
-          '<td class="doc-id-cell" title="' + (d.internalId || d.id) + '">' +
-            (d.fullDisplayId || d.displayId || d.id) +
-          '</td>' +
-          '<td class="doc-name-cell">' + nameHtml + ownerHtml + '</td>' +
-          '<td>' + badge + '</td>' +
-          '<td>' + (typeof dashActions === 'function' ? dashActions(d) : '') + '</td>' +
-        '</tr>';
-      }).join('');
-    }
-
-    /* Recent activity */
-    var al = document.getElementById('activity-list');
-    if (al) {
-      var acts = (activityLogs[currentUser.id] || []).slice().reverse().slice(0, 6);
-      if (!acts.length) {
-        al.innerHTML = '<p style="font-size:13px;color:var(--muted)">No recent activity.</p>';
-      } else {
-        al.innerHTML = acts.map(function (a) {
-          return '<div class="activity-item">' +
-            '<div>' +
-              '<div class="activity-text">' + a.msg + '</div>' +
-              '<div class="activity-time">' + a.date + '</div>' +
-            '</div>' +
-          '</div>';
-        }).join('');
-      }
-    }
-
-    var titleEl = document.getElementById('my-activity-title');
-    if (titleEl) titleEl.textContent = 'My Recent Activity';
-  };
-}());
-
-/* ══════════════════════════════════════════════════════════════════════
-   5b. PATCH renderDash() — ADMIN queue view
-   DESIGN RULE (Option B): Admin dashboard ONLY shows documents in the
-   admin stage (current_role: 'admin' = Pending Final Approval).
-   All staff/faculty-stage documents are hidden from this view.
-══════════════════════════════════════════════════════════════════════ */
-(function () {
-  var _orig = window.renderDash;
-
-  window.renderDash = function () {
-    if (!currentUser || currentUser.role !== 'admin') {
-      return _orig.apply(this, arguments);
-    }
-
-    /* Admin sees ONLY docs in the admin queue (Pending Final Approval) */
-    var rows = docs
-      .filter(function (d) { return d.current_role === 'admin'; })
-      .slice(0, 10);
-    var tb = document.getElementById('dash-tbody');
-    if (!tb) return;
-
-    if (!rows.length) {
-      tb.innerHTML =
-        '<tr><td colspan="4"><div class="empty-msg">No documents pending final release.</div></td></tr>';
-    } else {
-      tb.innerHTML = rows.map(function (d) {
-        var docKey      = d.internalId || d.id;
-        var nameHtml    = d.name
-          ? d.name
-          : '<span style="color:#94a3b8;font-style:italic">Encrypted</span>';
-        var ownerHtml   =
-          '<br><span style="font-size:11px;color:var(--muted);font-weight:400">by ' +
-          (d.ownerName || d.by || 'user') + '</span>';
-        var statusColor = WF_STATUS_COLOR[d.status] || '#38bdf8';
         var shortLabel  = WF_STATUS_SHORT[d.status]  || d.status;
         var badge =
           '<span style="display:inline-flex;align-items:center;gap:5px;' +
