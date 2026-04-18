@@ -145,7 +145,8 @@ const DocumentSchema = new mongoose.Schema({
 
   /* ── History ─────────────────────────────────────────────────── */
   history: { type: [HistoryEntrySchema], default: [] },
-  date:    { type: String },
+  date:     { type: String },
+  dateFiled: { type: String, default: null },   // server-only; set at creation; never user-supplied
 
 }, { timestamps: true });
 

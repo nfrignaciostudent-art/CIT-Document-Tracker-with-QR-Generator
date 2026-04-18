@@ -307,13 +307,6 @@
             </div>
             <div class="field"><label>Submitted By</label><input type="text" id="new-by" placeholder="Full name"></div>
             <div class="field"><label>Purpose</label><input type="text" id="new-purpose" placeholder="Brief description"></div>
-            <div class="field"><label>Priority Level</label>
-              <select id="new-priority">
-                <option value="Normal">Normal</option><option value="Low">Low</option>
-                <option value="High">High</option><option value="Urgent">Urgent</option>
-              </select>
-            </div>
-            <div class="field"><label>Expected Date (optional)</label><input type="date" id="new-due"></div>
           </div>
           <div class="field" style="margin-bottom:16px">
             <label>Attach File <span style="font-weight:400;color:var(--muted)">(PDF, JPG, PNG - max 5 MB, optional)</span></label>
@@ -361,7 +354,6 @@
                 <span style="font-weight:600;color:var(--muted)">Type</span><span id="receipt-type"></span>
                 <span style="font-weight:600;color:var(--muted)">Submitted By</span><span id="receipt-by"></span>
                 <span style="font-weight:600;color:var(--muted)">Purpose</span><span id="receipt-purpose"></span>
-                <span style="font-weight:600;color:var(--muted)">Priority</span><span id="receipt-priority"></span>
                 <span style="font-weight:600;color:var(--muted)">Date Filed</span>
                 <span id="receipt-date" style="font-family:var(--mono);font-size:12px"></span>
                 <span style="font-weight:600;color:var(--muted)">Status</span>
@@ -424,7 +416,7 @@
         <div style="overflow-x:auto">
           <table>
             <thead id="vault-thead"><tr>
-              <th>Doc ID</th><th>Name</th><th>By</th><th>IDEA Encrypted</th><th>Decrypted</th><th>Location</th><th>File</th><th>Priority</th><th>Status</th><th>Actions</th>
+              <th>Doc ID</th><th>Name</th><th>By</th><th>IDEA Encrypted</th><th>Decrypted</th><th>Location</th><th>File</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody id="vault-tbody"></tbody>
           </table>
@@ -803,7 +795,7 @@
         </div>
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>Doc ID</th><th>Name</th><th>Type</th><th>Priority</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Doc ID</th><th>Name</th><th>Type</th><th>Status</th><th>Date Filed</th><th>Actions</th></tr></thead>
             <tbody id="uv-tbody"></tbody>
           </table>
         </div>

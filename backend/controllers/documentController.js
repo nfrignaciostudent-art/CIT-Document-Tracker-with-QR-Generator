@@ -327,6 +327,48 @@ const WORKFLOW_TRANSITIONS = {
   },
 };
 
+/* ══════════════════════════════════════════════════════════════════════
+   getDocumentAllowedActions(doc, callerRole)
+   ──────────────────────────────────────────────────────────────────────
+   SINGLE SOURCE OF TRUTH for action visibility.
+
+   Returns an array of action descriptors the caller is permitted to
+   perform on the given document right now.  Both the backend (for
+   validation in updateDocumentStatusByRole) and the API response (so
+   the frontend never has to guess) use this same function.
+
+   Returns:
+     [{ action, to, noteRequired, label }]
+   or [] when no actions are available (terminal state, wrong stage,
+   wrong role, etc.).
+══════════════════════════════════════════════════════════════════════ */
+function getDocumentAllowedActions(doc, callerRole) {
+  const roleTransitions = WORKFLOW_TRANSITIONS[callerRole];
+  if (!roleTransitions) return [];
+
+  const ACTION_LABELS = {
+    start_review:          'Start Initial Review',
+    forward:               'Forward to Faculty',
+    request_resubmission:  'Request Resubmission',
+    return_to_requester:   'Return to Requester',
+    approve:               'Approve',
+    reject:                'Reject',
+    request_revision:      'Request Revision',
+    release:               'Approve & Release',
+    send_back:             'Send Back to Faculty',
+  };
+
+  return Object.entries(roleTransitions)
+    .filter(([, transition]) => transition.from.includes(doc.status))
+    .map(([action, transition]) => ({
+      action,
+      to:           transition.to,
+      toRole:       transition.toRole,
+      noteRequired: transition.noteRequired || false,
+      label:        ACTION_LABELS[action] || action,
+    }));
+}
+
 /* ── Map current_role → legacy current_stage (for backward compat) ── */
 function toLegacyStage(role) {
   const map = { staff: 'staff', faculty: 'faculty', admin: 'admin', user: 'staff', completed: 'completed' };
@@ -418,6 +460,7 @@ async function _createDocument(body, fileBuffer, fileExt) {
           },
         ],
         date: nowManila,
+        dateFiled: nowManila,   // server-side timestamp — never user-supplied
       });
 
       /* ── Notify all staff that a new document is waiting ── */
@@ -527,6 +570,10 @@ const getMyDocuments = async (req, res) => {
       hasProcessedFile: !!(d.hasProcessedFile),
       /* Expose whether this doc needs user action */
       requiresUserAction: d.current_role === 'user',
+      /* User-facing pseudo-actions: resubmit when applicable */
+      allowedActions: d.current_role === 'user' && d.status === 'Action Required: Resubmission'
+        ? [{ action: 'resubmit', to: 'Submitted', toRole: 'staff', noteRequired: false, label: 'Submit Correction' }]
+        : [],
     }));
 
     res.json(payload);
@@ -789,6 +836,8 @@ const updateDocumentStatusByRole = async (req, res) => {
       actionBy:       callerName,
       actionRole:     callerRole,
       at:             nowManila,
+      /* ── Updated allowed actions after the transition ── */
+      allowedActions: getDocumentAllowedActions(doc, callerRole),
     });
 
   } catch (err) {
@@ -837,6 +886,8 @@ const getAllDocuments = async (req, res) => {
       hasOriginalFile:    !!(d.hasOriginalFile),
       hasProcessedFile:   !!(d.hasProcessedFile),
       requiresUserAction: d.current_role === 'user',
+      /* ── Single source of truth: what actions can the caller perform? ── */
+      allowedActions:     getDocumentAllowedActions(d, callerRole),
     }));
 
     res.json(payload);

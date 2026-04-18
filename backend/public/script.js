@@ -468,7 +468,6 @@ function statusBadge(s){
     `font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;` +
     `background:${c}22;color:${c};border:1px solid ${c}44">${label}</span>`;
 }
-function prioBadge(p){ return `<span class="prio prio-${(p||'Normal').toLowerCase()}">${p||'Normal'}</span>`; }
 function initials(name){ return (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
 
 function statusColor(s){ return statusColorMap[s] || '#94a3b8'; }
@@ -809,7 +808,6 @@ function renderVault(){
       <td class="dec-cell">${IDEA.decrypt(d.enc,KEY)}</td>
       <td>${locHtml}</td>
       <td>${fileHtml}</td>
-      <td>${prioBadge(d.priority)}</td>
       <td>${statusBadge(d.status)}</td>
       <td style="white-space:nowrap">${dashActions(d)}</td>
     </tr>`;
@@ -918,8 +916,7 @@ function renderUVDocs(){
   tb.innerHTML=userDocs.map(d=>`<tr>
     <td class="doc-id-cell" title="${d.internalId||d.id}">${d.fullDisplayId||d.displayId||d.id}</td>
     <td>${d.name}</td><td>${d.type}</td>
-    <td>${prioBadge(d.priority)}</td><td>${statusBadge(d.status)}</td>
-    <td style="font-size:12px;color:var(--muted)">${d.date}</td>
+    <td style="font-size:12px;color:var(--muted)">${d.dateFiled||d.date}</td>
     <td><button class="btn btn-sm btn-orange" onclick="closeModal('user-vault-modal');setTimeout(()=>openHistory('${d.internalId||d.id}'),120)">History</button></td>
   </tr>`).join('');
 }
@@ -1035,8 +1032,6 @@ async function addDocument(){
   const type    = document.getElementById('new-type').value;
   const by      = document.getElementById('new-by').value.trim();
   const purpose = document.getElementById('new-purpose').value.trim();
-  const priority= document.getElementById('new-priority').value || 'Normal';
-  const due     = document.getElementById('new-due').value;
   const fileInput = document.getElementById('fileUpload');
 
   if(!name||!type||!by||!purpose){toast('Please fill in all required fields.');return;}
@@ -1079,8 +1074,7 @@ async function addDocument(){
     displayId:       ids.displayId,
     verifyCode:      ids.verifyCode,
     fullDisplayId:   ids.fullDisplayId,
-    name, type, by, purpose, priority,
-    due:             due || null,
+    name, type, by, purpose,
     status:          'Received',
     enc,
     ownerId:         currentUser.id || currentUser.userId,
@@ -1102,8 +1096,7 @@ async function addDocument(){
     btn.textContent = 'Saving to server…';
     try {
       const jsonPayload = {
-        name, type, by, purpose, priority,
-        due:       due || null,
+        name, type, by, purpose,
         enc,
         ownerId:   currentUser.id || currentUser.userId,
         ownerName: currentUser.username,
@@ -1200,7 +1193,6 @@ function showReceipt(doc){
   document.getElementById('receipt-type').textContent    = doc.type;
   document.getElementById('receipt-by').textContent      = doc.by;
   document.getElementById('receipt-purpose').textContent = doc.purpose;
-  document.getElementById('receipt-priority').textContent= doc.priority;
   document.getElementById('receipt-date').textContent    = doc.date;
   document.getElementById('receipt-status').textContent  = doc.status;
   document.getElementById('receipt-file').textContent    = doc.originalFile || doc.fileData
@@ -1227,9 +1219,8 @@ function registerAnother(){
   document.getElementById('register-workflow').style.display='';
   document.getElementById('register-card').style.display='';
   document.getElementById('register-receipt').style.display='none';
-  ['new-name','new-by','new-purpose','new-due'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['new-name','new-by','new-purpose'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('new-type').value='';
-  document.getElementById('new-priority').value='Normal';
   document.getElementById('file-preview').style.display='none';
   document.getElementById('fileUpload').value='';
   _newFileData=null; _newFileExt=null; _newFileReady=false;
@@ -1786,7 +1777,7 @@ function renderScanResult(d){
     </div>`:``}
     <div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:16px">${wfDots}</div>
-      ${[['Submitted By',d.by],['Purpose',d.purpose],['Assigned Office',office],['Priority',d.priority||'Normal'],['Date Filed',d.date],['Release Date',relEntry?`<span style="color:#4ade80">${relEntry.date}</span>`:'<span style="color:rgba(255,255,255,.25)">Pending</span>']].map(([l,v])=>`
+      ${[['Submitted By',d.by],['Purpose',d.purpose],['Assigned Office',office],['Date Filed',d.dateFiled||d.date],['Release Date',relEntry?`<span style="color:#4ade80">${relEntry.date}</span>`:'<span style="color:rgba(255,255,255,.25)">Pending</span>']].map(([l,v])=>`
         <div style="display:flex;gap:10px;margin-bottom:9px;font-size:12px">
           <span style="color:rgba(255,255,255,.3);width:96px;flex-shrink:0">${l}</span>
           <span style="color:rgba(255,255,255,.8)">${v}</span>
@@ -2238,7 +2229,7 @@ function _seedDemoDocsIfEmpty(){
     ['Leave of Absence Form','Administrative','Ana Reyes','Medical Reason','Approved','Low','Administrative Office','Staff C'],
     ['Scholarship Application','Financial','Carlos Tan','Merit Scholarship','Pending','Urgent','Accounting Office','Staff D'],
   ];
-  seedDocs.forEach(([name,type,by,purpose,status,priority,location,handler])=>{
+  seedDocs.forEach(([name,type,by,purpose,status,,location,handler])=>{
     const ids=genDocIds();
     const enc=IDEA.encrypt(name,KEY);
     docs.push({
@@ -2246,7 +2237,7 @@ function _seedDemoDocsIfEmpty(){
       verifyCode:ids.verifyCode,fullDisplayId:ids.fullDisplayId,
       name,type,by,purpose,date:nowStr(),status,enc,
       ownerId:demoUser.id,ownerName:demoUser.username,
-      priority,due:null,originalFile:null,processedFile:null,
+      originalFile:null,processedFile:null,
       history:[{action:'Status Update',status,date:nowStr(),note:'Initial seed',by:'system',location,handler}]
     });
   });

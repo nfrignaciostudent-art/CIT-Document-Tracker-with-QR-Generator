@@ -272,6 +272,12 @@ async function submitWorkflowAction() {
     docs[idx].status        = result.status;
     docs[idx].current_role  = result.current_role;
     docs[idx].current_stage = result.current_stage;
+    /* KEY FIX: replace allowedActions from the backend response so the
+       next renderAll() call renders the correct buttons without stale
+       local state.  Backend is the single source of truth. */
+    docs[idx].allowedActions = Array.isArray(result.allowedActions)
+      ? result.allowedActions
+      : [];
     if (!docs[idx].history) docs[idx].history = [];
     docs[idx].history.push({
       action: 'Status Update',
@@ -680,7 +686,7 @@ async function submitCreateUser() {
        Docs[] may still contain stale entries on the very first render
        (before _syncDocsFromBackend completes).  This client-side guard
        ensures cross-role docs never appear in the dashboard table even
-       during that brief window.  Sort by priority so urgent docs come first. */
+       during that brief window.  Sorted by createdAt (newest first). */
     var queueRole = role; /* 'staff' or 'faculty' */
     var rows = docs
       .filter(function(d) { return d.current_role === queueRole; })
@@ -745,154 +751,181 @@ async function submitCreateUser() {
 }());
 
 /* ══════════════════════════════════════════════════════════════════════
-   6. PATCH dashActions() — role-correct action buttons
+   6. PATCH dashActions() — backend-driven action buttons
+   ──────────────────────────────────────────────────────────────────────
+   CRITICAL RULE: The frontend NEVER locally decides which workflow
+   transitions are valid.  All action visibility comes from
+   d.allowedActions[] which is set by the backend's
+   getDocumentAllowedActions() (the single source of truth FSM).
+
+   Fallback: if d.allowedActions is absent (e.g. legacy local-only doc)
+   the old static logic is used so the UI never silently breaks.
 ══════════════════════════════════════════════════════════════════════ */
 (function () {
   var _orig = window.dashActions;
+
+  /* ── Per-action UI metadata (label, color, icon char) ── */
+  var ACTION_UI = {
+    start_review:         { label: 'Start Initial Review',         color: '#3b82f6', icon: '&#9654;', weight: '700' },
+    forward:              { label: 'Forward to Faculty',           color: '#22c55e', icon: '&#9654;', weight: '700' },
+    request_resubmission: { label: 'Request Resubmission',         color: '#f59e0b', icon: '&#9998;', weight: '600' },
+    return_to_requester:  { label: 'Return to Requester',          color: null,      icon: '&#8617;', weight: '600', danger: true },
+    approve:              { label: 'Approve',                      color: '#22c55e', icon: '&#10003;', weight: '700' },
+    request_revision:     { label: 'Request Revision',             color: '#f59e0b', icon: '&#9998;', weight: '600' },
+    reject:               { label: 'Reject',                       color: null,      icon: '&#10007;', weight: '600', danger: true },
+    release:              { label: 'Approve &amp; Release',        color: '#22c55e', icon: '&#10003;', weight: '700' },
+    send_back:            { label: 'Send Back to Faculty',         color: '#f59e0b', icon: '&#8617;', weight: '600' },
+    resubmit:             { label: 'Submit Correction',            color: '#f97316', icon: '&#8593;', weight: '700' },
+  };
+
+  /**
+   * _renderFromAllowedActions(role, docKey, d)
+   * Builds workflow action <button> HTML from d.allowedActions[].
+   * This is the ONLY place workflow button rendering logic lives on
+   * the frontend.  No status/role conditions anywhere else.
+   */
+  function _renderFromAllowedActions(role, docKey, d) {
+    var allowed = d.allowedActions || [];
+    var items   = _histBtn(docKey);
+
+    if (!allowed.length) {
+      /* No actions available from backend — show disabled placeholder */
+      items += '<button class="dropdown-item" disabled ' +
+        'title="No workflow actions available for the current document state">' +
+        'No Actions Available</button>';
+      return _buildMenu(docKey, items);
+    }
+
+    allowed.forEach(function (a) {
+      var ui = ACTION_UI[a.action];
+      if (!ui) return; /* unknown action — skip */
+
+      if (a.action === 'resubmit') {
+        /* User resubmit — opens the resubmit file-upload modal */
+        items += '<button class="dropdown-item" style="color:#f97316;font-weight:700" ' +
+          'onclick="closeAllActionMenus();openResubmitModal(\'' + docKey + '\')">' +
+          ui.icon + '&nbsp; ' + ui.label + '</button>';
+      } else {
+        /* All other workflow actions — open the confirm-action modal */
+        var style = ui.danger
+          ? ''
+          : 'style="color:' + ui.color + ';font-weight:' + ui.weight + '"';
+        var cls = ui.danger ? 'dropdown-item danger' : 'dropdown-item';
+        items += '<button class="' + cls + '" ' + style + ' ' +
+          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'' + a.action + '\')">' +
+          ui.icon + '&nbsp; ' + a.label + '</button>';
+      }
+    });
+
+    return _buildMenu(docKey, items);
+  }
 
   window.dashActions = function (d) {
     if (!currentUser) return _orig.apply(this, arguments);
     var role   = currentUser.role;
     var docKey = d.internalId || d.id;
-    var status = d.status;
-    var cRole  = d.current_role;
 
     /* ── STAFF ─────────────────────────────────────────────────── */
     if (role === 'staff') {
-      var canStartReview      = status === 'Submitted'                && cRole === 'staff';
-      var canForward          = (status === 'Under Initial Review' || status === 'Revision Requested') && cRole === 'staff';
-      var canRequestResubmit  = status === 'Under Initial Review'     && cRole === 'staff';
-      var canReturnUser       = status === 'Under Initial Review'     && cRole === 'staff';
-
+      /* Backend-driven: use allowedActions if present */
+      if (Array.isArray(d.allowedActions)) {
+        return _renderFromAllowedActions(role, docKey, d);
+      }
+      /* Fallback: static logic for legacy/offline docs */
+      var status = d.status, cRole = d.current_role;
+      var canStart    = status === 'Submitted'             && cRole === 'staff';
+      var canForward  = (status === 'Under Initial Review' || status === 'Revision Requested') && cRole === 'staff';
+      var canResubReq = status === 'Under Initial Review'  && cRole === 'staff';
+      var canReturn   = status === 'Under Initial Review'  && cRole === 'staff';
       var items = _histBtn(docKey);
-
-      if (canStartReview) {
-        items +=
-          '<button class="dropdown-item" style="color:#3b82f6;font-weight:700" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'start_review\')">' +
-          '&#9654;&nbsp; Start Initial Review</button>';
-      }
-      if (canForward) {
-        var fwdLabel = status === 'Revision Requested'
-          ? '&#9654;&nbsp; Re-forward to Faculty'
-          : '&#9654;&nbsp; Forward to Faculty';
-        items +=
-          '<button class="dropdown-item" style="color:#22c55e;font-weight:700" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'forward\')">' +
-          fwdLabel + '</button>';
-      }
-      if (canRequestResubmit) {
-        items +=
-          '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'request_resubmission\')">' +
-          '&#9998;&nbsp; Request Resubmission</button>';
-      }
-      if (canReturnUser) {
-        items +=
-          '<button class="dropdown-item danger" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'return_to_requester\')">' +
-          '&#8617;&nbsp; Return to Requester</button>';
-      }
-      if (!canStartReview && !canForward && !canRequestResubmit) {
-        items +=
-          '<button class="dropdown-item" disabled ' +
-          'title="No workflow actions available for this document\'s current state">' +
-          'No Actions Available</button>';
-      }
-
+      if (canStart)    items += '<button class="dropdown-item" style="color:#3b82f6;font-weight:700" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'start_review\')">&#9654;&nbsp; Start Initial Review</button>';
+      if (canForward)  items += '<button class="dropdown-item" style="color:#22c55e;font-weight:700" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'forward\')">&#9654;&nbsp; Forward to Faculty</button>';
+      if (canResubReq) items += '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'request_resubmission\')">&#9998;&nbsp; Request Resubmission</button>';
+      if (canReturn)   items += '<button class="dropdown-item danger" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'return_to_requester\')">&#8617;&nbsp; Return to Requester</button>';
+      if (!canStart && !canForward && !canResubReq) items += '<button class="dropdown-item" disabled>No Actions Available</button>';
       return _buildMenu(docKey, items);
     }
 
     /* ── FACULTY ────────────────────────────────────────────────── */
     if (role === 'faculty') {
-      var canReview = (status === 'Under Evaluation' || status === 'Sent Back for Reevaluation')
-                      && cRole === 'faculty';
-
-      var items = _histBtn(docKey);
-
-      if (canReview) {
-        items +=
-          '<button class="dropdown-item" style="color:#22c55e;font-weight:700" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'approve\')">' +
-          '&#10003;&nbsp; Approve</button>' +
-          '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'request_revision\')">' +
-          '&#9998;&nbsp; Request Revision</button>' +
-          '<button class="dropdown-item danger" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'reject\')">' +
-          '&#10007;&nbsp; Reject</button>';
-      } else {
-        items +=
-          '<button class="dropdown-item" disabled ' +
-          'title="Document is not in the faculty review stage">' +
-          'No Actions Available</button>';
+      if (Array.isArray(d.allowedActions)) {
+        return _renderFromAllowedActions(role, docKey, d);
       }
-
+      var status = d.status, cRole = d.current_role;
+      var canReview = (status === 'Under Evaluation' || status === 'Sent Back for Reevaluation') && cRole === 'faculty';
+      var items = _histBtn(docKey);
+      if (canReview) {
+        items += '<button class="dropdown-item" style="color:#22c55e;font-weight:700" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'approve\')">&#10003;&nbsp; Approve</button>';
+        items += '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'request_revision\')">&#9998;&nbsp; Request Revision</button>';
+        items += '<button class="dropdown-item danger" onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'reject\')">&#10007;&nbsp; Reject</button>';
+      } else {
+        items += '<button class="dropdown-item" disabled>No Actions Available</button>';
+      }
       return _buildMenu(docKey, items);
     }
 
     /* ── USER ───────────────────────────────────────────────────── */
     if (role === 'user') {
+      if (Array.isArray(d.allowedActions)) {
+        return _renderFromAllowedActions(role, docKey, d);
+      }
+      /* Fallback */
+      var status = d.status, cRole = d.current_role;
       var needsResubmit = status === 'Action Required: Resubmission' && cRole === 'user';
       var isTerminal    = ['Approved and Released', 'Rejected', 'Returned to Requester'].includes(status);
-      var items         = _histBtn(docKey);
-
+      var items = _histBtn(docKey);
       if (needsResubmit) {
-        items +=
-          '<button class="dropdown-item" style="color:#f97316;font-weight:700" ' +
-          'onclick="closeAllActionMenus();openResubmitModal(\'' + docKey + '\')">' +
-          '&#8593;&nbsp; Submit Correction</button>';
+        items += '<button class="dropdown-item" style="color:#f97316;font-weight:700" onclick="closeAllActionMenus();openResubmitModal(\'' + docKey + '\')">&#8593;&nbsp; Submit Correction</button>';
       } else if (isTerminal) {
         var termLabel = status === 'Approved and Released' ? 'Download File' : 'View Details';
-        items +=
-          '<button class="dropdown-item" style="color:#4ade80;font-weight:600" ' +
-          'onclick="closeAllActionMenus();' +
+        items += '<button class="dropdown-item" style="color:#4ade80;font-weight:600" onclick="closeAllActionMenus();' +
           (status === 'Approved and Released' ? 'decryptAndDownload(\'' + docKey + '\',this)' : 'openHistory(\'' + docKey + '\')') +
           '">' + termLabel + '</button>';
       } else {
-        items +=
-          '<button class="dropdown-item" disabled>Awaiting ' +
-          (WF_STATUS_OWNER[status] || 'review') +
-          '</button>';
+        items += '<button class="dropdown-item" disabled>Awaiting ' + (WF_STATUS_OWNER[status] || 'review') + '</button>';
       }
-
       return _buildMenu(docKey, items);
     }
 
     /* ── ADMIN ─────────────────────────────────────────────────────
-       State-machine driven: all 3 admin workflow actions are shown when
-       the document is in the admin stage (Pending Final Approval).
-       Robust injection via lastIndexOf — no fragile regex.
+       Admin sees the full base actions from script.js (Update/QR/History)
+       PLUS workflow actions when the document is in the admin stage.
+       Workflow buttons come from d.allowedActions (backend-driven).
     ───────────────────────────────────────────────────────────────── */
     if (role === 'admin') {
       var origHtml = _orig.apply(this, arguments);
 
-      if (cRole === 'admin' && status === 'Pending Final Approval') {
-        var wfItems =
-          '<div style="border-top:1px solid rgba(255,255,255,.08);margin:3px 0"></div>' +
-          '<button class="dropdown-item" style="color:#22c55e;font-weight:700" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'release\')">' +
-          '&#10003;&nbsp; Approve &amp; Release</button>' +
-          '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'send_back\')">' +
-          '&#8617;&nbsp; Send Back to Faculty</button>' +
-          '<button class="dropdown-item danger" ' +
-          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'reject\')">' +
-          '&#10007;&nbsp; Reject</button>';
+      /* Only inject workflow buttons if the document is in admin stage */
+      var allowed = Array.isArray(d.allowedActions) ? d.allowedActions : [];
 
-        /* Robust injection: insert workflow buttons at the end of the action-menu
-           div content (before its closing </div>). Uses lastIndexOf to find the
-           action-menu </div> (second-to-last </div> in origHtml). This is reliable
-           regardless of trailing whitespace or template-literal formatting. */
-        var lastIdx = origHtml.lastIndexOf('</div>');
-        if (lastIdx !== -1) {
-          var innerIdx = origHtml.lastIndexOf('</div>', lastIdx - 1);
-          if (innerIdx !== -1) {
-            return origHtml.substring(0, innerIdx) + wfItems + origHtml.substring(innerIdx);
-          }
-        }
+      /* Fallback for legacy/offline docs: check status directly */
+      if (!allowed.length && d.current_role === 'admin' && d.status === 'Pending Final Approval') {
+        allowed = [
+          { action: 'release',   label: 'Approve &amp; Release', noteRequired: false },
+          { action: 'send_back', label: 'Send Back to Faculty',  noteRequired: true  },
+          { action: 'reject',    label: 'Reject',                noteRequired: false },
+        ];
       }
 
+      if (!allowed.length) return origHtml;
+
+      var wfItems = '<div style="border-top:1px solid rgba(255,255,255,.08);margin:3px 0"></div>';
+      allowed.forEach(function (a) {
+        var ui = ACTION_UI[a.action];
+        if (!ui) return;
+        var style = ui.danger ? '' : 'style="color:' + ui.color + ';font-weight:' + ui.weight + '"';
+        var cls   = ui.danger ? 'dropdown-item danger' : 'dropdown-item';
+        wfItems += '<button class="' + cls + '" ' + style + ' ' +
+          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'' + a.action + '\')">' +
+          ui.icon + '&nbsp; ' + a.label + '</button>';
+      });
+
+      /* Inject workflow buttons before the action-menu's closing </div> */
+      var lastIdx  = origHtml.lastIndexOf('</div>');
+      var innerIdx = lastIdx !== -1 ? origHtml.lastIndexOf('</div>', lastIdx - 1) : -1;
+      if (innerIdx !== -1) {
+        return origHtml.substring(0, innerIdx) + wfItems + origHtml.substring(innerIdx);
+      }
       return origHtml;
     }
 
@@ -914,6 +947,7 @@ async function submitCreateUser() {
     '</div>';
   }
 }());
+
 
 /* ══════════════════════════════════════════════════════════════════════
    7. PATCH renderUsers() — inject "Create Staff / Faculty" button
