@@ -238,3 +238,25 @@ async function apiGetNotifications(token) {
 async function apiMarkNotificationsRead(token) {
   return await apiRequest('POST', '/api/notifications/mark-read', {}, token || _jwt());
 }
+/* ══════════════════════════════════════════════════════════════════════
+   WORKFLOW ENDPOINTS  (staff | faculty | admin)
+══════════════════════════════════════════════════════════════════════ */
+
+/* ── POST /api/documents/update-status ──
+   Role-based workflow transitions:
+     staff   → action:'process'  (Received → Processing / faculty stage)
+     faculty → action:'approve'  (Processing/faculty → Processing/admin stage)
+             → action:'reject'   (Processing/faculty → Rejected/completed)
+     admin   → action:'release'  (Processing/admin   → Released/completed)
+             → action:'reject'   (any stage           → Rejected/completed)
+   Body: { documentId, action, note?, location? }                        */
+async function apiUpdateDocumentStatusByRole(payload, token) {
+  return await apiRequest('POST', '/api/documents/update-status', payload, token || _jwt());
+}
+
+/* ── POST /api/auth/users/create  (admin only) ──
+   Creates a staff or faculty account.
+   Body: { username, name, password, role, employee_id, color? }         */
+async function apiCreateUserByAdmin(payload, token) {
+  return await apiRequest('POST', '/api/auth/users/create', payload, token || _jwt());
+}

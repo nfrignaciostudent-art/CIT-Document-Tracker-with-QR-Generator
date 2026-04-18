@@ -867,6 +867,134 @@
   </div>
 </div>
 
+<!-- ==============================================================
+     WORKFLOW ACTION MODAL (staff process / faculty approve-reject)
+     ============================================================== -->
+<div class="overlay" id="wf-action-modal">
+  <div class="modal" style="width:460px">
+    <div class="modal-head">
+      <h3 id="wf-modal-title">Workflow Action</h3>
+      <button class="modal-close" onclick="closeModal('wf-action-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Description -->
+      <p id="wf-modal-desc"
+         style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6"></p>
+
+      <!-- Document info -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;
+                  padding:12px 14px;margin-bottom:18px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px"
+             id="wf-modal-doc-name"></div>
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:4px"
+             id="wf-modal-doc-id"></div>
+        <div style="font-size:11px;color:var(--muted)" id="wf-modal-status"></div>
+      </div>
+
+      <!-- Optional note -->
+      <div class="field" style="margin-bottom:18px">
+        <label>Note <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <textarea id="wf-modal-note" rows="3"
+          placeholder="Add a remark or reason (visible in document history)…"
+          style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+                 font-family:var(--sans);font-size:13px;resize:vertical;outline:none;
+                 color:var(--text);background:var(--white)"></textarea>
+      </div>
+
+      <!-- Error -->
+      <p id="wf-modal-error"
+         style="display:none;color:var(--red);font-size:12px;margin-bottom:12px;
+                padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px"></p>
+
+      <!-- Buttons -->
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('wf-action-modal')">Cancel</button>
+        <button id="wf-submit-btn" class="btn btn-primary"
+                onclick="submitWorkflowAction()">Confirm</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ==============================================================
+     CREATE STAFF / FACULTY MODAL  (admin only)
+     ============================================================== -->
+<div class="overlay" id="create-user-modal">
+  <div class="modal" style="width:460px">
+    <div class="modal-head">
+      <div>
+        <h3>Create Staff / Faculty Account</h3>
+        <p style="font-size:12px;color:var(--muted);margin-top:1px">Admin-managed accounts only</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('create-user-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Role selector -->
+      <div class="field" style="margin-bottom:14px">
+        <label>Role <span style="color:var(--red)">*</span></label>
+        <select id="cu-role"
+          style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+                 font-family:var(--sans);font-size:13px;outline:none;color:var(--text);
+                 background:var(--white)">
+          <option value="staff">Staff</option>
+          <option value="faculty">Faculty</option>
+        </select>
+      </div>
+
+      <!-- Two-column: full name + username -->
+      <div class="form-grid" style="margin-bottom:0">
+        <div class="field" style="margin-bottom:14px">
+          <label>Full Name <span style="color:var(--red)">*</span></label>
+          <input type="text" id="cu-name" placeholder="e.g. Maria Santos"
+            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+                   font-family:var(--sans);font-size:13px;outline:none;color:var(--text)">
+        </div>
+        <div class="field" style="margin-bottom:14px">
+          <label>Username <span style="color:var(--red)">*</span></label>
+          <input type="text" id="cu-username" placeholder="lowercase, no spaces"
+            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+                   font-family:var(--sans);font-size:13px;outline:none;color:var(--text)">
+        </div>
+      </div>
+
+      <!-- Two-column: employee ID + password -->
+      <div class="form-grid" style="margin-bottom:0">
+        <div class="field" style="margin-bottom:14px">
+          <label>Employee ID <span style="color:var(--red)">*</span></label>
+          <input type="text" id="cu-employee-id" placeholder="e.g. EMP-0042"
+            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+                   font-family:var(--sans);font-size:13px;outline:none;color:var(--text)">
+        </div>
+        <div class="field" style="margin-bottom:14px">
+          <label>Password <span style="color:var(--red)">*</span></label>
+          <input type="password" id="cu-password" placeholder="Min. 4 characters"
+            style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+                   font-family:var(--sans);font-size:13px;outline:none;color:var(--text)">
+        </div>
+      </div>
+
+      <!-- Error / success -->
+      <p id="cu-error"
+         style="display:none;color:var(--red);font-size:12px;margin-bottom:12px;
+                padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px"></p>
+      <p id="cu-success"
+         style="display:none;color:#15803d;font-size:12px;margin-bottom:12px;
+                padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px"></p>
+
+      <!-- Buttons -->
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('create-user-modal')">Close</button>
+        <button id="cu-submit-btn" class="btn btn-primary"
+                onclick="submitCreateUser()">Create Account</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -879,6 +1007,7 @@
 <script src="download.js"></script>
 <script src="track.js"></script>
 <script src="script.js"></script>
+<script src="workflow.js"></script>
 
 <script>
 function toggleSidebar() {
