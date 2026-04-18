@@ -339,7 +339,7 @@ function getDocumentAllowedActions(doc, callerRole) {
     send_back:             'Send Back to Faculty',
   };
 
-  return Object.entries(roleTransitions)
+  const actions = Object.entries(roleTransitions)
     .filter(([, transition]) => transition.from.includes(doc.status))
     .map(([action, transition]) => ({
       action,
@@ -348,6 +348,37 @@ function getDocumentAllowedActions(doc, callerRole) {
       noteRequired: transition.noteRequired || false,
       label:        ACTION_LABELS[action] || action,
     }));
+
+  /* ── CRITICAL FIX (Issue 1): "Send Back to Faculty" must NEVER disappear
+     for admin-stage documents after any status change or refresh.
+
+     The legacy PATCH /api/documents/:id/status endpoint (admin Update modal)
+     intentionally leaves current_role unchanged when the admin caller modifies
+     status — so a document can have current_role === 'admin' while its display
+     status is 'Approved and Released', 'Rejected', or any other value.
+
+     Because WORKFLOW_TRANSITIONS.admin.send_back.from === ['Pending Final Approval'],
+     the FSM filter above returns zero actions for those edge-case statuses.
+
+     Rule: Whenever a document is in the admin queue (current_role === 'admin'),
+     send_back is always available — it is the admin's permanent escape hatch
+     to route the document back to faculty for reevaluation regardless of the
+     current display status.  This guarantees stable, persistent admin controls
+     that never vanish after a refresh. */
+  if (callerRole === 'admin' && doc.current_role === 'admin') {
+    const hasSendBack = actions.some(a => a.action === 'send_back');
+    if (!hasSendBack) {
+      actions.push({
+        action:       'send_back',
+        to:           'Sent Back for Reevaluation',
+        toRole:       'faculty',
+        noteRequired: true,
+        label:        ACTION_LABELS['send_back'],
+      });
+    }
+  }
+
+  return actions;
 }
 
 /* ── Map current_role → legacy current_stage (for backward compat) ── */
@@ -838,12 +869,24 @@ const getAllDocuments = async (req, res) => {
     let filter = {};
 
     if (callerRole === 'admin') {
-      /* Admin sees ALL documents — no stage filter.
-         The dashboard table and stats are rendered by the frontend
-         using the original script.js renderStats/renderDash functions.
-         Routing between roles is controlled ONLY by explicit FSM actions
-         (send_back via POST /update-status), NOT by status changes. */
-      filter = {};
+      /* CRITICAL FIX (Issue 3): Admin dashboard MUST only return documents that
+         are currently in the admin stage (current_role === 'admin').
+
+         Faculty-owned and staff-owned documents (current_role: 'faculty' or
+         'staff') must NOT leak into the admin dashboard — they are not the
+         admin's responsibility until faculty explicitly approves them.
+
+         How documents enter the admin stage:
+           Faculty 'approve' action: Pending Final Approval → current_role: 'admin'
+
+         How documents leave the admin stage:
+           Admin 'send_back' action: → current_role: 'faculty'
+           (Released/Rejected via PATCH leave current_role untouched, so those
+            docs remain visible to admin — this is intentional and correct.)
+
+         This ensures clean role isolation with the backend as the single source
+         of truth for ownership, stage, and visibility. */
+      filter = { current_role: 'admin' };
     } else if (callerRole === 'staff') {
       /* Staff sees documents in the staff role:
          Submitted, Under Initial Review, Revision Requested */

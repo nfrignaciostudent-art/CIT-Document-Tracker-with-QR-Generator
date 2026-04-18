@@ -120,8 +120,13 @@ async function decryptAndDownload(docKey, btnEl) {
 
   if (!d) { _dlToast('File not found.'); return; }
 
-  if (d.status !== 'Released') {
-    _dlToast('File is secured. Available once status is Released.');
+  /* CRITICAL FIX (Issue 2 & 4): Accept both legacy 'Released' and the new
+     canonical 'Approved and Released' workflow status.  The old single-string
+     check caused every download attempt under the new workflow to silently
+     fail with a "file is secured" message even when the document was released. */
+  const _isReleasable = d.status === 'Approved and Released' || d.status === 'Released';
+  if (!_isReleasable) {
+    _dlToast('File is secured. Available once the document is released.');
     return;
   }
 
@@ -156,7 +161,12 @@ async function decryptAndDownload(docKey, btnEl) {
     if (!result) throw new Error('Decryption returned null');
 
     const ext  = result.ext || backendResult.fileExt || d.processedFileExt || d.fileExt || '';
-    const name = d.name.replace(/[^a-z0-9_\-]/gi, '_') + (ext.startsWith('.') ? ext : (ext ? '.'+ext : ''));
+    /* CRITICAL FIX (Issue 2): Use the backend-returned filename which already
+       includes the '_processed' suffix for processed files.  Deriving the name
+       only from d.name caused the downloaded file to be named identically to the
+       original, creating a content/filename mismatch for the requester. */
+    const rawName = backendResult.name || d.name || 'document';
+    const name = rawName.replace(/[^a-z0-9_\-]/gi, '_') + (ext.startsWith('.') ? ext : (ext ? '.'+ext : ''));
 
     const a = document.createElement('a');
     a.href     = result.dataURI;
@@ -658,9 +668,19 @@ function dashActions(d){
   const hasProcessed = docHasProcessedFile(d);
   let menuItems='';
 
-  if(hasProcessed && d.status==='Released'){
-    menuItems+=`<button class="dropdown-item" onclick="downloadDocFile('${docKey}', this)"> Download File</button>`;
-  } else if(d.status==='Released' && !hasProcessed){
+  /* CRITICAL FIX (Issues 2 & 4):
+     - Accept both legacy 'Released' and new canonical 'Approved and Released'.
+       The old d.status==='Released' check made the download button invisible
+       for every document processed through the new workflow.
+     - Expose processed-file View AND Download directly in the Actions column.
+       Previously the processed file was only reachable through View History,
+       forcing users to dig through history logs to access their final document.
+       Backend is the single source of truth — hasProcessedFile comes from it. */
+  const _docIsReleased = d.status === 'Approved and Released' || d.status === 'Released';
+  if(hasProcessed && _docIsReleased){
+    menuItems+=`<button class="dropdown-item" style="color:#22c55e;font-weight:700" onclick="closeAllActionMenus();viewFile('${docKey}','processed',this)">&#128065;&nbsp; View File</button>`;
+    menuItems+=`<button class="dropdown-item" onclick="downloadDocFile('${docKey}', this)">&#8595;&nbsp; Download File</button>`;
+  } else if(_docIsReleased && !hasProcessed){
     menuItems+=`<button class="dropdown-item" disabled title="Released but no processed file attached yet">No File</button>`;
   } else if(docHasOriginalFile(d)){
     menuItems+=`<button class="dropdown-item" style="color:#3b82f6" onclick="closeAllActionMenus(); viewFile('${docKey}','original',this)">File Attached</button>`;
