@@ -73,9 +73,10 @@ const WORKFLOW_ACTIONS = Object.freeze({
     REJECT:                'reject',
     REQUEST_REVISION:      'request_revision',
   },
+  /* DESIGN RULE (Option B): Admin has ONE workflow action — SEND_BACK.
+     Release is handled via PATCH /api/documents/:id/status (file upload).
+     Reject is removed from admin; Faculty is the sole approver/rejecter. */
   ADMIN: {
-    RELEASE:               'release',
-    REJECT:                'reject',
     SEND_BACK:             'send_back',
   },
   USER: {

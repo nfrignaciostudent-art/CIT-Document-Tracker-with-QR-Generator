@@ -271,42 +271,23 @@ const WORKFLOW_TRANSITIONS = {
   },
 
   /* ── ADMIN ACTIONS ────────────────────────────────────────────── */
+  /*
+   * DESIGN RULE (Option B): Admin is the FINAL STAGE CONTROLLER ONLY.
+   * Admin has EXACTLY ONE workflow action: send_back.
+   *
+   * Release (Approve and Released) is NOT a workflow action button —
+   * it is triggered by the admin uploading the processed file via
+   * PATCH /api/documents/:id/status (legacy file-upload endpoint).
+   * This keeps the file upload and release as one atomic admin operation.
+   *
+   * Reject is REMOVED from admin. Faculty is the sole decision-maker
+   * on approval/rejection before the document reaches admin.
+   */
   admin: {
 
     /**
-     * release — Admin releases document. Terminal state.
-     * Pending Final Approval → Approved and Released (completed)
-     */
-    release: {
-      from:         ['Pending Final Approval'],
-      to:           'Approved and Released',
-      toRole:       'completed',
-      noteRequired: false,
-      notifyRole:   null,
-      ownerMsg: (doc, caller, note) =>
-        `Your document "<strong>${doc.name}</strong>" has been ` +
-        `<strong>Approved and Released</strong>! ` +
-        (doc.hasProcessedFile ? 'The final file is now available for download.' : '') +
-        (note ? ` Note: <em>${note}</em>` : ''),
-    },
-
-    /**
-     * reject — Admin rejects document. Terminal state.
-     * Pending Final Approval → Rejected (completed)
-     */
-    reject: {
-      from:         ['Pending Final Approval'],
-      to:           'Rejected',
-      toRole:       'completed',
-      noteRequired: false,
-      notifyRole:   null,
-      ownerMsg: (doc, caller, note) =>
-        `Your document "<strong>${doc.name}</strong>" has been <strong>rejected</strong> ` +
-        `by admin.` + (note ? ` Reason: <em>${note}</em>` : ''),
-    },
-
-    /**
-     * send_back — Admin sends document back to faculty for reevaluation.
+     * send_back — Admin's ONLY workflow action.
+     * Sends document back to faculty for reevaluation.
      * Pending Final Approval → Sent Back for Reevaluation (faculty stage)
      * NOTE REQUIRED: must include reason for sending back.
      */
@@ -857,7 +838,16 @@ const getAllDocuments = async (req, res) => {
     let filter = {};
 
     if (callerRole === 'admin') {
-      filter = {};
+      /* DESIGN RULE (Option B): Admin dashboard shows ONLY documents that
+         are pending admin action (current_role: 'admin') and terminal
+         documents (current_role: 'completed') for archival visibility.
+         Admin MUST NOT see documents still in staff or faculty stages. */
+      filter = {
+        $or: [
+          { current_role: 'admin' },
+          { current_role: 'completed' },
+        ],
+      };
     } else if (callerRole === 'staff') {
       /* Staff sees documents in the staff role:
          Submitted, Under Initial Review, Revision Requested */
@@ -1027,18 +1017,26 @@ const downloadDocument = async (req, res) => {
       });
     }
 
-    const fileData = doc.processedFile || doc.originalFile || doc.filePath;
-    const fileExt  = doc.processedFile
+    /* DESIGN RULE: Processed file has a distinct name from original.
+       If a processedFile exists, serve it with a "_processed" suffix.
+       This prevents filename/content mismatch confusion for the requester. */
+    const isProcessed = !!(doc.processedFile);
+    const fileData = isProcessed
+      ? doc.processedFile
+      : (doc.originalFile || doc.filePath);
+    const fileExt  = isProcessed
       ? (doc.processedFileExt || null)
       : (doc.fileExt || null);
 
     if (!fileData) return res.status(404).json({ message: 'No file attached to this document.' });
 
+    const baseName = isProcessed ? doc.name + '_processed' : doc.name;
+
     if (fileData.startsWith('data:') || fileData.startsWith('{'))
-      return res.json({ fileData, fileExt, name: doc.name });
+      return res.json({ fileData, fileExt, name: baseName });
 
     const absPath = path.join(__dirname, '..', fileData);
-    res.download(absPath, doc.name + (fileExt || ''));
+    res.download(absPath, baseName + (fileExt || ''));
   } catch (err) {
     console.error('[downloadDocument]', err);
     res.status(500).json({ message: err.message });
