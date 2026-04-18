@@ -366,7 +366,6 @@ async function _notifyUser(userId, msg, documentId) {
 async function _createDocument(body, fileBuffer, fileExt) {
   const {
     name, type, by, purpose,
-    priority, due,
     enc, encPurpose,
     ownerId, ownerName,
     history, fileData, hasOriginalFile,
@@ -396,8 +395,6 @@ async function _createDocument(body, fileBuffer, fileExt) {
         enc:        enc        || '',
         encPurpose: encPurpose || '',
         type, by,
-        priority:    priority || 'Normal',
-        due:         due || null,
         status:        'Submitted',      // ← new canonical initial status
         current_role:  'staff',          // ← new canonical role field
         current_stage: 'staff',          // ← kept in sync for legacy code
@@ -416,7 +413,7 @@ async function _createDocument(body, fileBuffer, fileExt) {
         history: history || [
           {
             action: 'Status Update', status: 'Submitted', date: nowManila,
-            note: 'Document submitted & encrypted with IDEA-128-CBC',
+            note: 'Document submitted successfully',
             by: ownerName || ownerId, location: '', handler: '',
           },
         ],
@@ -875,7 +872,6 @@ const trackDocument = async (req, res) => {
       encPurpose: doc.encPurpose,
       type:     doc.type,
       by:       doc.by,
-      priority: doc.priority,
       status:   doc.status,
       current_role:  doc.current_role,
       current_stage: doc.current_stage,
@@ -891,7 +887,6 @@ const trackDocument = async (req, res) => {
       resubmissionCount: doc.resubmissionCount || 0,
       history: doc.history,
       date:    doc.date,
-      due:     doc.due,
     });
   } catch (err) {
     console.error('[trackDocument]', err);
@@ -931,7 +926,6 @@ const getDocumentForOwner = async (req, res) => {
       encPurpose:    doc.encPurpose || '',
       type:          doc.type,
       by:            doc.by,
-      priority:      doc.priority,
       status:        doc.status,
       current_role:  doc.current_role,
       current_stage: doc.current_stage,
@@ -948,7 +942,6 @@ const getDocumentForOwner = async (req, res) => {
       requiresUserAction: doc.current_role === 'user',
       history:          doc.history,
       date:             doc.date,
-      due:              doc.due,
     };
 
     if (isOwner) {

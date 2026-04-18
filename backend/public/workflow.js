@@ -682,12 +682,8 @@ async function submitCreateUser() {
        ensures cross-role docs never appear in the dashboard table even
        during that brief window.  Sort by priority so urgent docs come first. */
     var queueRole = role; /* 'staff' or 'faculty' */
-    var priorityOrder = { Urgent: 4, High: 3, Normal: 2, Low: 1 };
     var rows = docs
       .filter(function(d) { return d.current_role === queueRole; })
-      .sort(function(a, b) {
-        return (priorityOrder[b.priority] || 2) - (priorityOrder[a.priority] || 2);
-      })
       .slice(0, 10);
     var tb   = document.getElementById('dash-tbody');
     if (!tb) return;
@@ -864,19 +860,37 @@ async function submitCreateUser() {
     }
 
     /* ── ADMIN ─────────────────────────────────────────────────────
-       Inject workflow actions for documents in the admin stage.
+       State-machine driven: all 3 admin workflow actions are shown when
+       the document is in the admin stage (Pending Final Approval).
+       Robust injection via lastIndexOf — no fragile regex.
     ───────────────────────────────────────────────────────────────── */
     if (role === 'admin') {
       var origHtml = _orig.apply(this, arguments);
 
-      if (status === 'Pending Final Approval' && cRole === 'admin') {
-        /* Only Send Back to Faculty is kept as a quick dropdown action.
-           Approve & Release and Reject are handled inside the Update modal. */
-        var adminItems =
+      if (cRole === 'admin' && status === 'Pending Final Approval') {
+        var wfItems =
+          '<div style="border-top:1px solid rgba(255,255,255,.08);margin:3px 0"></div>' +
+          '<button class="dropdown-item" style="color:#22c55e;font-weight:700" ' +
+          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'release\')">' +
+          '&#10003;&nbsp; Approve &amp; Release</button>' +
           '<button class="dropdown-item" style="color:#f59e0b;font-weight:600" ' +
           'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'send_back\')">' +
-          '&#8617;&nbsp; Send Back to Faculty</button>';
-        origHtml = origHtml.replace(/<\/div>\s*<\/div>\s*$/, adminItems + '</div></div>');
+          '&#8617;&nbsp; Send Back to Faculty</button>' +
+          '<button class="dropdown-item danger" ' +
+          'onclick="closeAllActionMenus();openWorkflowAction(\'' + docKey + '\',\'reject\')">' +
+          '&#10007;&nbsp; Reject</button>';
+
+        /* Robust injection: insert workflow buttons at the end of the action-menu
+           div content (before its closing </div>). Uses lastIndexOf to find the
+           action-menu </div> (second-to-last </div> in origHtml). This is reliable
+           regardless of trailing whitespace or template-literal formatting. */
+        var lastIdx = origHtml.lastIndexOf('</div>');
+        if (lastIdx !== -1) {
+          var innerIdx = origHtml.lastIndexOf('</div>', lastIdx - 1);
+          if (innerIdx !== -1) {
+            return origHtml.substring(0, innerIdx) + wfItems + origHtml.substring(innerIdx);
+          }
+        }
       }
 
       return origHtml;

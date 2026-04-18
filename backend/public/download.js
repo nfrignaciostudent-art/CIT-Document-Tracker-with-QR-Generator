@@ -46,7 +46,7 @@ function buildPublicFileSection(d) {
         </div>
         <div style="flex:1">
           <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.7);margin-bottom:2px">Original File (Submitted)</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.3)">Submitted by ${d.by || d.ownerName || 'user'} - IDEA-128 encrypted at rest - Not downloadable</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.3)">Submitted by ${d.by || d.ownerName || 'user'} - Securely stored - Not downloadable</div>
         </div>
         <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.25);padding:3px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px">Reference Only</div>
       </div>`;
@@ -63,7 +63,7 @@ function buildPublicFileSection(d) {
           </div>
           <div style="flex:1">
             <div style="font-size:12px;font-weight:700;color:#22c55e;margin-bottom:2px">Final File (Approved)</div>
-            <div style="font-size:11px;color:rgba(255,255,255,.35)">Processed by ${processedBy}${processedAt ? ' - ' + processedAt : ''} - IDEA-128 encrypted</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.35)">Processed by ${processedBy}${processedAt ? ' - ' + processedAt : ''} - Secured</div>
           </div>
           <div style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#22c55e;padding:3px 10px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:20px">
             <span style="width:5px;height:5px;border-radius:50%;background:#22c55e;display:inline-block"></span>Released
@@ -79,7 +79,7 @@ function buildPublicFileSection(d) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download file
           </button>
-          <p style="font-size:10px;color:rgba(255,255,255,.2);margin-top:10px">Decrypted locally with IDEA-128 - File never stored unencrypted on server</p>
+          <p style="font-size:10px;color:rgba(255,255,255,.2);margin-top:10px">Decryption is performed on your device</p>
         </div>
       </div>`;
   } else if (!hasProcessed && isReleased) {

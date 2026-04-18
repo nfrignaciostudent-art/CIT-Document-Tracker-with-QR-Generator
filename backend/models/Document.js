@@ -67,8 +67,7 @@ const DocumentSchema = new mongoose.Schema({
   /* ── Non-sensitive metadata ─────────────────────────────────── */
   type:     { type: String, required: true, enum: ['Academic', 'Laboratory', 'Administrative', 'Financial', 'Medical', 'Other'] },
   by:       { type: String, required: true, trim: true },
-  priority: { type: String, enum: ['Low', 'Normal', 'High', 'Urgent'], default: 'Normal' },
-  due:      { type: String, default: null },
+  /* priority and due removed — priority system fully removed per system standardization */
 
   status: {
     type: String,
