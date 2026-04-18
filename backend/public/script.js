@@ -388,9 +388,40 @@ let updateDocId   = null;
 let _uvCurrentUid = null;
 
 const statusColorMap = {
-  Released:'#22c55e', Rejected:'#ef4444', Approved:'#16a34a',
-  Signed:'#16a34a', Processing:'#f59e0b', Pending:'#f59e0b',
-  'For Approval':'#3b82f6', Received:'#64748b'
+  /* ── New workflow statuses (canonical) ────────────────────────────
+     Each status has a semantically unique, accessible color.
+     Color logic:
+       blue   = neutral / new intake (Submitted)
+       indigo = staff working on it (Under Initial Review)
+       red    = urgent user action required (Action Required)
+       orange = internal revision needed (Revision Requested)
+       purple = faculty stage (Under Evaluation)
+       sky    = near completion / pending admin (Pending Final Approval)
+       amber  = feedback loop / admin sent back (Sent Back)
+       green  = success terminal (Approved and Released)
+       dark-red  = rejection terminal (Rejected)
+       dark-gray = closed/returned terminal (Returned to Requester)
+  ───────────────────────────────────────────────────────────────── */
+  'Submitted':                    '#60a5fa',   // blue-400
+  'Under Initial Review':         '#818cf8',   // indigo-400
+  'Action Required: Resubmission':'#ef4444',   // red-500
+  'Returned to Requester':        '#6b7280',   // gray-500
+  'Under Evaluation':             '#c084fc',   // purple-400
+  'Revision Requested':           '#f97316',   // orange-500
+  'Pending Final Approval':       '#38bdf8',   // sky-400
+  'Sent Back for Reevaluation':   '#f59e0b',   // amber-400
+  'Approved and Released':        '#22c55e',   // green-500
+  'Rejected':                     '#be123c',   // rose-700 (dark-red, distinct from red-500)
+  /* ── Legacy statuses (kept for backward compatibility) ─────────── */
+  'Released':    '#22c55e',
+  'Approved':    '#16a34a',
+  'Signed':      '#16a34a',
+  'Processing':  '#f59e0b',
+  'Pending':     '#f59e0b',
+  'For Approval':'#3b82f6',
+  'Received':    '#64748b',
+  'Returned':    '#6b7280',
+  'On Hold':     '#fbbf24',
 };
 
 const docOfficeMap = {
@@ -416,8 +447,26 @@ const nowStr = () => new Date().toLocaleString('en-PH', {
 const colors = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399','#f87171','#fbbf24'];
 function avatarColor(idx){ return colors[idx % colors.length]; }
 
-const badgeMap = {Received:'received',Processing:'processing','For Approval':'forapproval',Approved:'approved',Released:'released',Rejected:'rejected',Pending:'pending',Signed:'signed'};
-function statusBadge(s){ return `<span class="badge badge-${badgeMap[s]||'received'}">${s}</span>`; }
+/**
+ * statusBadge(s)
+ * Returns a styled <span> badge for ANY status — new workflow or legacy.
+ * Uses inline styles driven by statusColorMap so no CSS class gaps exist.
+ * Previous CSS-class approach (badgeMap → badge-received etc.) only covered
+ * legacy statuses; new statuses all rendered as muted gray. Fixed here.
+ */
+function statusBadge(s){
+  const c = statusColorMap[s] || '#64748b';
+  /* Clamp long status strings in tight spaces */
+  const label = s === 'Action Required: Resubmission' ? 'Action Required'
+              : s === 'Approved and Released'          ? 'Approved & Released'
+              : s === 'Sent Back for Reevaluation'     ? 'Sent Back'
+              : s === 'Under Initial Review'            ? 'Under Review'
+              : s === 'Pending Final Approval'          ? 'Pending Approval'
+              : s;
+  return `<span style="display:inline-flex;align-items:center;white-space:nowrap;` +
+    `font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;` +
+    `background:${c}22;color:${c};border:1px solid ${c}44">${label}</span>`;
+}
 function prioBadge(p){ return `<span class="prio prio-${(p||'Normal').toLowerCase()}">${p||'Normal'}</span>`; }
 function initials(name){ return (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
 
@@ -515,9 +564,24 @@ function renderStats(){
   const isAdmin = currentUser.role==='admin';
   const myDocs  = isAdmin ? docs : docs.filter(d=>d.ownerId===currentUser.id);
   const total   = myDocs.length;
-  const released= myDocs.filter(d=>d.status==='Released').length;
-  const pending = myDocs.filter(d=>['Received','Processing','For Approval','Pending'].includes(d.status)).length;
-  const rejected= myDocs.filter(d=>d.status==='Rejected').length;
+
+  /* ── Terminal / success: both new and legacy released statuses ── */
+  const released = myDocs.filter(d=>
+    d.status==='Approved and Released' || d.status==='Released'
+  ).length;
+
+  /* ── In-progress: any non-terminal, non-completed status ── */
+  const inProgress = myDocs.filter(d=>[
+    'Submitted','Under Initial Review','Action Required: Resubmission',
+    'Under Evaluation','Revision Requested','Pending Final Approval',
+    'Sent Back for Reevaluation',
+    /* legacy */ 'Received','Processing','For Approval','Pending','Signed',
+  ].includes(d.status)).length;
+
+  /* ── Rejected / closed ── */
+  const rejected = myDocs.filter(d=>
+    d.status==='Rejected' || d.status==='Returned to Requester'
+  ).length;
   document.getElementById('stats-row').innerHTML=`
     <div class="stat-card">
       <div class="stat-card-label">${isAdmin?'Total Docs':'My Docs'}</div>
@@ -529,10 +593,10 @@ function renderStats(){
     </div>
     <div class="stat-card">
       <div class="stat-card-label">In Progress</div>
-      <div class="stat-card-num yellow">${pending}</div>
+      <div class="stat-card-num yellow">${inProgress}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-card-label">Rejected</div>
+      <div class="stat-card-label">Rejected / Closed</div>
       <div class="stat-card-num red">${rejected}</div>
     </div>`;
   document.getElementById('dash-title').textContent    = isAdmin?'Admin Dashboard':'My Dashboard';
@@ -2478,15 +2542,25 @@ function renderStats() {
   var isAdmin = currentUser.role === 'admin';
   var myDocs  = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id; });
   var total    = myDocs.length;
-  var released = myDocs.filter(function(d){ return d.status === 'Released'; }).length;
-  var pending  = myDocs.filter(function(d){ return ['Received','Processing','For Approval','Pending'].includes(d.status); }).length;
-  var rejected = myDocs.filter(function(d){ return d.status === 'Rejected'; }).length;
+  var released = myDocs.filter(function(d){
+    return d.status === 'Approved and Released' || d.status === 'Released';
+  }).length;
+  var _inProgressStatuses = [
+    'Submitted','Under Initial Review','Action Required: Resubmission',
+    'Under Evaluation','Revision Requested','Pending Final Approval',
+    'Sent Back for Reevaluation',
+    'Received','Processing','For Approval','Pending','Signed',
+  ];
+  var pending  = myDocs.filter(function(d){ return _inProgressStatuses.includes(d.status); }).length;
+  var rejected = myDocs.filter(function(d){
+    return d.status === 'Rejected' || d.status === 'Returned to Requester';
+  }).length;
 
   var dr = _statDateRange();
   var totalBadge    = _pctBadge(_pctChange(myDocs, null));
-  var relBadge      = _pctBadge(_pctChange(myDocs, ['Released']));
-  var pendBadge     = _pctBadge(_pctChange(myDocs, ['Received','Processing','For Approval','Pending']));
-  var rejBadge      = _pctBadge(_pctChange(myDocs, ['Rejected']));
+  var relBadge      = _pctBadge(_pctChange(myDocs, ['Approved and Released','Released']));
+  var pendBadge     = _pctBadge(_pctChange(myDocs, _inProgressStatuses));
+  var rejBadge      = _pctBadge(_pctChange(myDocs, ['Rejected','Returned to Requester']));
   var usersBadge    = isAdmin ? _pctBadge(_pctChangeUsers()) : '';
   var totalUsers    = accounts.filter(function(a){ return a.role !== 'admin'; }).length;
 
@@ -2709,16 +2783,29 @@ function renderStats() {
   var myDocs  = isAdmin ? docs : docs.filter(function(d){ return d.ownerId === currentUser.id || d.ownerId === currentUser.userId; });
 
   var total    = myDocs.length;
-  var released = myDocs.filter(function(d){ return d.status === 'Released'; }).length;
-  var pending  = myDocs.filter(function(d){ return ['Received','Processing','For Approval','Pending'].includes(d.status); }).length;
-  var rejected = myDocs.filter(function(d){ return d.status === 'Rejected'; }).length;
+  /* Released: new workflow terminal + legacy */
+  var released = myDocs.filter(function(d){
+    return d.status === 'Approved and Released' || d.status === 'Released';
+  }).length;
+  /* In-progress: any active / non-terminal status */
+  var inProgressStatuses = [
+    'Submitted','Under Initial Review','Action Required: Resubmission',
+    'Under Evaluation','Revision Requested','Pending Final Approval',
+    'Sent Back for Reevaluation',
+    'Received','Processing','For Approval','Pending','Signed',
+  ];
+  var pending  = myDocs.filter(function(d){ return inProgressStatuses.includes(d.status); }).length;
+  /* Rejected/closed: new + legacy */
+  var rejected = myDocs.filter(function(d){
+    return d.status === 'Rejected' || d.status === 'Returned to Requester';
+  }).length;
 
   var dr = _statDateRange();
 
   var totalBadge = _pctBadge(_pctChange(myDocs, null));
-  var relBadge   = _pctBadge(_pctChange(myDocs, ['Released']));
-  var pendBadge  = _pctBadge(_pctChange(myDocs, ['Received','Processing','For Approval','Pending']));
-  var rejBadge   = _pctBadge(_pctChange(myDocs, ['Rejected']));
+  var relBadge   = _pctBadge(_pctChange(myDocs, ['Approved and Released','Released']));
+  var pendBadge  = _pctBadge(_pctChange(myDocs, inProgressStatuses));
+  var rejBadge   = _pctBadge(_pctChange(myDocs, ['Rejected','Returned to Requester']));
 
   var totalUsers = 0;
   var usersBadge = '';

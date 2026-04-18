@@ -995,6 +995,120 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     RESUBMIT MODAL  (user role — shown when status = Action Required: Resubmission)
+     All element IDs here are referenced by openResubmitModal() / submitResubmit()
+     in workflow.js. This modal was previously missing from the HTML, which is why
+     clicking "Submit Correction" did nothing.
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="overlay" id="resubmit-modal">
+  <div class="modal" style="width:480px">
+
+    <div class="modal-head">
+      <div>
+        <h3 style="margin:0">Submit Document Correction</h3>
+        <p style="font-size:11px;color:var(--muted);margin:2px 0 0">
+          Upload the revised file to resume review
+        </p>
+      </div>
+      <button class="modal-close" onclick="closeModal('resubmit-modal')">&times;</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Alert banner -->
+      <div style="display:flex;align-items:flex-start;gap:10px;
+                  background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);
+                  border-radius:8px;padding:12px 14px;margin-bottom:18px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+             style="flex-shrink:0;margin-top:1px">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:3px">
+            Action Required — Resubmission Requested
+          </div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.5">
+            Staff has reviewed your submission and requires a corrected file.
+            Please upload the revised document below.
+          </div>
+        </div>
+      </div>
+
+      <!-- Document info card -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;
+                  padding:12px 16px;margin-bottom:18px">
+        <div style="font-size:13px;font-weight:600;color:var(--text)"
+             id="resubmit-doc-name"></div>
+        <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;
+                    margin-top:2px"
+             id="resubmit-doc-id"></div>
+        <div style="font-size:11px;color:#f97316;margin-top:5px;display:none"
+             id="resubmit-count"></div>
+      </div>
+
+      <!-- File input -->
+      <div class="field" style="margin-bottom:16px">
+        <label>
+          Corrected File
+          <span style="color:#ef4444;font-weight:700">*</span>
+        </label>
+        <input type="file" id="resubmit-file"
+               style="display:block;width:100%;padding:9px 12px;
+                      border:2px dashed var(--border);border-radius:7px;
+                      font-size:13px;color:var(--text);background:var(--white);
+                      cursor:pointer;box-sizing:border-box;
+                      font-family:var(--sans);"
+               onchange="this.style.borderColor=this.files.length?'#22c55e':'var(--border)'">
+        <p style="font-size:11px;color:var(--muted);margin-top:5px">
+          Accepted: PDF, DOCX, JPG, PNG, XLSX, or any document format · Max 20 MB
+        </p>
+      </div>
+
+      <!-- Note / correction summary -->
+      <div class="field" style="margin-bottom:16px">
+        <label>
+          Correction Summary
+          <span style="font-size:11px;color:var(--muted);font-weight:400">(optional)</span>
+        </label>
+        <textarea id="resubmit-note" rows="3"
+                  placeholder="Briefly describe what was corrected or changed…"
+                  style="resize:vertical"></textarea>
+      </div>
+
+      <!-- Error display -->
+      <p id="resubmit-error"
+         style="display:none;color:#ef4444;font-size:12px;margin-bottom:14px;
+                padding:9px 12px;background:rgba(239,68,68,.07);
+                border-radius:6px;border:1px solid rgba(239,68,68,.2);
+                line-height:1.5"></p>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
+        <button class="btn btn-ghost"
+                onclick="closeModal('resubmit-modal')">Cancel</button>
+        <button id="resubmit-submit-btn"
+                class="btn btn-primary"
+                style="background:#ef4444;border-color:#c0392b;gap:7px"
+                onclick="submitResubmit()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Submit Correction
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 

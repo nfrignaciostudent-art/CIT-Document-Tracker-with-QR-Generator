@@ -263,11 +263,11 @@ tbody td{padding:11px 14px;border-bottom:1px solid var(--border-lt);vertical-ali
 tbody tr:last-child td{border-bottom:none;}
 tbody tr:hover td{background:#f9fafb;}
 .doc-id-cell{font-family:var(--mono);font-size:11px;color:var(--muted);}
-.doc-name-cell{font-weight:600;font-size:13px;}
+.doc-name-cell{font-weight:600;font-size:13px;color:var(--text);}
 .enc-cell{font-family:var(--mono);font-size:11px;color:#94a3b8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dec-cell{font-family:var(--mono);font-size:12px;color:#16a34a;font-weight:500;}
 
-/* BADGES */
+/* BADGES — legacy classes kept for backward compat */
 .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
 .badge-received{background:#f1f5f9;color:#64748b;}
 .badge-processing{background:#fef9c3;color:#854d0e;}
@@ -277,6 +277,17 @@ tbody tr:hover td{background:#f9fafb;}
 .badge-rejected{background:#fef2f2;color:#b91c1c;}
 .badge-pending{background:#fef9c3;color:#854d0e;}
 .badge-signed{background:#f0fdf4;color:#15803d;}
+/* New workflow badge classes — semantic colors for each stage */
+.badge-submitted{background:rgba(96,165,250,.14);color:#60a5fa;border:1px solid rgba(96,165,250,.3);}
+.badge-under-review{background:rgba(129,140,248,.14);color:#818cf8;border:1px solid rgba(129,140,248,.3);}
+.badge-action-required{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.3);}
+.badge-returned-requester{background:rgba(107,114,128,.14);color:#6b7280;border:1px solid rgba(107,114,128,.3);}
+.badge-under-evaluation{background:rgba(192,132,252,.14);color:#c084fc;border:1px solid rgba(192,132,252,.3);}
+.badge-revision{background:rgba(249,115,22,.14);color:#f97316;border:1px solid rgba(249,115,22,.3);}
+.badge-pending-approval{background:rgba(56,189,248,.14);color:#38bdf8;border:1px solid rgba(56,189,248,.3);}
+.badge-sent-back{background:rgba(245,158,11,.14);color:#f59e0b;border:1px solid rgba(245,158,11,.3);}
+.badge-released-new{background:rgba(34,197,94,.14);color:#22c55e;border:1px solid rgba(34,197,94,.3);}
+.badge-rejected-new{background:rgba(190,18,60,.12);color:#be123c;border:1px solid rgba(190,18,60,.3);}
 .prio{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;}
 .prio-low{background:#f1f5f9;color:#94a3b8;}.prio-normal{background:#eff6ff;color:#3b82f6;}
 .prio-high{background:#fff7ed;color:#f97316;}.prio-urgent{background:#fef2f2;color:#ef4444;}

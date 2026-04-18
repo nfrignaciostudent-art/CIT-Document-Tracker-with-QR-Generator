@@ -34,24 +34,27 @@
    Centralised so every badge, label, and owner reference is consistent.
 ══════════════════════════════════════════════════════════════════════ */
 
-/** Map status → CSS color used for badges */
+/** Map status → CSS color used for badges
+ *  Colors are semantically distinct — no two statuses share the same hue family.
+ *  Must stay in sync with statusColorMap in script.js.
+ */
 const WF_STATUS_COLOR = {
-  'Submitted':                    '#60a5fa',   // blue
-  'Under Initial Review':         '#a78bfa',   // violet
-  'Action Required: Resubmission':'#f97316',   // orange
-  'Returned to Requester':        '#94a3b8',   // slate
-  'Under Evaluation':             '#c084fc',   // purple
-  'Revision Requested':           '#fbbf24',   // amber
-  'Pending Final Approval':       '#38bdf8',   // sky
-  'Sent Back for Reevaluation':   '#fb923c',   // orange-light
-  'Approved and Released':        '#4ade80',   // green
-  'Rejected':                     '#f87171',   // red
+  'Submitted':                    '#60a5fa',   // blue-400       — neutral intake
+  'Under Initial Review':         '#818cf8',   // indigo-400     — staff working
+  'Action Required: Resubmission':'#ef4444',   // red-500        — urgent: user must act
+  'Returned to Requester':        '#6b7280',   // gray-500       — closed/terminal
+  'Under Evaluation':             '#c084fc',   // purple-400     — faculty stage
+  'Revision Requested':           '#f97316',   // orange-500     — internal revision
+  'Pending Final Approval':       '#38bdf8',   // sky-400        — near completion
+  'Sent Back for Reevaluation':   '#f59e0b',   // amber-400      — admin feedback loop
+  'Approved and Released':        '#22c55e',   // green-500      — success terminal
+  'Rejected':                     '#be123c',   // rose-700       — rejection terminal
   /* Legacy */
-  'Received':   '#60a5fa',
-  'Processing': '#a78bfa',
+  'Received':   '#64748b',
+  'Processing': '#f59e0b',
   'On Hold':    '#fbbf24',
-  'Released':   '#4ade80',
-  'Returned':   '#94a3b8',
+  'Released':   '#22c55e',
+  'Returned':   '#6b7280',
 };
 
 /** Map status → "current owner" label shown in UI */
@@ -932,9 +935,17 @@ async function submitCreateUser() {
     /* Original user renderDash */
     _patched.apply(this, arguments);
 
-    /* Inject Action Required banner if any docs need resubmission */
+    /* Inject Action Required banner ONLY for this user's own docs
+       that need resubmission. Triple-guard: role check (above) +
+       status + current_role + ownerId.  Staff/faculty/admin cannot
+       reach this code path (they return early from the role check),
+       but the ownerId filter is added as an explicit safety net so
+       that even if the docs array somehow contains other users' docs,
+       the banner never appears for documents this user doesn't own. */
     var actionDocs = docs.filter(function (d) {
-      return d.status === 'Action Required: Resubmission' && d.current_role === 'user';
+      return d.status === 'Action Required: Resubmission'
+        && d.current_role === 'user'
+        && (d.ownerId === currentUser.id || d.ownerId === currentUser.userId);
     });
 
     var bannerContainerId = 'wf-action-required-banner';
