@@ -394,24 +394,25 @@ const statusColorMap = {
        blue   = neutral / new intake (Submitted)
        indigo = staff working on it (Under Initial Review)
        red    = urgent user action required (Action Required)
+       rose   = terminal: returned to owner (Returned to Requester)
        orange = internal revision needed (Revision Requested)
        purple = faculty stage (Under Evaluation)
        sky    = near completion / pending admin (Pending Final Approval)
        amber  = feedback loop / admin sent back (Sent Back)
        green  = success terminal (Approved and Released)
        dark-red  = rejection terminal (Rejected)
-       dark-gray = closed/returned terminal (Returned to Requester)
+       cyan   = legacy intake received (Received)
   ───────────────────────────────────────────────────────────────── */
   'Submitted':                    '#60a5fa',   // blue-400
   'Under Initial Review':         '#818cf8',   // indigo-400
   'Action Required: Resubmission':'#ef4444',   // red-500
-  'Returned to Requester':        '#6b7280',   // gray-500
+  'Returned to Requester':        '#f43f5e',   // rose-500  — distinct from Rejected (dark-red) and gray
   'Under Evaluation':             '#c084fc',   // purple-400
   'Revision Requested':           '#f97316',   // orange-500
   'Pending Final Approval':       '#38bdf8',   // sky-400
   'Sent Back for Reevaluation':   '#f59e0b',   // amber-400
   'Approved and Released':        '#22c55e',   // green-500
-  'Rejected':                     '#be123c',   // rose-700 (dark-red, distinct from red-500)
+  'Rejected':                     '#be123c',   // rose-700  — dark red, distinct from rose-500 above
   /* ── Legacy statuses (kept for backward compatibility) ─────────── */
   'Released':    '#22c55e',
   'Approved':    '#16a34a',
@@ -419,8 +420,8 @@ const statusColorMap = {
   'Processing':  '#f59e0b',
   'Pending':     '#f59e0b',
   'For Approval':'#3b82f6',
-  'Received':    '#64748b',
-  'Returned':    '#6b7280',
+  'Received':    '#06b6d4',   // cyan-500 — legacy intake, clearly distinct from blue Submitted
+  'Returned':    '#f43f5e',   // rose-500 — legacy alias of Returned to Requester
   'On Hold':     '#fbbf24',
 };
 
@@ -718,19 +719,7 @@ function downloadDocFile(docKey, btnEl) {
    VAULT - with clickable file badges
 ======================================================== */
 function renderVault(){
-  const role = currentUser.role;
-
-  /* Staff and faculty work through the workflow queue — they do not
-     have a document vault.  Return early with a clear empty state
-     rather than accidentally leaking any cached doc data. */
-  if (role === 'staff' || role === 'faculty') {
-    const tb = document.getElementById('vault-tbody');
-    if (tb) tb.innerHTML =
-      '<tr><td colspan="10"><div class="empty-msg">Document vault is not available for your role.</div></td></tr>';
-    return;
-  }
-
-  const isAdmin=role==='admin';
+  const isAdmin=currentUser.role==='admin';
   const term=(document.getElementById('vault-search')?.value||'').toLowerCase();
   const userFilter=document.getElementById('vault-user-filter')?.value||'';
   const uf=document.getElementById('vault-user-filter');

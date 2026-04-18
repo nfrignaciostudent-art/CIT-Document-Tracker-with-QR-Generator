@@ -42,19 +42,19 @@ const WF_STATUS_COLOR = {
   'Submitted':                    '#60a5fa',   // blue-400       — neutral intake
   'Under Initial Review':         '#818cf8',   // indigo-400     — staff working
   'Action Required: Resubmission':'#ef4444',   // red-500        — urgent: user must act
-  'Returned to Requester':        '#6b7280',   // gray-500       — closed/terminal
+  'Returned to Requester':        '#f43f5e',   // rose-500       — terminal: returned to owner (distinct from Rejected dark-red)
   'Under Evaluation':             '#c084fc',   // purple-400     — faculty stage
   'Revision Requested':           '#f97316',   // orange-500     — internal revision
   'Pending Final Approval':       '#38bdf8',   // sky-400        — near completion
   'Sent Back for Reevaluation':   '#f59e0b',   // amber-400      — admin feedback loop
   'Approved and Released':        '#22c55e',   // green-500      — success terminal
-  'Rejected':                     '#be123c',   // rose-700       — rejection terminal
+  'Rejected':                     '#be123c',   // rose-700       — rejection terminal (dark, distinct from rose-500 above)
   /* Legacy */
-  'Received':   '#64748b',
-  'Processing': '#f59e0b',
-  'On Hold':    '#fbbf24',
-  'Released':   '#22c55e',
-  'Returned':   '#6b7280',
+  'Received':   '#06b6d4',   // cyan-500  — legacy intake (distinct from blue Submitted)
+  'Processing': '#f59e0b',   // amber
+  'On Hold':    '#fbbf24',   // yellow
+  'Released':   '#22c55e',   // green
+  'Returned':   '#f43f5e',   // rose-500  — legacy alias of Returned to Requester
 };
 
 /** Map status → "current owner" label shown in UI */
@@ -600,6 +600,7 @@ async function submitCreateUser() {
       return _orig.apply(this, arguments);
     }
 
+    var total = docs.length;
     var statsEl = document.getElementById('stats-row');
     if (!statsEl) return;
 
@@ -607,13 +608,11 @@ async function submitCreateUser() {
     var subEl   = document.getElementById('dash-subtitle');
 
     if (role === 'staff') {
-      /* Staff queue stats — strictly scoped to current_role: 'staff'.
-         This prevents stale localStorage data from inflating counts. */
-      var queueDocs   = docs.filter(function (d) { return d.current_role === 'staff'; });
-      var total       = queueDocs.length;
-      var submitted   = queueDocs.filter(function (d) { return d.status === 'Submitted'; }).length;
-      var underReview = queueDocs.filter(function (d) { return d.status === 'Under Initial Review'; }).length;
-      var revisionReq = queueDocs.filter(function (d) { return d.status === 'Revision Requested'; }).length;
+      /* Staff queue stats — docs with current_role: 'staff' */
+      var submitted    = docs.filter(function (d) { return d.status === 'Submitted'; }).length;
+      var underReview  = docs.filter(function (d) { return d.status === 'Under Initial Review'; }).length;
+      var revisionReq  = docs.filter(function (d) { return d.status === 'Revision Requested'; }).length;
+      var forwarded    = 0;   /* Not in staff queue once forwarded */
 
       statsEl.innerHTML =
         '<div class="stat-card">' +
@@ -637,12 +636,9 @@ async function submitCreateUser() {
       if (subEl)   subEl.textContent   = 'Welcome, ' + (currentUser.name || currentUser.username);
 
     } else if (role === 'faculty') {
-      /* Faculty queue stats — strictly scoped to current_role: 'faculty'.
-         This prevents stale localStorage data from inflating counts. */
-      var queueDocs = docs.filter(function (d) { return d.current_role === 'faculty'; });
-      var total     = queueDocs.length;
-      var underEval = queueDocs.filter(function (d) { return d.status === 'Under Evaluation'; }).length;
-      var sentBack  = queueDocs.filter(function (d) { return d.status === 'Sent Back for Reevaluation'; }).length;
+      /* Faculty queue stats — docs with current_role: 'faculty' */
+      var underEval  = docs.filter(function (d) { return d.status === 'Under Evaluation'; }).length;
+      var sentBack   = docs.filter(function (d) { return d.status === 'Sent Back for Reevaluation'; }).length;
 
       statsEl.innerHTML =
         '<div class="stat-card">' +
@@ -678,27 +674,7 @@ async function submitCreateUser() {
       return _orig.apply(this, arguments);
     }
 
-    /* ── Priority weight for sorting: higher urgency appears first ── */
-    var PRIORITY_WEIGHT = { Urgent: 4, High: 3, Normal: 2, Low: 1 };
-
-    /* ── Strictly filter to this role's queue only.
-       This guards against stale localStorage data leaking across
-       role boundaries. The backend already enforces current_role
-       scoping, but this client-side filter is an explicit safety net. ── */
-    var roleFilter = (role === 'staff') ? 'staff' : 'faculty';
-    var queueDocs  = docs
-      .filter(function (d) { return d.current_role === roleFilter; })
-      .sort(function (a, b) {
-        /* Sort by priority descending (Urgent → High → Normal → Low),
-           then by submission date descending (newest first) as a tiebreaker.
-           Priority ONLY affects ordering within this role's own queue —
-           it is never used as a cross-role visibility filter. */
-        var pDiff = (PRIORITY_WEIGHT[b.priority] || 2) - (PRIORITY_WEIGHT[a.priority] || 2);
-        if (pDiff !== 0) return pDiff;
-        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-      });
-
-    var rows = queueDocs.slice(0, 10);
+    var rows = docs.slice().reverse().slice(0, 10);
     var tb   = document.getElementById('dash-tbody');
     if (!tb) return;
 
@@ -983,12 +959,12 @@ async function submitCreateUser() {
 
     var bannerHtml =
       '<div id="' + bannerContainerId + '" style="' +
-      'background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.35);' +
+      'background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.4);' +
       'border-radius:10px;padding:14px 18px;margin-bottom:16px">' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
         '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
-        '<strong style="color:#f97316;font-size:13px">Action Required — ' + actionDocs.length +
+        '<strong style="color:#dc2626;font-size:13px">Action Required — ' + actionDocs.length +
         ' document' + (actionDocs.length > 1 ? 's require' : ' requires') + ' your attention</strong>' +
       '</div>' +
       actionDocs.map(function (d) {
@@ -1000,20 +976,23 @@ async function submitCreateUser() {
           lastNote = last.note || '';
         }
         return '<div style="display:flex;align-items:center;justify-content:space-between;' +
-          'background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.2);' +
+          'background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);' +
           'border-radius:8px;padding:10px 14px;margin-top:8px">' +
           '<div>' +
-            '<div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:3px">' +
+            /* Document name — dark red, high-contrast on light background */
+            '<div style="font-size:13px;font-weight:700;color:#7f1d1d;margin-bottom:3px">' +
               (d.name || '(encrypted)') + '</div>' +
-            '<div style="font-size:11px;color:var(--muted);font-family:\'DM Mono\',monospace">' +
+            /* Doc ID — slate gray, clearly readable */
+            '<div style="font-size:11px;color:#475569;font-family:\'DM Mono\',monospace">' +
               (d.fullDisplayId || d.displayId || d.id) + '</div>' +
             (lastNote
-              ? '<div style="font-size:11px;color:rgba(249,115,22,.8);margin-top:4px">' +
+              /* Reason note — dark red tone, readable on light red tint background */
+              ? '<div style="font-size:11px;color:#991b1b;margin-top:4px">' +
                   '&#8220;' + lastNote.replace(/<[^>]+>/g, '') + '&#8221;</div>'
               : '') +
           '</div>' +
           '<button class="btn btn-sm" ' +
-          'style="background:#f97316;color:#fff;border:none;white-space:nowrap" ' +
+          'style="background:#dc2626;color:#fff;border:none;white-space:nowrap" ' +
           'onclick="openResubmitModal(\'' + docKey + '\')">' +
           'Submit Correction</button>' +
         '</div>';
