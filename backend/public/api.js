@@ -2,19 +2,21 @@
    api.js - Centralized API Requests
    CIT Document Tracker - Group 6
 
-   TWO SCAN LOG FUNCTIONS:
-     apiLogScan()           - public, auto, no auth. Saves to scan_logs collection.
-     apiAddMovementLog()    - protected, admin only. Saves to doc.history.
+   WORKFLOW REFACTOR ADDITIONS:
+     apiResubmitDocument()        — POST /api/documents/resubmit
+       User uploads corrected file when status = 'Action Required: Resubmission'.
+       Uses FormData (multipart). Requires file attachment.
 
-   TWO LOG FETCH FUNCTIONS:
-     apiGetAllScanLogs()    - fetches from scan_logs collection (QR auto events)
-     apiGetAllMovementLogs()- fetches admin movement entries from doc.history
+     WORKFLOW_STATUS              — Canonical status string constants.
+       Import/use these instead of raw strings to avoid typos.
+       Example: WORKFLOW_STATUS.SUBMITTED === 'Submitted'
 
-   NEW:
-     apiGetDocumentForOwner() - protected. Returns plaintext name/purpose if
-                                requester is the document owner or admin.
-                                Returns only encrypted blobs for non-owners.
-                                Used by the track page for logged-in users.
+     WORKFLOW_ACTIONS             — Canonical action string constants.
+       Example: WORKFLOW_ACTIONS.STAFF.FORWARD === 'forward'
+
+   UPDATED:
+     apiUpdateDocumentStatusByRole() — unchanged signature; now maps to
+       the new deterministic state machine on the backend.
 
    Returns:
      - Response JSON  if request succeeded (2xx)
@@ -23,6 +25,97 @@
 ══════════════════════════════════════════════════════════════════════ */
 
 const API_BASE = window.CIT_API_BASE || '';
+
+/* ══════════════════════════════════════════════════════════════════════
+   WORKFLOW CONSTANTS
+   Use these instead of raw strings to prevent typos and make refactoring
+   easier. All values match the backend Document model enum exactly.
+══════════════════════════════════════════════════════════════════════ */
+
+/** Canonical status values — must match Document.js status enum */
+const WORKFLOW_STATUS = Object.freeze({
+  /* Intake */
+  SUBMITTED:                    'Submitted',
+  /* Staff stage */
+  UNDER_INITIAL_REVIEW:         'Under Initial Review',
+  ACTION_REQUIRED_RESUBMISSION: 'Action Required: Resubmission',
+  RETURNED_TO_REQUESTER:        'Returned to Requester',
+  /* Faculty stage */
+  UNDER_EVALUATION:             'Under Evaluation',
+  REVISION_REQUESTED:           'Revision Requested',
+  /* Admin stage */
+  PENDING_FINAL_APPROVAL:       'Pending Final Approval',
+  SENT_BACK_FOR_REEVALUATION:   'Sent Back for Reevaluation',
+  /* Terminal */
+  APPROVED_AND_RELEASED:        'Approved and Released',
+  REJECTED:                     'Rejected',
+});
+
+/** Canonical current_role values */
+const WORKFLOW_ROLE = Object.freeze({
+  STAFF:     'staff',
+  FACULTY:   'faculty',
+  ADMIN:     'admin',
+  USER:      'user',
+  COMPLETED: 'completed',
+});
+
+/** Canonical action values per role */
+const WORKFLOW_ACTIONS = Object.freeze({
+  STAFF: {
+    START_REVIEW:          'start_review',
+    FORWARD:               'forward',
+    REQUEST_RESUBMISSION:  'request_resubmission',
+    RETURN_TO_REQUESTER:   'return_to_requester',
+  },
+  FACULTY: {
+    APPROVE:               'approve',
+    REJECT:                'reject',
+    REQUEST_REVISION:      'request_revision',
+  },
+  ADMIN: {
+    RELEASE:               'release',
+    REJECT:                'reject',
+    SEND_BACK:             'send_back',
+  },
+  USER: {
+    RESUBMIT:              'resubmit',
+  },
+});
+
+/** Human-readable labels for each status */
+const STATUS_LABELS = {
+  'Submitted':                    'Submitted',
+  'Under Initial Review':         'Under Initial Review',
+  'Action Required: Resubmission':'Action Required',
+  'Returned to Requester':        'Returned to Requester',
+  'Under Evaluation':             'Under Evaluation',
+  'Revision Requested':           'Revision Requested',
+  'Pending Final Approval':       'Pending Final Approval',
+  'Sent Back for Reevaluation':   'Sent Back for Reevaluation',
+  'Approved and Released':        'Approved & Released',
+  'Rejected':                     'Rejected',
+  /* Legacy */
+  'Received':    'Received',
+  'Processing':  'Processing',
+  'On Hold':     'On Hold',
+  'Released':    'Released',
+  'Returned':    'Returned',
+};
+
+/** Owner label for each status (who needs to act next) */
+const STATUS_OWNER = {
+  'Submitted':                    'Staff',
+  'Under Initial Review':         'Staff',
+  'Action Required: Resubmission':'You',
+  'Returned to Requester':        '—',
+  'Under Evaluation':             'Faculty',
+  'Revision Requested':           'Staff',
+  'Pending Final Approval':       'Admin',
+  'Sent Back for Reevaluation':   'Faculty',
+  'Approved and Released':        '—',
+  'Rejected':                     '—',
+};
 
 /* ── Core JSON helper ── */
 async function apiRequest(method, path, body = null, token = null) {
@@ -85,12 +178,10 @@ async function apiGetMe(token) {
   return await apiRequest('GET', '/api/auth/me', null, token || _jwt());
 }
 
-/* ── GET /api/auth/users (admin only) ── */
 async function apiGetUsers(token) {
   return await apiRequest('GET', '/api/auth/users', null, token || _jwt());
 }
 
-/* ── POST /api/auth/heartbeat ── keeps lastSeen fresh while user is active */
 async function apiHeartbeat(token) {
   return await apiRequest('POST', '/api/auth/heartbeat', {}, token || _jwt());
 }
@@ -131,20 +222,15 @@ async function apiGetAllDocuments(token, ownerId, role) {
 }
 
 async function apiTrackDocument(documentId) {
-  /* Add _ts to bust browser cache — QR scans must always reflect live DB state */
-  return await apiRequest('GET', `/api/documents/track/${encodeURIComponent(documentId)}?_ts=${Date.now()}`);
+  return await apiRequest(
+    'GET',
+    `/api/documents/track/${encodeURIComponent(documentId)}?_ts=${Date.now()}`
+  );
 }
 
-/* ── GET /api/documents/:id/details (JWT required) ─────────────────
-   NEW: Ownership-aware track endpoint.
-   Returns plaintext name + purpose IF requester is the owner or admin.
-   Returns only encrypted blobs (isOwner: false) for non-owners.
-   The track page calls this instead of apiTrackDocument when the
-   user is logged in, so decryption decisions are made server-side. */
 async function apiGetDocumentForOwner(documentId, token) {
   return await apiRequest(
     'GET',
-    /* Add _ts to bust browser cache — ownership check must hit live DB */
     `/api/documents/${encodeURIComponent(documentId)}/details?_ts=${Date.now()}`,
     null,
     token || _jwt()
@@ -152,15 +238,30 @@ async function apiGetDocumentForOwner(documentId, token) {
 }
 
 async function apiGetOriginalFile(documentId) {
-  return await apiRequest('GET', `/api/documents/${encodeURIComponent(documentId)}/original-file`, null, _jwt());
+  return await apiRequest(
+    'GET',
+    `/api/documents/${encodeURIComponent(documentId)}/original-file`,
+    null,
+    _jwt()
+  );
 }
 
 async function apiDownloadDocument(documentId) {
-  return await apiRequest('GET', `/api/documents/download/${encodeURIComponent(documentId)}`, null, _jwt());
+  return await apiRequest(
+    'GET',
+    `/api/documents/download/${encodeURIComponent(documentId)}`,
+    null,
+    _jwt()
+  );
 }
 
 async function apiUpdateDocumentStatus(documentId, payload, token) {
-  return await apiRequest('PATCH', `/api/documents/${encodeURIComponent(documentId)}/status`, payload, token || _jwt());
+  return await apiRequest(
+    'PATCH',
+    `/api/documents/${encodeURIComponent(documentId)}/status`,
+    payload,
+    token || _jwt()
+  );
 }
 
 async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileString, fileExt, token) {
@@ -187,20 +288,22 @@ async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileStr
 }
 
 async function apiDeleteDocument(documentId, token) {
-  return await apiRequest('DELETE', `/api/documents/${encodeURIComponent(documentId)}`, null, token || _jwt());
+  return await apiRequest(
+    'DELETE',
+    `/api/documents/${encodeURIComponent(documentId)}`,
+    null,
+    token || _jwt()
+  );
 }
 
-/* ── POST /api/documents/:id/scan-log (PUBLIC - no auth) ──────────
-   Auto-log when a QR code is scanned.
-   Saves to the scan_logs collection ONLY.
-   Does NOT touch doc.history. */
 async function apiLogScan(documentId, payload) {
-  return await apiRequest('POST', `/api/documents/${encodeURIComponent(documentId)}/scan-log`, payload);
+  return await apiRequest(
+    'POST',
+    `/api/documents/${encodeURIComponent(documentId)}/scan-log`,
+    payload
+  );
 }
 
-/* ── POST /api/documents/:id/movement (Admin only - JWT required) ──
-   Manual movement log, added by admin. Saves to doc.history.
-   Users cannot call this endpoint. */
 async function apiAddMovementLog(documentId, payload, token) {
   return await apiRequest(
     'POST',
@@ -210,15 +313,10 @@ async function apiAddMovementLog(documentId, payload, token) {
   );
 }
 
-/* ── GET /api/documents/scan-logs (admin only) ────────────────────
-   Fetches from the scan_logs collection.
-   These are auto-generated QR scan events only. */
 async function apiGetAllScanLogs(token) {
   return await apiRequest('GET', '/api/documents/scan-logs', null, token || _jwt());
 }
 
-/* ── GET /api/documents/movement-logs (admin only) ────────────────
-   Fetches admin-created movement entries from document histories. */
 async function apiGetAllMovementLogs(token) {
   return await apiRequest('GET', '/api/documents/movement-logs', null, token || _jwt());
 }
@@ -227,36 +325,88 @@ async function apiGetAllMovementLogs(token) {
    NOTIFICATION ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */
 
-/* ── GET /api/notifications ── (protected)
-   Returns the current user's notifications (newest first, limit 50). */
 async function apiGetNotifications(token) {
   return await apiRequest('GET', '/api/notifications', null, token || _jwt());
 }
 
-/* ── POST /api/notifications/mark-read ── (protected)
-   Marks all of the current user's unread notifications as read. */
 async function apiMarkNotificationsRead(token) {
   return await apiRequest('POST', '/api/notifications/mark-read', {}, token || _jwt());
 }
+
 /* ══════════════════════════════════════════════════════════════════════
    WORKFLOW ENDPOINTS  (staff | faculty | admin)
 ══════════════════════════════════════════════════════════════════════ */
 
-/* ── POST /api/documents/update-status ──
-   Role-based workflow transitions:
-     staff   → action:'process'  (Received → Processing / faculty stage)
-     faculty → action:'approve'  (Processing/faculty → Processing/admin stage)
-             → action:'reject'   (Processing/faculty → Rejected/completed)
-     admin   → action:'release'  (Processing/admin   → Released/completed)
-             → action:'reject'   (any stage           → Rejected/completed)
-   Body: { documentId, action, note?, location? }                        */
+/**
+ * apiUpdateDocumentStatusByRole()
+ * Calls POST /api/documents/update-status.
+ * Backend enforces strict state-machine transitions.
+ *
+ * @param {Object} payload  { documentId, action, note?, location? }
+ * @param {string} token    JWT (optional; falls back to localStorage)
+ *
+ * Staff actions:
+ *   WORKFLOW_ACTIONS.STAFF.START_REVIEW
+ *   WORKFLOW_ACTIONS.STAFF.FORWARD
+ *   WORKFLOW_ACTIONS.STAFF.REQUEST_RESUBMISSION  (note required)
+ *   WORKFLOW_ACTIONS.STAFF.RETURN_TO_REQUESTER   (note required)
+ *
+ * Faculty actions:
+ *   WORKFLOW_ACTIONS.FACULTY.APPROVE
+ *   WORKFLOW_ACTIONS.FACULTY.REJECT
+ *   WORKFLOW_ACTIONS.FACULTY.REQUEST_REVISION    (note required)
+ *
+ * Admin actions:
+ *   WORKFLOW_ACTIONS.ADMIN.RELEASE
+ *   WORKFLOW_ACTIONS.ADMIN.REJECT
+ *   WORKFLOW_ACTIONS.ADMIN.SEND_BACK             (note required)
+ */
 async function apiUpdateDocumentStatusByRole(payload, token) {
   return await apiRequest('POST', '/api/documents/update-status', payload, token || _jwt());
 }
 
-/* ── POST /api/auth/users/create  (admin only) ──
-   Creates a staff or faculty account.
-   Body: { username, name, password, role, employee_id, color? }         */
+/**
+ * apiResubmitDocument()
+ * Calls POST /api/documents/resubmit  (user role only).
+ * Used when doc.status === 'Action Required: Resubmission'.
+ *
+ * @param {string}      documentId           internalId or displayId
+ * @param {string}      encryptedFileString  IDEA-encrypted file content
+ * @param {string}      fileExt              file extension (e.g. '.pdf')
+ * @param {string|null} note                 optional user note / correction summary
+ * @param {string}      token                JWT (optional; falls back to localStorage)
+ *
+ * Returns { status: 'Submitted', current_role: 'staff', resubmissionCount, … }
+ *      or { _error: true, message } on failure
+ *      or null on network error
+ */
+async function apiResubmitDocument(documentId, encryptedFileString, fileExt, note, token) {
+  try {
+    const form = new FormData();
+
+    const payload = { documentId };
+    if (note) payload.note = note;
+    if (fileExt) payload.fileExt = fileExt;
+
+    form.append('data', JSON.stringify(payload));
+
+    if (encryptedFileString) {
+      const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
+      const filename = 'resubmission' + (fileExt || '.bin');
+      form.append('file', blob, filename);
+    }
+
+    return await apiFormRequest('POST', '/api/documents/resubmit', form, token || _jwt());
+  } catch (e) {
+    console.warn('[apiResubmitDocument]', e.message);
+    return null;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADMIN USER MANAGEMENT
+══════════════════════════════════════════════════════════════════════ */
+
 async function apiCreateUserByAdmin(payload, token) {
   return await apiRequest('POST', '/api/auth/users/create', payload, token || _jwt());
 }

@@ -2,13 +2,14 @@
    routes/documentRoutes.js
    CIT Document Tracker - Group 6
 
-   STAFF / FACULTY ADDITIONS (new routes marked NEW):
-     POST /create           (user only)         — submit a new document
-     GET  /my               (user only)         — get own documents
-     POST /update-status    (staff|faculty|admin)— role-based workflow action
+   WORKFLOW REFACTOR ADDITIONS:
+     POST /resubmit  (user only, file upload required)
+       Called when document status = "Action Required: Resubmission".
+       User uploads a corrected file; status resets to "Submitted".
+       MUST be declared before /:documentId/… param routes.
 
-   EXISTING ROUTES (unchanged):
-     Public:
+   ROUTE MAP:
+     Public (no auth):
        GET  /track/:documentId
        GET  /download/:documentId
        POST /:documentId/scan-log
@@ -17,20 +18,26 @@
        GET  /scan-logs
        GET  /movement-logs
        POST /:documentId/movement
-       PATCH /:documentId/status          (full admin control + file upload)
+       PATCH /:documentId/status    (legacy full admin control + file upload)
        DELETE /:documentId
 
-     Protected (JWT):
-       POST /register                     (legacy — all authenticated users)
-       GET  /                             (role-filtered per caller's role)
+     User only:
+       POST /create                 (submit new document)
+       GET  /my                     (own documents)
+       POST /resubmit               (re-upload after Action Required: Resubmission)
+
+     Staff | Faculty | Admin:
+       POST /update-status          (workflow state machine transitions)
+
+     Protected (JWT, any role):
+       POST /register               (legacy)
+       GET  /                       (role-filtered)
        GET  /:documentId/details
        GET  /:documentId/original-file
 
    ROUTE ORDER NOTE:
-     Static segment routes (/create, /my, /update-status, /scan-logs,
-     /movement-logs, /register) MUST appear before parameterised routes
-     (/:documentId/…) to prevent Express from treating those path
-     segments as the :documentId parameter.
+     All static-segment routes MUST appear before /:documentId/… routes
+     to prevent Express from interpreting path segments as :documentId.
 ══════════════════════════════════════════════════════════════════════ */
 
 const express    = require('express');
@@ -40,6 +47,7 @@ const {
   registerDocument,
   createDocument,
   getMyDocuments,
+  resubmitDocument,
   updateDocumentStatusByRole,
   trackDocument,
   downloadDocument,
@@ -55,7 +63,7 @@ const {
 } = require('../controllers/documentController');
 const protect = require('../middleware/authMiddleware');
 
-/* ── Role guards ────────────────────────────────────────────────── */
+/* ── Role guards ─────────────────────────────────────────────────── */
 const adminOnly = (req, res, next) => {
   if (!req.user || req.user.role !== 'admin')
     return res.status(403).json({ message: 'Admin access required.' });
@@ -69,19 +77,19 @@ const userOnly = (req, res, next) => {
 };
 
 /**
- * staffFacultyAdmin — allows staff, faculty and admin.
- * Used for the /update-status workflow endpoint.
- * Regular users cannot change document status.
+ * staffFacultyAdmin — staff, faculty and admin.
+ * Regular users CANNOT change document status.
+ * Users who need to resubmit must use POST /resubmit instead.
  */
 const staffFacultyAdmin = (req, res, next) => {
   if (!req.user || !['staff', 'faculty', 'admin'].includes(req.user.role))
-    return res.status(403).json({ message: 'Staff, faculty or admin access required.' });
+    return res.status(403).json({ message: 'Staff, faculty, or admin access required.' });
   next();
 };
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 20 * 1024 * 1024 },
+  limits:  { fileSize: 20 * 1024 * 1024 },   // 20 MB
 });
 
 /* ══════════════════════════════════════════════════════════════════
@@ -99,14 +107,13 @@ router.get ('/movement-logs',          protect, adminOnly, getAllMovementLogs);
 router.post('/:documentId/movement',   protect, adminOnly, addMovementLog);
 
 /* ══════════════════════════════════════════════════════════════════
-   NEW WORKFLOW ROUTES
-   Declared BEFORE /:documentId/… to avoid param matching conflicts.
+   USER ONLY ROUTES
+   All declared BEFORE /:documentId/… to avoid param matching.
 ══════════════════════════════════════════════════════════════════ */
 
 /**
  * POST /api/documents/create  (user role only)
- * Enforces 'user' role at controller level.
- * Supports optional file upload via FormData (same as /register).
+ * Submit a new document. Sets status = 'Submitted', current_role = 'staff'.
  */
 router.post('/create',
   protect,
@@ -116,7 +123,9 @@ router.post('/create',
 );
 
 /**
- * GET /api/documents/my  (user role — own documents)
+ * GET /api/documents/my  (user role — own documents only)
+ * Returns all docs owned by the authenticated user,
+ * including those with current_role = 'user' that require action.
  */
 router.get('/my',
   protect,
@@ -125,9 +134,45 @@ router.get('/my',
 );
 
 /**
+ * POST /api/documents/resubmit  (user role only)
+ * Called when doc.status === 'Action Required: Resubmission'.
+ * User must attach a corrected file via FormData.
+ * Body: { data: JSON.stringify({ documentId, note? }), file: <blob> }
+ * Resets status → 'Submitted', current_role → 'staff'.
+ * Increments resubmissionCount on the document.
+ */
+router.post('/resubmit',
+  protect,
+  userOnly,
+  upload.single('file'),
+  resubmitDocument,
+);
+
+/* ══════════════════════════════════════════════════════════════════
+   WORKFLOW ROUTES  (staff | faculty | admin)
+   Declared BEFORE /:documentId/… to avoid param matching.
+══════════════════════════════════════════════════════════════════ */
+
+/**
  * POST /api/documents/update-status  (staff | faculty | admin)
- * No file upload here — admin file uploads use PATCH /:id/status.
+ * Deterministic state-machine endpoint.
  * Body: { documentId, action, note?, location? }
+ *
+ * Staff actions:
+ *   start_review         — Submitted → Under Initial Review
+ *   forward              — Under Initial Review | Revision Requested → Under Evaluation
+ *   request_resubmission — Under Initial Review → Action Required: Resubmission (note req.)
+ *   return_to_requester  — Under Initial Review → Returned to Requester (note req.)
+ *
+ * Faculty actions:
+ *   approve              — Under Evaluation | Sent Back → Pending Final Approval
+ *   reject               — Under Evaluation | Sent Back → Rejected
+ *   request_revision     — Under Evaluation | Sent Back → Revision Requested (note req.)
+ *
+ * Admin actions:
+ *   release              — Pending Final Approval → Approved and Released
+ *   reject               — Pending Final Approval → Rejected
+ *   send_back            — Pending Final Approval → Sent Back for Reevaluation (note req.)
  */
 router.post('/update-status',
   protect,
@@ -136,13 +181,12 @@ router.post('/update-status',
 );
 
 /* ══════════════════════════════════════════════════════════════════
-   PROTECTED ROUTES (JWT required)
+   PROTECTED ROUTES (JWT required, any role)
 ══════════════════════════════════════════════════════════════════ */
 
 /**
- * POST /api/documents/register  (legacy — preserved for backward compat)
- * Any authenticated user may register a document via this route.
- * New integrations should prefer POST /api/documents/create.
+ * POST /api/documents/register  (legacy — any authenticated user)
+ * New integrations should prefer POST /create or POST /resubmit.
  */
 router.post('/register',
   protect,
@@ -154,19 +198,18 @@ router.post('/register',
  * GET /api/documents
  * Role-filtered:
  *   admin   → all documents
- *   staff   → current_stage = 'staff'
- *   faculty → current_stage = 'faculty'
- *   user    → own documents (filtered by ownerId query param or JWT identity)
+ *   staff   → current_role = 'staff' (Submitted, Under Initial Review, Revision Requested)
+ *   faculty → current_role = 'faculty' (Under Evaluation, Sent Back for Reevaluation)
+ *   user    → own documents only (includes Action Required: Resubmission)
  */
 router.get('/',
   protect,
   getAllDocuments,
 );
 
-/*
+/**
  * GET /:documentId/details — ownership-aware track endpoint.
- * Must be declared BEFORE /:documentId/status to avoid Express
- * matching 'details' as the :documentId parameter value.
+ * Declared BEFORE /:documentId/status to avoid conflict.
  */
 router.get('/:documentId/details',
   protect,
@@ -179,9 +222,8 @@ router.get('/:documentId/original-file',
 );
 
 /**
- * PATCH /:documentId/status  (admin only — full control + file upload)
- * Preserved unchanged for admin backward compatibility.
- * Also auto-advances current_stage when status changes.
+ * PATCH /:documentId/status  (admin only — legacy full control + file upload)
+ * Also syncs current_role and current_stage based on the new status.
  */
 router.patch('/:documentId/status',
   protect,

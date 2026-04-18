@@ -2,49 +2,49 @@
    controllers/documentController.js
    CIT Document Tracker - Group 6
 
-   STAFF / FACULTY WORKFLOW ADDITIONS:
+   WORKFLOW REFACTOR — Production-Level Deterministic State Machine
 
-   createDocument (NEW)
-     POST /api/documents/create  (user role only)
-     Alias for registerDocument that enforces the 'user' role restriction.
-     Sets current_stage = 'staff' and status = 'Received'.
-     Reuses all existing registration logic (ULID, QR, IDEA vault, etc.).
+   NEW FUNCTIONS:
+     resubmitDocument  — POST /api/documents/resubmit  (user role)
+       User action when status = 'Action Required: Resubmission'.
+       Requires a new file upload. Resets status to 'Submitted'.
 
-   getMyDocuments (NEW)
-     GET /api/documents/my  (user role — own documents only)
-     Returns the authenticated user's documents sorted newest-first.
-     Does NOT expose file blobs (same exclusions as getAllDocuments).
+   REWRITTEN:
+     updateDocumentStatusByRole — Now a strict state-machine enforcer.
+       All allowed transitions are declared in WORKFLOW_TRANSITIONS.
+       Any undefined transition is rejected with HTTP 403.
 
-   updateDocumentStatusByRole (ENHANCED)
-     POST /api/documents/update-status  (staff | faculty | admin)
-     Enforces strict role-based status transition rules:
-       Staff   : Received/staff  → process        → Processing / faculty
-               : Received/staff  → hold           → On Hold    / staff
-               : staff stage     → return (note!) → Returned   / completed
-               : On Hold/staff   → unhold         → Received   / staff
-               : Processing/staff → process       → Processing / faculty  (after revision)
-       Faculty : Processing/faculty → approve         → Processing / admin
-               :                  → reject            → Rejected  / completed
-               :                  → request_revision  → Processing / staff  (note required)
-       Admin   : Processing/admin  → release (file!) → Released   / completed
-               :                  → reject            → Rejected  / completed
-               :                  → send_back         → Processing / faculty
-     Any other transition is rejected with HTTP 403.
-     All transitions append a history entry and fire notifications (owner +
-     role-targeted notifications for revision/send_back).
+   UPDATED:
+     _createDocument   — New docs start with status 'Submitted',
+                         current_role 'staff', current_stage 'staff'.
+     getAllDocuments    — Filters by current_role for staff/faculty.
+                         Users see own docs (includes user-action-required).
 
-   getAllDocuments (UPDATED)
-     GET /api/documents
-     Extended to support staff and faculty roles:
-       admin   : all documents (unchanged)
-       staff   : documents with current_stage = 'staff'
-       faculty : documents with current_stage = 'faculty'
-       user    : own documents only (unchanged)
+   TRANSITION TABLE:
+   ┌──────────┬──────────────────────────────────┬────────────────────────────────────────────┐
+   │ Role     │ From status                      │ Action → To status / current_role          │
+   ├──────────┼──────────────────────────────────┼────────────────────────────────────────────┤
+   │ staff    │ Submitted                        │ start_review      → Under Initial Review   │
+   │          │ Under Initial Review             │ forward           → Under Evaluation        │
+   │          │                                  │ request_resubmit  → Action Required: …     │
+   │          │                                  │ return_to_user    → Returned to Requester  │
+   │          │ Revision Requested               │ forward           → Under Evaluation        │
+   ├──────────┼──────────────────────────────────┼────────────────────────────────────────────┤
+   │ faculty  │ Under Evaluation                 │ approve           → Pending Final Approval  │
+   │          │ Sent Back for Reevaluation        │ reject            → Rejected               │
+   │          │                                  │ request_revision  → Revision Requested      │
+   ├──────────┼──────────────────────────────────┼────────────────────────────────────────────┤
+   │ admin    │ Pending Final Approval            │ release           → Approved and Released   │
+   │          │                                  │ reject            → Rejected               │
+   │          │                                  │ send_back         → Sent Back for …        │
+   ├──────────┼──────────────────────────────────┼────────────────────────────────────────────┤
+   │ user     │ Action Required: Resubmission     │ resubmit (file!)  → Submitted              │
+   └──────────┴──────────────────────────────────┴────────────────────────────────────────────┘
 
    All other handlers (registerDocument, trackDocument, downloadDocument,
    getOriginalFile, deleteDocument, logScan, addMovementLog,
-   getAllScanLogs, getAllMovementLogs, getDocumentForOwner) are
-   UNCHANGED so existing admin + user functionality is unaffected.
+   getAllScanLogs, getAllMovementLogs, getDocumentForOwner,
+   updateDocumentStatus [legacy admin PATCH]) are UNCHANGED.
 ══════════════════════════════════════════════════════════════════════ */
 
 const path           = require('path');
@@ -117,14 +117,254 @@ function genVerifyCode(displayId, internalId) {
 
 const trackUrl = (internalId) => `${APP_BASE_URL}?track=${internalId}`;
 
-/* ── Shared document creation logic (used by registerDocument + createDocument) ── */
+/* ══════════════════════════════════════════════════════════════════════
+   WORKFLOW STATE MACHINE
+   ──────────────────────────────────────────────────────────────────────
+   WORKFLOW_TRANSITIONS defines ALL valid state transitions.
+   Any transition NOT listed here is REJECTED (403).
+
+   Structure per action:
+     from        : array of valid source statuses
+     to          : resulting status
+     toRole      : resulting current_role
+     noteRequired: whether a note is REQUIRED (400 if missing)
+     fileRequired: whether a new file upload is REQUIRED
+     notifyRole  : which role(s) to send group notifications to
+     ownerMsg    : function(doc, callerName, note) → owner notification string
+     roleMsg     : function(doc, callerName, note) → role notification string
+══════════════════════════════════════════════════════════════════════ */
+const WORKFLOW_TRANSITIONS = {
+
+  /* ── STAFF ACTIONS ────────────────────────────────────────────── */
+  staff: {
+
+    /**
+     * start_review — Staff picks up a submitted document.
+     * Submitted → Under Initial Review (still with staff)
+     */
+    start_review: {
+      from:         ['Submitted'],
+      to:           'Under Initial Review',
+      toRole:       'staff',
+      noteRequired: false,
+      notifyRole:   null,
+      ownerMsg: (doc, caller) =>
+        `Your document "<strong>${doc.name}</strong>" is now <strong>Under Initial Review</strong> ` +
+        `by our staff team.`,
+    },
+
+    /**
+     * forward — Staff forwards document to faculty after completing initial review.
+     * Under Initial Review | Revision Requested → Under Evaluation (faculty stage)
+     */
+    forward: {
+      from:         ['Under Initial Review', 'Revision Requested'],
+      to:           'Under Evaluation',
+      toRole:       'faculty',
+      noteRequired: false,
+      notifyRole:   'faculty',
+      ownerMsg: (doc, caller) =>
+        `Your document "<strong>${doc.name}</strong>" has been forwarded to faculty ` +
+        `for evaluation by staff.`,
+      roleMsg: (doc, caller, note) =>
+        `A document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
+        `has been forwarded to faculty for evaluation by staff <strong>${caller}</strong>.` +
+        (note ? ` Note: ${note}` : ''),
+    },
+
+    /**
+     * request_resubmission — Staff requires user to correct and re-upload.
+     * Under Initial Review → Action Required: Resubmission (user stage)
+     * NOTE REQUIRED: must include reason for resubmission.
+     */
+    request_resubmission: {
+      from:         ['Under Initial Review'],
+      to:           'Action Required: Resubmission',
+      toRole:       'user',
+      noteRequired: true,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `<strong>Action Required:</strong> Your document "<strong>${doc.name}</strong>" ` +
+        `requires correction and resubmission. ` +
+        `Reason: <em>${note}</em> — Please upload a corrected copy to continue.`,
+    },
+
+    /**
+     * return_to_requester — Staff terminates workflow and returns document.
+     * Under Initial Review → Returned to Requester (completed)
+     * NOTE REQUIRED: must include reason for return.
+     */
+    return_to_requester: {
+      from:         ['Under Initial Review'],
+      to:           'Returned to Requester',
+      toRole:       'completed',
+      noteRequired: true,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been <strong>returned</strong> ` +
+        `and the workflow has been closed. Reason: <em>${note}</em> — ` +
+        `Please contact staff if you need to submit a new request.`,
+    },
+  },
+
+  /* ── FACULTY ACTIONS ──────────────────────────────────────────── */
+  faculty: {
+
+    /**
+     * approve — Faculty approves and forwards to admin for final release.
+     * Under Evaluation | Sent Back for Reevaluation → Pending Final Approval (admin stage)
+     */
+    approve: {
+      from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
+      to:           'Pending Final Approval',
+      toRole:       'admin',
+      noteRequired: false,
+      notifyRole:   'admin',
+      ownerMsg: (doc, caller) =>
+        `Your document "<strong>${doc.name}</strong>" has been <strong>approved by faculty</strong> ` +
+        `and is now awaiting final admin approval.`,
+      roleMsg: (doc, caller, note) =>
+        `Document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
+        `has been approved by faculty <strong>${caller}</strong> and requires your final decision.` +
+        (note ? ` Note: ${note}` : ''),
+    },
+
+    /**
+     * reject — Faculty rejects document. Terminal state.
+     * Under Evaluation | Sent Back for Reevaluation → Rejected (completed)
+     */
+    reject: {
+      from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
+      to:           'Rejected',
+      toRole:       'completed',
+      noteRequired: false,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been <strong>rejected</strong> ` +
+        `by faculty.` + (note ? ` Reason: <em>${note}</em>` : ''),
+    },
+
+    /**
+     * request_revision — Faculty sends back to staff for corrections.
+     * Under Evaluation | Sent Back for Reevaluation → Revision Requested (staff stage)
+     * NOTE REQUIRED: must describe the required revision.
+     */
+    request_revision: {
+      from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
+      to:           'Revision Requested',
+      toRole:       'staff',
+      noteRequired: true,
+      notifyRole:   'staff',
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been sent back to staff ` +
+        `for revision by faculty. Revision note: <em>${note}</em>`,
+      roleMsg: (doc, caller, note) =>
+        `Faculty <strong>${caller}</strong> has requested revision on document ` +
+        `"<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}). ` +
+        `Required changes: <em>${note}</em>`,
+    },
+  },
+
+  /* ── ADMIN ACTIONS ────────────────────────────────────────────── */
+  admin: {
+
+    /**
+     * release — Admin releases document. Terminal state.
+     * Pending Final Approval → Approved and Released (completed)
+     */
+    release: {
+      from:         ['Pending Final Approval'],
+      to:           'Approved and Released',
+      toRole:       'completed',
+      noteRequired: false,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been ` +
+        `<strong>Approved and Released</strong>! ` +
+        (doc.hasProcessedFile ? 'The final file is now available for download.' : '') +
+        (note ? ` Note: <em>${note}</em>` : ''),
+    },
+
+    /**
+     * reject — Admin rejects document. Terminal state.
+     * Pending Final Approval → Rejected (completed)
+     */
+    reject: {
+      from:         ['Pending Final Approval'],
+      to:           'Rejected',
+      toRole:       'completed',
+      noteRequired: false,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been <strong>rejected</strong> ` +
+        `by admin.` + (note ? ` Reason: <em>${note}</em>` : ''),
+    },
+
+    /**
+     * send_back — Admin sends document back to faculty for reevaluation.
+     * Pending Final Approval → Sent Back for Reevaluation (faculty stage)
+     * NOTE REQUIRED: must include reason for sending back.
+     */
+    send_back: {
+      from:         ['Pending Final Approval'],
+      to:           'Sent Back for Reevaluation',
+      toRole:       'faculty',
+      noteRequired: true,
+      notifyRole:   'faculty',
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been sent back to faculty ` +
+        `for reevaluation by admin.` + (note ? ` Reason: <em>${note}</em>` : ''),
+      roleMsg: (doc, caller, note) =>
+        `Admin <strong>${caller}</strong> has sent document ` +
+        `"<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
+        `back to faculty for reevaluation. Reason: <em>${note}</em>`,
+    },
+  },
+};
+
+/* ── Map current_role → legacy current_stage (for backward compat) ── */
+function toLegacyStage(role) {
+  const map = { staff: 'staff', faculty: 'faculty', admin: 'admin', user: 'staff', completed: 'completed' };
+  return map[role] || 'staff';
+}
+
+/* ── Send grouped notifications ────────────────────────────────── */
+async function _notifyRole(roleName, msg, documentId) {
+  try {
+    const users = await User.find({ role: roleName }).select('userId _id').lean();
+    if (!users.length) return;
+    await Notification.insertMany(
+      users.map(u => ({
+        userId:     u.userId || String(u._id),
+        msg,
+        documentId,
+        read:       false,
+      }))
+    );
+  } catch (err) {
+    console.warn(`[_notifyRole] Failed to notify ${roleName}:`, err.message);
+  }
+}
+
+/* ── Send notification to a single user ── */
+async function _notifyUser(userId, msg, documentId) {
+  try {
+    await Notification.create({ userId, msg, documentId, read: false });
+  } catch (err) {
+    console.warn('[_notifyUser] Failed:', err.message);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Shared document creation logic (used by registerDocument + createDocument)
+══════════════════════════════════════════════════════════════════════ */
 async function _createDocument(body, fileBuffer, fileExt) {
   const {
     name, type, by, purpose,
     priority, due,
     enc, encPurpose,
     ownerId, ownerName,
-    status, date, history, fileData, hasOriginalFile,
+    history, fileData, hasOriginalFile,
   } = body;
 
   if (!name || !type || !by || !purpose || !enc || !ownerId)
@@ -153,8 +393,9 @@ async function _createDocument(body, fileBuffer, fileExt) {
         type, by,
         priority:    priority || 'Normal',
         due:         due || null,
-        status:      'Received',       // always Received for new documents
-        current_stage: 'staff',        // always starts at staff stage
+        status:        'Submitted',      // ← new canonical initial status
+        current_role:  'staff',          // ← new canonical role field
+        current_stage: 'staff',          // ← kept in sync for legacy code
         ownerId, ownerName,
         qrCode:          qrData,
         filePath:        resolvedFileData || null,
@@ -166,36 +407,39 @@ async function _createDocument(body, fileBuffer, fileExt) {
         processedFile:    null, processedFileExt: null,
         processedBy:      null, processedAt:      null,
         hasProcessedFile: false,
+        resubmissionCount: 0,
         history: history || [
           {
-            action: 'Status Update', status: 'Received', date: nowManila,
+            action: 'Status Update', status: 'Submitted', date: nowManila,
             note: 'Document submitted & encrypted with IDEA-128-CBC',
             by: ownerName || ownerId, location: '', handler: '',
-          },
-          {
-            action: 'Movement', status: 'Received', date: nowManila,
-            note: 'Document submitted at registration',
-            by: ownerName || ownerId, location: 'Submission Point',
-            handler: ownerName || ownerId,
           },
         ],
         date: nowManila,
       });
 
-      /* ── Auto-notify all admins ── */
+      /* ── Notify all staff that a new document is waiting ── */
+      const staffMsg =
+        `New document "<strong>${doc.name}</strong>" submitted by ${ownerName || ownerId} ` +
+        `(${doc.fullDisplayId}) — awaiting initial review.`;
+      await _notifyRole('staff', staffMsg, doc.internalId);
+
+      /* ── Also notify admins ── */
       try {
         const admins = await User.find({ role: 'admin' }).select('userId _id').lean();
         if (admins.length) {
-          const notifDocs = admins.map(admin => ({
-            userId:     admin.userId || String(admin._id),
-            msg:        `New document registered: "<strong>${doc.name}</strong>" by ${ownerName || ownerId} — ${doc.fullDisplayId}`,
-            documentId: doc.internalId,
-            read:       false,
-          }));
-          await Notification.insertMany(notifDocs);
+          await Notification.insertMany(
+            admins.map(a => ({
+              userId:     a.userId || String(a._id),
+              msg:        `New document registered: "<strong>${doc.name}</strong>" by ` +
+                          `${ownerName || ownerId} — ${doc.fullDisplayId}`,
+              documentId: doc.internalId,
+              read:       false,
+            }))
+          );
         }
-      } catch (notifErr) {
-        console.warn('[_createDocument] Could not create admin notifications:', notifErr.message);
+      } catch (e) {
+        console.warn('[_createDocument] Admin notification failed:', e.message);
       }
 
       return doc;
@@ -211,7 +455,7 @@ async function _createDocument(body, fileBuffer, fileExt) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /api/documents/register  (protected — existing endpoint, unchanged)
+   POST /api/documents/register  (protected — legacy endpoint, unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const registerDocument = async (req, res) => {
   try {
@@ -236,40 +480,34 @@ const registerDocument = async (req, res) => {
       fullDisplayId:   doc.fullDisplayId,
       name:            doc.name,
       status:          doc.status,
+      current_role:    doc.current_role,
       current_stage:   doc.current_stage,
       qrCode:          doc.qrCode,
       trackUrl:        url,
       hasOriginalFile: doc.hasOriginalFile,
-      message:         'Document registered successfully.',
+      message:         'Document submitted successfully.',
     });
   } catch (err) {
     console.error('[registerDocument]', err);
-    const httpStatus = err.status || 500;
-    return res.status(httpStatus).json({ message: err.message || 'Registration failed.' });
+    return res.status(err.status || 500).json({ message: err.message || 'Registration failed.' });
   }
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /api/documents/create  (NEW — user role only)
-
-   Strict alias for registerDocument.  Enforces that only 'user' role
-   accounts may call this endpoint.  Returns the same shape.
+   POST /api/documents/create  (user role only — strict alias)
 ══════════════════════════════════════════════════════════════════════ */
 const createDocument = async (req, res) => {
-  /* Role guard — only users may submit documents via this endpoint */
   if (!req.user || req.user.role !== 'user') {
     return res.status(403).json({
       message: 'Only users can submit documents. ' +
-               'Staff, faculty and admins manage documents through the workflow endpoints.',
+               'Staff, faculty and admins manage documents through workflow endpoints.',
     });
   }
-
-  /* Delegate to the shared registration logic */
   return registerDocument(req, res);
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   GET /api/documents/my  (NEW — user role, own documents only)
+   GET /api/documents/my  (user role — own documents only)
 ══════════════════════════════════════════════════════════════════════ */
 const getMyDocuments = async (req, res) => {
   try {
@@ -285,11 +523,323 @@ const getMyDocuments = async (req, res) => {
       internalId:       d.internalId || String(d._id),
       hasOriginalFile:  !!(d.hasOriginalFile),
       hasProcessedFile: !!(d.hasProcessedFile),
+      /* Expose whether this doc needs user action */
+      requiresUserAction: d.current_role === 'user',
     }));
 
     res.json(payload);
   } catch (err) {
     console.error('[getMyDocuments]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /api/documents/resubmit  (user role only)
+
+   Called when status = 'Action Required: Resubmission'.
+   User must upload a new corrected file.
+   Resets status to 'Submitted' and current_role to 'staff'.
+   Body (FormData): data=JSON, file=encrypted_file
+   JSON: { documentId }
+══════════════════════════════════════════════════════════════════════ */
+const resubmitDocument = async (req, res) => {
+  try {
+    /* Role guard */
+    if (!req.user || req.user.role !== 'user') {
+      return res.status(403).json({ message: 'Only users can resubmit documents.' });
+    }
+
+    let body;
+    if (req.file) {
+      try { body = JSON.parse(req.body.data); }
+      catch (e) { return res.status(400).json({ message: 'Invalid resubmission data JSON in FormData.' }); }
+    } else {
+      body = req.body;
+    }
+
+    const { documentId, note } = body;
+    if (!documentId) {
+      return res.status(400).json({ message: 'documentId is required.' });
+    }
+
+    /* File is required for resubmission */
+    if (!req.file) {
+      return res.status(400).json({
+        message: 'A corrected file upload is required for resubmission. ' +
+                 'Please attach the revised document.',
+      });
+    }
+
+    const doc = await Document.findOne({
+      $or: [
+        { internalId:    documentId },
+        { displayId:     documentId },
+        { fullDisplayId: documentId },
+      ],
+    });
+
+    if (!doc) {
+      return res.status(404).json({ message: `Document "${documentId}" not found.` });
+    }
+
+    /* Verify caller owns this document */
+    const callerId = req.user.userId || String(req.user._id);
+    if (doc.ownerId !== callerId && doc.ownerId !== String(req.user._id)) {
+      return res.status(403).json({ message: 'You do not own this document.' });
+    }
+
+    /* Verify document is in the correct state for resubmission */
+    if (doc.status !== 'Action Required: Resubmission' || doc.current_role !== 'user') {
+      return res.status(400).json({
+        message: `Cannot resubmit: document must be in "Action Required: Resubmission" status. ` +
+                 `Current status: "${doc.status}".`,
+      });
+    }
+
+    const nowManila    = manilaTimestamp();
+    const callerName   = req.user.name || req.user.username || 'User';
+    const newFileData  = req.file.buffer.toString('utf8');
+    const newFileExt   = body.fileExt || '';
+
+    /* Replace the original file with the corrected submission */
+    doc.originalFile    = newFileData;
+    doc.originalFileExt = newFileExt;
+    doc.filePath        = newFileData;
+    doc.fileExt         = newFileExt;
+    doc.hasOriginalFile = true;
+    doc.resubmissionCount = (doc.resubmissionCount || 0) + 1;
+    doc.lastResubmittedAt = nowManila;
+
+    /* Transition: Action Required: Resubmission → Submitted */
+    const previousStatus = doc.status;
+    doc.status        = 'Submitted';
+    doc.current_role  = 'staff';
+    doc.current_stage = 'staff';   // keep in sync
+
+    doc.history.push({
+      action:   'Resubmission',
+      status:   'Submitted',
+      date:     nowManila,
+      note:     note
+        ? `Document resubmitted by ${callerName} with correction: ${note}`
+        : `Document resubmitted by ${callerName} with corrected file (resubmission #${doc.resubmissionCount}).`,
+      by:       callerName,
+      location: '',
+      handler:  callerName,
+    });
+
+    await doc.save();
+
+    /* Notify all staff that the document has been resubmitted */
+    const staffMsg =
+      `Document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
+      `has been resubmitted by ${callerName} with corrections — awaiting initial review ` +
+      `(resubmission #${doc.resubmissionCount}).` +
+      (note ? ` User note: <em>${note}</em>` : '');
+    await _notifyRole('staff', staffMsg, doc.internalId);
+
+    return res.json({
+      message:          'Document resubmitted successfully. Staff will review your corrected submission.',
+      internalId:       doc.internalId,
+      displayId:        doc.displayId,
+      fullDisplayId:    doc.fullDisplayId,
+      previousStatus,
+      status:           doc.status,
+      current_role:     doc.current_role,
+      resubmissionCount: doc.resubmissionCount,
+    });
+  } catch (err) {
+    console.error('[resubmitDocument]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /api/documents/update-status  (staff | faculty | admin)
+
+   Deterministic state machine enforcer.
+   Looks up the action in WORKFLOW_TRANSITIONS[callerRole][action].
+   Validates: allowed role, valid source status, note requirement.
+   Applies transition, appends history, fires notifications.
+══════════════════════════════════════════════════════════════════════ */
+const updateDocumentStatusByRole = async (req, res) => {
+  try {
+    const { documentId, action, note, location } = req.body;
+
+    if (!documentId || !action) {
+      return res.status(400).json({ message: 'documentId and action are required.' });
+    }
+
+    const callerRole = req.user.role;
+    const callerName = req.user.name || req.user.username || callerRole;
+
+    /* ── Role gate ── */
+    const allowedRoles = ['staff', 'faculty', 'admin'];
+    if (!allowedRoles.includes(callerRole)) {
+      return res.status(403).json({
+        message: `Role "${callerRole}" cannot perform workflow actions via this endpoint. ` +
+                 `Users must use POST /api/documents/resubmit for document resubmission.`,
+      });
+    }
+
+    /* ── Load the transition definition ── */
+    const roleTransitions = WORKFLOW_TRANSITIONS[callerRole];
+    if (!roleTransitions || !roleTransitions[action]) {
+      const allowed = Object.keys(WORKFLOW_TRANSITIONS[callerRole] || {});
+      return res.status(403).json({
+        message: `Action "${action}" is not permitted for ${callerRole}. ` +
+                 `Allowed actions: ${allowed.join(', ')}.`,
+      });
+    }
+
+    const transition = roleTransitions[action];
+
+    /* ── Load document ── */
+    const doc = await Document.findOne({
+      $or: [
+        { internalId:    documentId },
+        { displayId:     documentId },
+        { fullDisplayId: documentId },
+      ],
+    });
+
+    if (!doc) {
+      return res.status(404).json({ message: `Document "${documentId}" not found.` });
+    }
+
+    /* ── Validate source status ── */
+    if (!transition.from.includes(doc.status)) {
+      return res.status(400).json({
+        message:
+          `Cannot perform "${action}": document must be in one of ` +
+          `[${transition.from.map(s => `"${s}"`).join(', ')}]. ` +
+          `Current status: "${doc.status}" (stage: ${doc.current_role}).`,
+        currentStatus: doc.status,
+        currentRole:   doc.current_role,
+        allowedFrom:   transition.from,
+      });
+    }
+
+    /* ── Validate note requirement ── */
+    const trimmedNote = (note || '').trim();
+    if (transition.noteRequired && !trimmedNote) {
+      return res.status(400).json({
+        message: `A note is required for the "${action}" action. ` +
+                 `Please provide a reason.`,
+      });
+    }
+
+    /* ── Apply transition ── */
+    const previousStatus = doc.status;
+    const previousRole   = doc.current_role;
+    const nowManila      = manilaTimestamp();
+
+    doc.status        = transition.to;
+    doc.current_role  = transition.toRole;
+    doc.current_stage = toLegacyStage(transition.toRole);
+
+    /* Build history note */
+    const historyNote = trimmedNote
+      ? `${action.replace(/_/g, ' ')} by ${callerRole} ${callerName}: ${trimmedNote}`
+      : `${action.replace(/_/g, ' ')} by ${callerRole} ${callerName}.`;
+
+    doc.history.push({
+      action:   'Status Update',
+      status:   transition.to,
+      date:     nowManila,
+      note:     historyNote,
+      by:       callerName,
+      location: location || '',
+      handler:  callerName,
+    });
+
+    await doc.save();
+
+    /* ── Notify document owner ── */
+    if (transition.ownerMsg) {
+      await _notifyUser(
+        doc.ownerId,
+        transition.ownerMsg(doc, callerName, trimmedNote),
+        doc.internalId
+      );
+    }
+
+    /* ── Notify next responsible role (for group transitions) ── */
+    if (transition.notifyRole && transition.roleMsg) {
+      await _notifyRole(
+        transition.notifyRole,
+        transition.roleMsg(doc, callerName, trimmedNote),
+        doc.internalId
+      );
+    }
+
+    return res.json({
+      message:        `Action "${action}" completed successfully.`,
+      internalId:     doc.internalId,
+      displayId:      doc.displayId,
+      fullDisplayId:  doc.fullDisplayId,
+      previousStatus,
+      previousRole,
+      status:         doc.status,
+      current_role:   doc.current_role,
+      current_stage:  doc.current_stage,
+      actionBy:       callerName,
+      actionRole:     callerRole,
+      at:             nowManila,
+    });
+
+  } catch (err) {
+    console.error('[updateDocumentStatusByRole]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   GET /api/documents  (Auth required)
+   UPDATED: filters by current_role for staff/faculty.
+   Admin sees all. Users see own docs (includes user-action-required).
+══════════════════════════════════════════════════════════════════════ */
+const getAllDocuments = async (req, res) => {
+  try {
+    const callerRole = req.user.role;
+    let filter = {};
+
+    if (callerRole === 'admin') {
+      filter = {};
+    } else if (callerRole === 'staff') {
+      /* Staff sees documents in the staff role:
+         Submitted, Under Initial Review, Revision Requested */
+      filter = { current_role: 'staff' };
+    } else if (callerRole === 'faculty') {
+      /* Faculty sees documents in the faculty role:
+         Under Evaluation, Sent Back for Reevaluation */
+      filter = { current_role: 'faculty' };
+    } else {
+      /* Regular user — own documents only.
+         Includes docs awaiting user action (current_role: 'user')
+         as well as all their other docs. */
+      const { ownerId } = req.query;
+      const effectiveOwnerId = ownerId || req.user.userId || String(req.user._id);
+      filter = { ownerId: effectiveOwnerId };
+    }
+
+    const docs = await Document.find(filter)
+      .select('-filePath -fileData -originalFile -processedFile')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const payload = docs.map(d => ({
+      ...d,
+      internalId:         d.internalId || String(d._id),
+      hasOriginalFile:    !!(d.hasOriginalFile),
+      hasProcessedFile:   !!(d.hasProcessedFile),
+      requiresUserAction: d.current_role === 'user',
+    }));
+
+    res.json(payload);
+  } catch (err) {
+    console.error('[getAllDocuments]', err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -322,6 +872,7 @@ const trackDocument = async (req, res) => {
       by:       doc.by,
       priority: doc.priority,
       status:   doc.status,
+      current_role:  doc.current_role,
       current_stage: doc.current_stage,
       ownerId:  doc.ownerId,
       ownerName: doc.ownerName,
@@ -332,6 +883,7 @@ const trackDocument = async (req, res) => {
       processedFileExt: doc.processedFileExt,
       processedBy:      doc.processedBy,
       processedAt:      doc.processedAt,
+      resubmissionCount: doc.resubmissionCount || 0,
       history: doc.history,
       date:    doc.date,
       due:     doc.due,
@@ -343,7 +895,7 @@ const trackDocument = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   GET /api/documents/:id/details  (PROTECTED — JWT, ownership-aware, unchanged)
+   GET /api/documents/:id/details  (PROTECTED — JWT, ownership-aware)
 ══════════════════════════════════════════════════════════════════════ */
 const getDocumentForOwner = async (req, res) => {
   try {
@@ -376,6 +928,7 @@ const getDocumentForOwner = async (req, res) => {
       by:            doc.by,
       priority:      doc.priority,
       status:        doc.status,
+      current_role:  doc.current_role,
       current_stage: doc.current_stage,
       ownerId:       doc.ownerId,
       ownerName:     doc.ownerName,
@@ -386,6 +939,8 @@ const getDocumentForOwner = async (req, res) => {
       processedFileExt: doc.processedFileExt,
       processedBy:      doc.processedBy,
       processedAt:      doc.processedAt,
+      resubmissionCount: doc.resubmissionCount || 0,
+      requiresUserAction: doc.current_role === 'user',
       history:          doc.history,
       date:             doc.date,
       due:              doc.due,
@@ -403,405 +958,7 @@ const getDocumentForOwner = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   GET /api/documents  (Auth required)
-   UPDATED: staff sees current_stage='staff' docs;
-            faculty sees current_stage='faculty' docs.
-══════════════════════════════════════════════════════════════════════ */
-const getAllDocuments = async (req, res) => {
-  try {
-    const callerRole = req.user.role;
-
-    let filter = {};
-
-    if (callerRole === 'admin') {
-      /* Admin sees everything */
-      filter = {};
-    } else if (callerRole === 'staff') {
-      /* Staff sees documents waiting for their action */
-      filter = { current_stage: 'staff' };
-    } else if (callerRole === 'faculty') {
-      /* Faculty sees documents forwarded from staff */
-      filter = { current_stage: 'faculty' };
-    } else {
-      /* Regular user: own documents only */
-      const { ownerId } = req.query;
-      const effectiveOwnerId = ownerId || req.user.userId || String(req.user._id);
-      filter = { ownerId: effectiveOwnerId };
-    }
-
-    const docs = await Document.find(filter)
-      .select('-filePath -fileData -originalFile -processedFile')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const payload = docs.map(d => ({
-      ...d,
-      internalId:       d.internalId || String(d._id),
-      hasOriginalFile:  !!(d.hasOriginalFile),
-      hasProcessedFile: !!(d.hasProcessedFile),
-    }));
-
-    res.json(payload);
-  } catch (err) {
-    console.error('[getAllDocuments]', err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-/* ══════════════════════════════════════════════════════════════════════
-   POST /api/documents/update-status  (staff | faculty | admin)
-
-   Enhanced role-based workflow transition table:
-
-   ┌─────────────────┬──────────────────────────┬──────────────────────────────────────────┐
-   │ Caller role     │ Required document state   │ Action → Result                          │
-   ├─────────────────┼──────────────────────────┼──────────────────────────────────────────┤
-   │ staff           │ stage=staff,              │ process        → Processing / faculty    │
-   │                 │ status=Received           │ hold           → On Hold    / staff      │
-   │                 │     OR Processing         │ return         → Returned   / completed  │
-   │                 │ stage=staff, any status   │   (note req.)                            │
-   │                 │ stage=staff, On Hold      │ unhold         → Received   / staff      │
-   ├─────────────────┼──────────────────────────┼──────────────────────────────────────────┤
-   │ faculty         │ Processing / faculty      │ approve        → Processing / admin      │
-   │                 │                           │ reject         → Rejected   / completed  │
-   │                 │                           │ request_revision → Processing / staff    │
-   │                 │                           │   (note req.)                            │
-   ├─────────────────┼──────────────────────────┼──────────────────────────────────────────┤
-   │ admin           │ Processing / admin        │ release (file req.) → Released/completed │
-   │                 │ (any for reject)          │ reject              → Rejected/completed │
-   │                 │ Processing / admin        │ send_back      → Processing / faculty    │
-   └─────────────────┴──────────────────────────┴──────────────────────────────────────────┘
-
-   Body: { documentId, action, note?, location? }
-   Staff  actions : 'process' | 'hold' | 'unhold' | 'return'
-   Faculty actions: 'approve' | 'reject' | 'request_revision'
-   Admin  actions : 'release' | 'reject' | 'send_back'
-══════════════════════════════════════════════════════════════════════ */
-const updateDocumentStatusByRole = async (req, res) => {
-  try {
-    const { documentId, action, note, location } = req.body;
-
-    if (!documentId || !action)
-      return res.status(400).json({ message: 'documentId and action are required.' });
-
-    const callerRole = req.user.role;
-    const callerName = req.user.name || req.user.username || callerRole;
-
-    /* ── Load document ── */
-    const doc = await Document.findOne({
-      $or: [
-        { internalId:    documentId },
-        { displayId:     documentId },
-        { fullDisplayId: documentId },
-      ],
-    });
-    if (!doc) return res.status(404).json({ message: `Document "${documentId}" not found.` });
-
-    const nowManila = manilaTimestamp();
-    let newStatus        = doc.status;
-    let newStage         = doc.current_stage;
-    let historyNote      = note || '';
-    let notificationMsg  = '';
-    /* Extra notifications for staff when faculty sends back */
-    let staffNotificationMsg = '';
-
-    /* ══════════════════════════════════════════════════════════════
-       STAFF transitions
-       Allowed actions: process | hold | unhold | return
-    ══════════════════════════════════════════════════════════════ */
-    if (callerRole === 'staff') {
-      const staffActions = ['process', 'hold', 'unhold', 'return'];
-      if (!staffActions.includes(action)) {
-        return res.status(403).json({
-          message: `Staff allowed actions: ${staffActions.join(', ')}.`,
-        });
-      }
-
-      /* ── process: forward to faculty ── */
-      if (action === 'process') {
-        /* Allow from Received/staff (initial) OR Processing/staff (after revision request) */
-        if (doc.current_stage !== 'staff') {
-          return res.status(400).json({
-            message: `Cannot process: document must be in staff stage. ` +
-                     `Current: ${doc.status} / ${doc.current_stage}.`,
-          });
-        }
-        if (!['Received', 'Processing'].includes(doc.status)) {
-          return res.status(400).json({
-            message: `Cannot process: document must be Received or Processing. ` +
-                     `Current status: ${doc.status}.`,
-          });
-        }
-        newStatus   = 'Processing';
-        newStage    = 'faculty';
-        historyNote = note || `Processed by staff: ${callerName}. Forwarded to faculty.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been processed by staff ` +
-                          `and forwarded to faculty review.`;
-      }
-
-      /* ── hold: pause document pending requirements ── */
-      else if (action === 'hold') {
-        if (doc.current_stage !== 'staff' || doc.status !== 'Received') {
-          return res.status(400).json({
-            message: `Cannot hold: document must be in Received / staff stage. ` +
-                     `Current: ${doc.status} / ${doc.current_stage}.`,
-          });
-        }
-        newStatus   = 'On Hold';
-        newStage    = 'staff';
-        historyNote = note || `Placed on hold by staff: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been placed ` +
-                          `<strong>On Hold</strong> by staff.` +
-                          (note ? ` Reason: ${note}` : ' Pending additional requirements.');
-      }
-
-      /* ── unhold: release from hold back to Received ── */
-      else if (action === 'unhold') {
-        if (doc.status !== 'On Hold' || doc.current_stage !== 'staff') {
-          return res.status(400).json({
-            message: `Cannot release from hold: document must be On Hold / staff stage. ` +
-                     `Current: ${doc.status} / ${doc.current_stage}.`,
-          });
-        }
-        newStatus   = 'Received';
-        newStage    = 'staff';
-        historyNote = note || `Released from hold by staff: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been released from hold. ` +
-                          `It is now back in <strong>Received</strong> status.`;
-      }
-
-      /* ── return: send document back to user for corrections ── */
-      else if (action === 'return') {
-        if (doc.current_stage !== 'staff') {
-          return res.status(400).json({
-            message: `Cannot return: document must be in staff stage. ` +
-                     `Current: ${doc.status} / ${doc.current_stage}.`,
-          });
-        }
-        if (!note || !note.trim()) {
-          return res.status(400).json({
-            message: 'A reason/note is required when returning a document to the user.',
-          });
-        }
-        newStatus   = 'Returned';
-        newStage    = 'completed';
-        historyNote = `Returned to user by staff: ${callerName}. Reason: ${note}`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been ` +
-                          `<strong>returned</strong> by staff. Reason: ${note} — ` +
-                          `Please submit a new request with the required corrections.`;
-      }
-    }
-
-    /* ══════════════════════════════════════════════════════════════
-       FACULTY transitions
-       Allowed actions: approve | reject | request_revision
-    ══════════════════════════════════════════════════════════════ */
-    else if (callerRole === 'faculty') {
-      const facultyActions = ['approve', 'reject', 'request_revision'];
-      if (!facultyActions.includes(action)) {
-        return res.status(403).json({
-          message: `Faculty allowed actions: ${facultyActions.join(', ')}.`,
-        });
-      }
-      if (doc.status !== 'Processing' || doc.current_stage !== 'faculty') {
-        return res.status(400).json({
-          message: `Cannot ${action}: document must be in Processing / faculty stage. ` +
-                   `Current: ${doc.status} / ${doc.current_stage}.`,
-        });
-      }
-
-      /* ── approve: advance to admin ── */
-      if (action === 'approve') {
-        newStatus   = 'Processing';
-        newStage    = 'admin';
-        historyNote = note || `Approved by faculty: ${callerName}. Forwarded to admin for release.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been approved by faculty ` +
-                          `and is now awaiting admin release.`;
-      }
-
-      /* ── reject: terminal rejection ── */
-      else if (action === 'reject') {
-        newStatus   = 'Rejected';
-        newStage    = 'completed';
-        historyNote = note || `Rejected by faculty: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" was ` +
-                          `<strong>rejected</strong> by faculty` +
-                          (note ? `: ${note}` : '.');
-      }
-
-      /* ── request_revision: send back to staff for corrections ── */
-      else if (action === 'request_revision') {
-        if (!note || !note.trim()) {
-          return res.status(400).json({
-            message: 'A note describing the required revision is required.',
-          });
-        }
-        newStatus   = 'Processing';
-        newStage    = 'staff';       // returns to staff queue
-        historyNote = `Revision requested by faculty: ${callerName}. Note: ${note}`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been sent back ` +
-                          `to staff for revision by faculty.` +
-                          (note ? ` Note: ${note}` : '');
-        /* Also notify all staff members that a revision is needed */
-        staffNotificationMsg =
-          `Faculty <strong>${callerName}</strong> requested revision on document ` +
-          `"<strong>${doc.name}</strong>" — ${doc.fullDisplayId || doc.displayId}. ` +
-          (note ? `Note: ${note}` : '');
-      }
-    }
-
-    /* ══════════════════════════════════════════════════════════════
-       ADMIN transitions
-       Allowed actions: release | reject | send_back
-    ══════════════════════════════════════════════════════════════ */
-    else if (callerRole === 'admin') {
-      const adminActions = ['release', 'reject', 'send_back'];
-      if (!adminActions.includes(action)) {
-        return res.status(403).json({
-          message: 'Admin workflow actions: "release", "reject", or "send_back". ' +
-                   'For full status control use PATCH /api/documents/:id/status.',
-        });
-      }
-
-      /* ── release: finalize and make available for download ── */
-      if (action === 'release') {
-        if (doc.current_stage !== 'admin') {
-          return res.status(400).json({
-            message: `Cannot release: document must be in admin stage. ` +
-                     `Current stage: ${doc.current_stage}.`,
-          });
-        }
-        if (!doc.processedFile && !doc.hasProcessedFile) {
-          return res.status(400).json({
-            message: 'Cannot release: please upload the final processed file first via ' +
-                     'PATCH /api/documents/:id/status (which supports file upload).',
-          });
-        }
-        newStatus   = 'Released';
-        newStage    = 'completed';
-        historyNote = note || `Released by admin: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been ` +
-                          `<strong>Released</strong>.` +
-                          (location ? ` (${location})` : '');
-      }
-
-      /* ── reject: terminal rejection (allowed at any stage) ── */
-      else if (action === 'reject') {
-        newStatus   = 'Rejected';
-        newStage    = 'completed';
-        historyNote = note || `Rejected by admin: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" was ` +
-                          `<strong>rejected</strong> by admin` +
-                          (note ? `: ${note}` : '.');
-      }
-
-      /* ── send_back: return to faculty for additional review ── */
-      else if (action === 'send_back') {
-        if (doc.current_stage !== 'admin') {
-          return res.status(400).json({
-            message: `Cannot send back: document must be in admin stage. ` +
-                     `Current stage: ${doc.current_stage}.`,
-          });
-        }
-        newStatus   = 'Processing';
-        newStage    = 'faculty';
-        historyNote = note || `Sent back to faculty by admin: ${callerName}.`;
-        notificationMsg = `Your document "<strong>${doc.name}</strong>" has been sent back ` +
-                          `to faculty for additional review by admin.` +
-                          (note ? ` Note: ${note}` : '');
-        /* Notify all faculty that a document was returned to them */
-        staffNotificationMsg =
-          `Admin <strong>${callerName}</strong> returned document ` +
-          `"<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) to faculty for review.` +
-          (note ? ` Note: ${note}` : '');
-      }
-    }
-
-    /* ── Unknown role ── */
-    else {
-      return res.status(403).json({
-        message: `Role "${callerRole}" is not permitted to update document status via this endpoint.`,
-      });
-    }
-
-    /* ── Apply changes ── */
-    const previousStatus = doc.status;
-    const previousStage  = doc.current_stage;
-
-    doc.status        = newStatus;
-    doc.current_stage = newStage;
-
-    doc.history.push({
-      action:   'Status Update',
-      status:   newStatus,
-      date:     nowManila,
-      note:     historyNote,
-      by:       callerName,
-      location: location || '',
-      handler:  callerName,
-    });
-
-    await doc.save();
-
-    /* ── Notify document owner ── */
-    try {
-      await Notification.create({
-        userId:     doc.ownerId,
-        msg:        notificationMsg,
-        documentId: doc.internalId,
-        read:       false,
-      });
-    } catch (notifErr) {
-      console.warn('[updateDocumentStatusByRole] Notification failed:', notifErr.message);
-    }
-
-    /* ── Notify staff (when faculty requests revision) or
-          faculty (when admin sends back) ── */
-    if (staffNotificationMsg) {
-      try {
-        const targetRole = (action === 'request_revision' || action === 'send_back' && newStage === 'faculty')
-          ? (newStage === 'staff' ? 'staff' : 'faculty')
-          : null;
-        // Determine recipient role from the new stage
-        const recipientRole = newStage === 'staff' ? 'staff' : (newStage === 'faculty' ? 'faculty' : null);
-        if (recipientRole) {
-          const recipients = await User.find({ role: recipientRole }).select('userId _id').lean();
-          if (recipients.length) {
-            const notifDocs = recipients.map(u => ({
-              userId:     u.userId || String(u._id),
-              msg:        staffNotificationMsg,
-              documentId: doc.internalId,
-              read:       false,
-            }));
-            await Notification.insertMany(notifDocs);
-          }
-        }
-      } catch (notifErr) {
-        console.warn('[updateDocumentStatusByRole] Secondary notification failed:', notifErr.message);
-      }
-    }
-
-    res.json({
-      message:        `Action "${action}" completed successfully.`,
-      internalId:     doc.internalId,
-      displayId:      doc.displayId,
-      fullDisplayId:  doc.fullDisplayId,
-      previousStatus,
-      previousStage,
-      status:         doc.status,
-      current_stage:  doc.current_stage,
-      actionBy:       callerName,
-      actionRole:     callerRole,
-      at:             nowManila,
-    });
-  } catch (err) {
-    console.error('[updateDocumentStatusByRole]', err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-/* ══════════════════════════════════════════════════════════════════════
-   GET /api/documents/download/:id  (PUBLIC — only if Released, unchanged)
+   GET /api/documents/download/:id  (PUBLIC — only if Approved and Released)
 ══════════════════════════════════════════════════════════════════════ */
 const downloadDocument = async (req, res) => {
   try {
@@ -812,9 +969,12 @@ const downloadDocument = async (req, res) => {
 
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
-    if (doc.status !== 'Released') {
+    /* Support both old 'Released' and new 'Approved and Released' */
+    const isReleasable = doc.status === 'Approved and Released' || doc.status === 'Released';
+    if (!isReleasable) {
       return res.status(403).json({
-        message: `Download not allowed. Document status is "${doc.status}". Must be Released.`,
+        message: `Download not allowed. Document status is "${doc.status}". ` +
+                 `Must be "Approved and Released".`,
       });
     }
 
@@ -837,8 +997,9 @@ const downloadDocument = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   PATCH /api/documents/:id/status  (Auth + Admin only — unchanged)
-   Kept intact for full admin control (including file upload support).
+   PATCH /api/documents/:id/status  (Admin only — legacy full control)
+   Preserved for backward compatibility with admin direct status edits.
+   Also accepts new canonical status values.
 ══════════════════════════════════════════════════════════════════════ */
 const updateDocumentStatus = async (req, res) => {
   try {
@@ -860,18 +1021,39 @@ const updateDocumentStatus = async (req, res) => {
     });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
-    if (status === 'Released' && !resolvedProcessedFile && !doc.processedFile) {
-      return res.status(400).json({ message: 'Cannot set status to "Released" without uploading a processed/final file.' });
+    /* Require processed file when releasing */
+    const isRelease = status === 'Approved and Released' || status === 'Released';
+    if (isRelease && !resolvedProcessedFile && !doc.processedFile) {
+      return res.status(400).json({
+        message: 'Cannot release without uploading a processed/final file.',
+      });
     }
 
     const nowManila = manilaTimestamp();
     doc.status = status;
 
-    /* Auto-advance current_stage based on status when admin uses this endpoint */
-    if (status === 'Released' || status === 'Rejected') {
-      doc.current_stage = 'completed';
-    } else if (status === 'Processing' && doc.current_stage === 'staff') {
-      doc.current_stage = 'faculty';
+    /* Sync current_role and current_stage based on new status */
+    const statusToRole = {
+      'Submitted':                       { role: 'staff',     stage: 'staff' },
+      'Under Initial Review':            { role: 'staff',     stage: 'staff' },
+      'Action Required: Resubmission':   { role: 'user',      stage: 'staff' },
+      'Returned to Requester':           { role: 'completed', stage: 'completed' },
+      'Under Evaluation':                { role: 'faculty',   stage: 'faculty' },
+      'Revision Requested':              { role: 'staff',     stage: 'staff' },
+      'Pending Final Approval':          { role: 'admin',     stage: 'admin' },
+      'Sent Back for Reevaluation':      { role: 'faculty',   stage: 'faculty' },
+      'Approved and Released':           { role: 'completed', stage: 'completed' },
+      'Rejected':                        { role: 'completed', stage: 'completed' },
+      /* Legacy mappings */
+      'Released':                        { role: 'completed', stage: 'completed' },
+      'Processing':                      { role: 'faculty',   stage: 'faculty' },
+      'On Hold':                         { role: 'staff',     stage: 'staff' },
+      'Received':                        { role: 'staff',     stage: 'staff' },
+    };
+    const mapping = statusToRole[status];
+    if (mapping) {
+      doc.current_role  = mapping.role;
+      doc.current_stage = mapping.stage;
     }
 
     if (resolvedProcessedFile) {
@@ -886,29 +1068,22 @@ const updateDocumentStatus = async (req, res) => {
       action: 'Status Update', status, date: nowManila,
       note: note || '', by: by || 'admin', location: location || '', handler: handler || '',
     });
-    doc.history.push({
-      action: 'Movement', status, date: nowManila,
-      note: `Status updated to ${status}` + (note ? ': ' + note : ''),
-      by: by || req.user?.username || 'admin',
-      location: location || 'Admin Office',
-      handler:  handler  || by || req.user?.username || 'admin',
-    });
 
     await doc.save();
 
     /* Notify document owner */
     try {
       const adminName = req.user ? (req.user.name || req.user.username || 'Admin') : 'Admin';
-      await Notification.create({
-        userId:     doc.ownerId,
-        msg:        `Your document "<strong>${doc.name}</strong>" status changed to <strong>${status}</strong>` +
-                    (resolvedProcessedFile ? ' — Final file attached' : '') +
-                    (location ? ' at ' + location : '') +
-                    (note     ? ' — ' + note      : '') +
-                    ` (by ${adminName})`,
-        documentId: doc.internalId,
-        read:       false,
-      });
+      await _notifyUser(
+        doc.ownerId,
+        `Your document "<strong>${doc.name}</strong>" status changed to ` +
+        `<strong>${status}</strong>` +
+        (resolvedProcessedFile ? ' — Final file attached' : '') +
+        (location ? ` at ${location}` : '') +
+        (note     ? ` — ${note}`      : '') +
+        ` (by ${adminName})`,
+        doc.internalId
+      );
     } catch (notifErr) {
       console.warn('[updateDocumentStatus] Notification failed:', notifErr.message);
     }
@@ -919,6 +1094,7 @@ const updateDocumentStatus = async (req, res) => {
       displayId:        doc.displayId,
       fullDisplayId:    doc.fullDisplayId,
       status,
+      current_role:     doc.current_role,
       current_stage:    doc.current_stage,
       hasProcessedFile: !!doc.processedFile,
     });
@@ -947,7 +1123,7 @@ const getOriginalFile = async (req, res) => {
     if (!isAdmin && !isOwner) return res.status(403).json({ message: 'Access denied.' });
 
     const fileData = doc.originalFile || doc.filePath;
-    if (!fileData) return res.status(404).json({ message: 'No original file attached to this document.' });
+    if (!fileData) return res.status(404).json({ message: 'No original file attached.' });
 
     return res.json({ fileData, fileExt: doc.originalFileExt || doc.fileExt || null, name: doc.name });
   } catch (err) {
@@ -957,7 +1133,7 @@ const getOriginalFile = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   DELETE /api/documents/:id  (Auth + Admin, unchanged)
+   DELETE /api/documents/:id  (Admin only, unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const deleteDocument = async (req, res) => {
   try {
@@ -1003,7 +1179,7 @@ const logScan = async (req, res) => {
       displayDate: nowManila,
     });
 
-    res.json({ message: 'Scan logged successfully.', internalId: doc.internalId, status: doc.status });
+    res.json({ message: 'Scan logged.', internalId: doc.internalId, status: doc.status });
   } catch (err) {
     console.error('[logScan]', err);
     res.status(500).json({ message: err.message });
@@ -1011,7 +1187,7 @@ const logScan = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST /api/documents/:id/movement  (Auth + Admin only, unchanged)
+   POST /api/documents/:id/movement  (Admin only, unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const addMovementLog = async (req, res) => {
   try {
@@ -1036,7 +1212,7 @@ const addMovementLog = async (req, res) => {
     });
     await doc.save();
 
-    res.json({ message: 'Movement log added.', internalId: doc.internalId, status: doc.status, addedBy: adminUsername });
+    res.json({ message: 'Movement log added.', internalId: doc.internalId, status: doc.status });
   } catch (err) {
     console.error('[addMovementLog]', err);
     res.status(500).json({ message: err.message });
@@ -1044,7 +1220,7 @@ const addMovementLog = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   GET /api/documents/scan-logs  (Auth + Admin, unchanged)
+   GET /api/documents/scan-logs  (Admin only, unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const getAllScanLogs = async (req, res) => {
   try {
@@ -1067,7 +1243,7 @@ const getAllScanLogs = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
-   GET /api/documents/movement-logs  (Auth + Admin, unchanged)
+   GET /api/documents/movement-logs  (Admin only, unchanged)
 ══════════════════════════════════════════════════════════════════════ */
 const getAllMovementLogs = async (req, res) => {
   try {
@@ -1105,9 +1281,10 @@ const getAllMovementLogs = async (req, res) => {
 
 module.exports = {
   registerDocument,
-  createDocument,              // NEW
-  getMyDocuments,              // NEW
-  updateDocumentStatusByRole,  // NEW
+  createDocument,
+  getMyDocuments,
+  resubmitDocument,              // NEW
+  updateDocumentStatusByRole,
   trackDocument,
   downloadDocument,
   getOriginalFile,

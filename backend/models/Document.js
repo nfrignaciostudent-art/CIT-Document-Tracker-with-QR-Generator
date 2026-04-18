@@ -2,42 +2,37 @@
    models/Document.js — Document Schema
    CIT Document Tracker - Group 6
 
-   STAFF / FACULTY WORKFLOW ADDITION:
-     current_stage — tracks WHERE in the role-based pipeline a document
-                     currently sits.  Drives role-filtered document lists:
-                       'staff'     → visible to staff (status: Received)
-                       'faculty'   → visible to faculty (status: Processing,
-                                     awaiting faculty review)
-                       'admin'     → visible to admin for final release
-                                     (faculty has approved; status: Processing)
-                       'completed' → terminal; document is Released or Rejected
+   WORKFLOW REFACTOR — Production-Level State Machine:
 
-                     Set automatically by the workflow endpoint
-                     POST /api/documents/update-status.
-                     The existing PATCH /:id/status (admin-only) preserves
-                     current_stage so legacy admin actions stay compatible.
+   STATUS VALUES (strict, 10 canonical + legacy for existing docs):
+     Intake:
+       'Submitted'                      → current_role: 'staff'
+     Staff Stage:
+       'Under Initial Review'           → current_role: 'staff'
+       'Action Required: Resubmission'  → current_role: 'user'
+       'Returned to Requester'          → current_role: 'completed'
+     Faculty Stage:
+       'Under Evaluation'               → current_role: 'faculty'
+       'Revision Requested'             → current_role: 'staff'
+     Admin Stage:
+       'Pending Final Approval'         → current_role: 'admin'
+       'Sent Back for Reevaluation'     → current_role: 'faculty'
+     Terminal:
+       'Approved and Released'          → current_role: 'completed'
+       'Rejected'                       → current_role: 'completed'
 
-   WORKFLOW STATUS SUBSET (strict, enforced in update-status controller):
-     New documents → 'Received'   (current_stage: 'staff')
-     Staff action  → 'Processing' (current_stage: 'faculty')   ← process
-                  → 'On Hold'    (current_stage: 'staff')      ← hold
-                  → 'Returned'   (current_stage: 'completed')  ← return to user
-     Staff unhold  → 'Received'   (current_stage: 'staff')     ← unhold
-     Faculty approve → 'Processing' (current_stage: 'admin')   ← same status, stage advances
-     Faculty request_revision → 'Processing' (current_stage: 'staff') ← sent back to staff
-     Faculty reject  → 'Rejected'   (current_stage: 'completed')
-     Admin release   → 'Released'   (current_stage: 'completed')
-     Admin send_back → 'Processing' (current_stage: 'faculty') ← sent back to faculty
-     Admin reject    → 'Rejected'   (current_stage: 'completed')
+   current_role — drives role-based document visibility:
+     'staff'     → document awaits staff action
+     'faculty'   → document awaits faculty action
+     'admin'     → document awaits admin action
+     'user'      → document awaits user re-submission
+     'completed' → terminal state (no further action required)
 
-   BACKWARD COMPATIBILITY:
-     The status enum retains all 8 original values so that existing
-     documents stored in MongoDB are not invalidated.  The new workflow
-     only emits the 4 required statuses; old values are read-only legacy.
-
-   ZERO-KNOWLEDGE VAULT FIELDS (unchanged — see original comments):
-     enc / encPurpose — IDEA-128-CBC encrypted blobs returned to clients.
-     name / purpose   — plaintext used server-side only.
+   BACKWARD COMPAT:
+     Legacy status values are retained in the enum so existing
+     documents stored in MongoDB are not invalidated.
+     current_stage is preserved and kept in sync with current_role
+     for any code still referencing it.
 ══════════════════════════════════════════════════════════════════════ */
 
 const mongoose = require('mongoose');
@@ -77,28 +72,48 @@ const DocumentSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    /* Retains all 8 legacy values + the 4 strict workflow values +
-       2 new branch statuses introduced by the enhanced workflow:
-         Returned — staff returned document to user for corrections
-         On Hold  — staff placed document on hold pending requirements
-       New documents only receive: Received | Processing | Rejected | Released | Returned | On Hold */
     enum: [
+      /* ── Canonical workflow statuses (new system) ── */
+      'Submitted',
+      'Under Initial Review',
+      'Action Required: Resubmission',
+      'Returned to Requester',
+      'Under Evaluation',
+      'Revision Requested',
+      'Pending Final Approval',
+      'Sent Back for Reevaluation',
+      'Approved and Released',
+      'Rejected',
+      /* ── Legacy statuses (read-only; preserved for existing docs) ── */
       'Received', 'Pending', 'Processing', 'For Approval',
-      'Signed', 'Approved', 'Released', 'Rejected',
-      'Returned', 'On Hold',                             // NEW
+      'Signed', 'Approved', 'Released',
+      'Returned', 'On Hold',
     ],
-    default: 'Received',
+    default: 'Submitted',
   },
 
   /**
-   * current_stage — drives role-based document visibility.
-   * 'staff'     : waiting for staff to process (status = Received)
-   * 'faculty'   : waiting for faculty review   (status = Processing)
-   * 'admin'     : waiting for admin release    (status = Processing, faculty approved)
-   * 'completed' : terminal state               (status = Released | Rejected)
+   * current_role — canonical field driving role-based visibility.
+   * 'staff'     : awaiting staff action
+   * 'faculty'   : awaiting faculty action
+   * 'admin'     : awaiting admin action
+   * 'user'      : awaiting user re-submission
+   * 'completed' : terminal — no further workflow action
    *
-   * Legacy documents inserted before this field was added default to
-   * 'staff' so they appear in the staff queue rather than being hidden.
+   * Every workflow transition MUST set both current_role and
+   * current_stage to keep legacy code compatible.
+   */
+  current_role: {
+    type: String,
+    enum: ['staff', 'faculty', 'admin', 'user', 'completed'],
+    default: 'staff',
+  },
+
+  /**
+   * current_stage — legacy field kept in sync with current_role.
+   * Maps: staff→staff, faculty→faculty, admin→admin,
+   *       user→staff (closest legacy equivalent), completed→completed.
+   * New code should read current_role; this field is for backward compat only.
    */
   current_stage: {
     type: String,
@@ -125,6 +140,10 @@ const DocumentSchema = new mongoose.Schema({
   hasOriginalFile:  { type: Boolean, default: false },
   hasProcessedFile: { type: Boolean, default: false },
 
+  /* ── Resubmission tracking ────────────────────────────────────── */
+  resubmissionCount: { type: Number, default: 0 },
+  lastResubmittedAt: { type: String, default: null },
+
   /* ── History ─────────────────────────────────────────────────── */
   history: { type: [HistoryEntrySchema], default: [] },
   date:    { type: String },
@@ -133,6 +152,9 @@ const DocumentSchema = new mongoose.Schema({
 
 DocumentSchema.index({ internalId: 1 });
 DocumentSchema.index({ displayId: 1 });
-DocumentSchema.index({ current_stage: 1 });   // supports stage-filtered queries
+DocumentSchema.index({ current_role: 1 });
+DocumentSchema.index({ current_stage: 1 });
+DocumentSchema.index({ ownerId: 1 });
+DocumentSchema.index({ current_role: 1, ownerId: 1 });
 
 module.exports = mongoose.model('Document', DocumentSchema);
