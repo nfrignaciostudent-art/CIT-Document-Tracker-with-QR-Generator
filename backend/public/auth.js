@@ -522,6 +522,8 @@ function setupSidebar() {
   document.getElementById('nav-movements').style.display = isAdmin ? '' : 'none';
   const scanlogsNav = document.getElementById('nav-scanlogs');
   if (scanlogsNav) scanlogsNav.style.display = isAdmin ? '' : 'none';
+  const eventsNav = document.getElementById('nav-events');
+  if (eventsNav) eventsNav.style.display = isAdmin ? '' : 'none';
   const adminCard = document.getElementById('admin-settings-card');
   if (adminCard) adminCard.style.display = isAdmin ? '' : 'none';
 
