@@ -193,7 +193,7 @@ async function openEventDetailModal(eventId) {
     '<div style="background:' + gradient + ';padding:22px 22px 20px;position:relative;overflow:hidden">' +
       '<div style="position:absolute;inset:0;background:rgba(0,0,0,.18)"></div>' +
       '<div style="position:relative;z-index:1">' +
-        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.6);text-transform:uppercase;margin-bottom:6px">Event Details</div>' +
+        /* Event Details sub-label removed per UI requirements */
         '<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:8px">' + _ea(data.event.title) + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap">' + tagHtml + '</div>' +
         countdownHtml +
@@ -202,12 +202,17 @@ async function openEventDetailModal(eventId) {
 
   /* ── Info grid ── */
   var updatedAt = new Date().toLocaleDateString('en-PH', { timeZone:'Asia/Manila', year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  var attWindow = (data.event.attendanceStartTime && data.event.attendanceEndTime)
+    ? data.event.attendanceStartTime + ' – ' + data.event.attendanceEndTime
+    : '—';
   var infoGridHtml =
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--border-lt)">' +
       _infoCell('Date', data.event.date || '—') +
       _infoCell('Time', data.event.time || '—') +
       _infoCell('Venue', data.event.location || '—') +
       _infoCell('Status', isActive ? '<span style="color:#16a34a;font-weight:700">Open</span>' : '<span style="color:#ef4444;font-weight:700">Closed</span>') +
+      _infoCell('Organizer', (cachedEvt && cachedEvt.organizer) ? cachedEvt.organizer : '—') +
+      _infoCell('Attendance Window', attWindow) +
     '</div>' +
     '<div style="padding:8px 16px;border-bottom:1px solid var(--border-lt)">' +
       '<span style="font-size:11px;color:var(--muted)">Last updated: ' + updatedAt + '</span>' +
@@ -320,7 +325,7 @@ async function openEventDetailModal(eventId) {
   /* ── Action bar ── */
   var actionsHtml =
     '<div style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 16px">' +
-      '<button class="btn btn-sm btn-ghost" onclick="openEventQRModal(\'' + _ea(eventId) + '\')">QR Code</button>' +
+      '<button class="btn btn-sm btn-ghost" onclick="closeModal(\'event-attendance-modal\');setTimeout(function(){openEventQRModal(\'' + _ea(eventId) + '\')},220)">QR Code</button>' +
       '<button class="btn btn-sm btn-ghost" onclick="toggleEventActive(\'' + _ea(eventId) + '\');closeModal(\'event-attendance-modal\')">' +
         (isActive ? 'Close Attendance' : 'Open Attendance') +
       '</button>' +
@@ -518,6 +523,16 @@ function _buildCreateEventForm() {
     '<div>' +
       '<label style="' + lbl + '">Organizer</label>' +
       '<input id="evt-organizer" type="text" placeholder="e.g. SSG, Class Adviser" style="' + inp + '" onfocus="this.style.borderColor=\'#6366f1\'" onblur="this.style.borderColor=\'\'"></div>' +
+    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">&#9201; Attendance Time Window <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>' +
+      '<p style="font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.5">Set a window during which students may submit attendance. Outside this range, the backend will reject submissions even if the QR is active.</p>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+        '<div><label style="' + lbl + '">Open at (24h)</label>' +
+          '<input id="evt-att-start" type="time" style="' + inp + '" onfocus="this.style.borderColor=\'#6366f1\'" onblur="this.style.borderColor=\'\'"></div>' +
+        '<div><label style="' + lbl + '">Close at (24h)</label>' +
+          '<input id="evt-att-end" type="time" style="' + inp + '" onfocus="this.style.borderColor=\'#6366f1\'" onblur="this.style.borderColor=\'\'"></div>' +
+      '</div>' +
+    '</div>' +
     '<div id="create-event-error" style="display:none;font-size:13px;color:#f87171;padding:10px 14px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:8px"></div>' +
     '<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">' +
       '<button class="btn btn-ghost" onclick="closeModal(\'create-event-modal\')">Cancel</button>' +
@@ -532,7 +547,9 @@ async function submitCreateEvent() {
   var date      = ((document.getElementById('evt-date')     ||{}).value||'').trim();
   var time      = ((document.getElementById('evt-time')     ||{}).value||'').trim();
   var location  = ((document.getElementById('evt-location') ||{}).value||'').trim();
-  var organizer = ((document.getElementById('evt-organizer')||{}).value||'').trim();
+  var organizer  = ((document.getElementById('evt-organizer') ||{}).value||'').trim();
+  var attStart   = ((document.getElementById('evt-att-start')  ||{}).value||'').trim() || null;
+  var attEnd     = ((document.getElementById('evt-att-end')    ||{}).value||'').trim() || null;
   var errEl     = document.getElementById('create-event-error');
   var btn       = document.getElementById('create-event-btn');
 
@@ -543,7 +560,7 @@ async function submitCreateEvent() {
   btn.disabled    = true;
   btn.textContent = 'Creating...';
 
-  var result = await apiCreateEvent({ title, description: desc, date, time, location, organizer }, null);
+  var result = await apiCreateEvent({ title, description: desc, date, time, location, organizer, attendanceStartTime: attStart, attendanceEndTime: attEnd }, null);
 
   if (!result || result._error) {
     errEl.textContent   = (result && result.message) ? result.message : 'Failed to create event. Try again.';

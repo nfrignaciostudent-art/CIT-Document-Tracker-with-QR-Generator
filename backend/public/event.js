@@ -45,7 +45,7 @@ function _renderEventPage(container, evt) {
   /* ── Banner ── */
   var bannerHtml =
     '<div style="background:linear-gradient(150deg,#1a3d22 0%,#0d2318 60%,#091510 100%);padding:24px 20px 28px;border-bottom:1px solid rgba(52,199,90,.12)">' +
-      '<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.35);text-transform:uppercase;margin-bottom:10px">CIT Document Tracker</div>' +
+      /* CIT Document Tracker label removed per UI requirements */
       (evt.imageData ? '<div style="width:100%;border-radius:12px;overflow:hidden;margin-bottom:16px;border:1px solid rgba(255,255,255,.08)">' +
         '<img src="' + _ee(evt.imageData) + '" alt="" style="width:100%;display:block;object-fit:cover;max-height:180px"></div>' : '') +
       '<h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 10px;line-height:1.3">' + _ee(evt.title) + '</h1>' +
@@ -127,7 +127,7 @@ function _renderEventPage(container, evt) {
   /* ── Attendance form or closed message ── */
   var formHtml =
     '<div id="event-form-area" style="padding:20px">' +
-      (isActive ? _lookupForm(evt.eventId) : _closedMsg()) +
+      (!isActive ? _closedMsg() : _isOutsideTimeWindow(evt) ? _timeWindowMsg(evt) : _lookupForm(evt.eventId)) +
     '</div>';
 
   /* ── Footer ── */
@@ -410,6 +410,46 @@ function _evtAlreadySubmitted(existingResponse) {
     '<p style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.6;margin:0;padding:0 8px">' +
       'You already responded as <strong style="color:' + (wasAttend ? '#34c75a' : '#f87171') + '">' + (wasAttend ? 'Attending' : 'Cannot Attend') + '</strong>.<br>You can only submit once per event.' +
     '</p>' +
+  '</div>';
+}
+
+
+/* ── Time-window helpers ───────────────────────────────────────── */
+function _isOutsideTimeWindow(evt) {
+  if (!evt.attendanceStartTime || !evt.attendanceEndTime) return false;
+  /* Compare current Asia/Manila wall-clock time against the window.
+     We parse the PH time from a locale string to avoid TZ offset issues. */
+  var nowPH = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  var sh = parseInt(evt.attendanceStartTime.split(':')[0], 10);
+  var sm = parseInt(evt.attendanceStartTime.split(':')[1], 10);
+  var eh = parseInt(evt.attendanceEndTime.split(':')[0], 10);
+  var em = parseInt(evt.attendanceEndTime.split(':')[1], 10);
+  var winStart = new Date(nowPH); winStart.setHours(sh, sm, 0, 0);
+  var winEnd   = new Date(nowPH); winEnd.setHours(eh, em, 59, 999);
+  return nowPH < winStart || nowPH > winEnd;
+}
+
+function _timeWindowMsg(evt) {
+  var fmt = function(t) {
+    if (!t) return t;
+    var parts = t.split(':');
+    var h = parseInt(parts[0], 10), m = parts[1];
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return h + ':' + m + ' ' + ampm;
+  };
+  return '<div style="text-align:center;padding:32px 20px">' +
+    '<div style="font-size:40px;margin-bottom:14px">⏱</div>' +
+    '<h3 style="font-size:17px;font-weight:700;color:#fff;margin:0 0 10px">Outside Attendance Window</h3>' +
+    '<p style="font-size:13px;color:rgba(255,255,255,.55);line-height:1.7;margin:0 0 16px">' +
+      'Attendance submissions are only accepted between<br>' +
+      '<strong style="color:#4ade80">' + _ee(fmt(evt.attendanceStartTime)) + '</strong>' +
+      ' and ' +
+      '<strong style="color:#4ade80">' + _ee(fmt(evt.attendanceEndTime)) + '</strong>.' +
+    '</p>' +
+    '<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:20px;font-size:12px;color:rgba(255,255,255,.4)">' +
+      '🔒 Check back during the attendance window' +
+    '</div>' +
   '</div>';
 }
 

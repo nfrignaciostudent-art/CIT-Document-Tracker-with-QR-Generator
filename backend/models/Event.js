@@ -32,6 +32,14 @@ const EventSchema = new mongoose.Schema({
   imageData: { type: String, default: null },   // base64 data URL or raw base64
   imageExt:  { type: String, default: null },   // e.g. 'jpg', 'png', 'webp'
 
+  /* ── Attendance Time Window (optional) ─────────────────────── */
+  /* If both are set, backend enforces that attendance submissions are
+     only accepted between attendanceStartTime and attendanceEndTime.
+     Format: 'HH:MM' in 24-hour time (e.g. '08:00', '17:30').
+     Validated against the event's date field in Asia/Manila timezone. */
+  attendanceStartTime: { type: String, default: null },  // e.g. '08:00'
+  attendanceEndTime:   { type: String, default: null },  // e.g. '17:00'
+
   /* ── QR & Status ────────────────────────────────────────────── */
   qrCode:   { type: String, default: '' },       // base64 QR image
   isActive: { type: Boolean, default: true },    // if false, QR no longer accepts responses

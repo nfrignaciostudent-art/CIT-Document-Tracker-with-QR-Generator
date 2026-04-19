@@ -74,7 +74,8 @@ function parseBody(req) {
 const createEvent = async (req, res) => {
   try {
     const body = parseBody(req);
-    const { title, description, date, time, location, organizer } = body;
+    const { title, description, date, time, location, organizer,
+            attendanceStartTime, attendanceEndTime } = body;
 
     if (!title || !date)
       return res.status(400).json({ message: 'Title and date are required.' });
@@ -105,6 +106,8 @@ const createEvent = async (req, res) => {
       organizer:     organizer   || '',
       imageData,
       imageExt,
+      attendanceStartTime: attendanceStartTime || null,
+      attendanceEndTime:   attendanceEndTime   || null,
       createdBy:     req.user.userId || String(req.user._id),
       createdByName: req.user.name   || req.user.username,
     });
@@ -166,6 +169,8 @@ const getAllEvents = async (req, res) => {
         attendCount,
         cantAttendCount,
         totalResponses: attendCount + cantAttendCount,
+        attendanceStartTime: evt.attendanceStartTime || null,
+        attendanceEndTime:   evt.attendanceEndTime   || null,
       };
     }));
 
@@ -199,6 +204,8 @@ const getEventPublic = async (req, res) => {
       isActive:       event.isActive,
       imageData:      event.imageData || null,
       imageExt:       event.imageExt  || null,
+      attendanceStartTime: event.attendanceStartTime || null,
+      attendanceEndTime:   event.attendanceEndTime   || null,
       attendCount,
       cantAttendCount,
       totalResponses: attendCount + cantAttendCount,
@@ -336,6 +343,25 @@ const submitAttendance = async (req, res) => {
     const event = await Event.findOne({ eventId }).lean();
     if (!event)       return res.status(404).json({ message: 'Event not found.' });
     if (!event.isActive) return res.status(403).json({ message: 'This event is no longer accepting responses.' });
+
+    /* ── Attendance time-window enforcement (Asia/Manila) ─────────────
+       If the admin set a start/end time, submissions are only accepted
+       within that window. Validated server-side — do not rely on frontend. */
+    if (event.attendanceStartTime && event.attendanceEndTime) {
+      const nowPH = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+      const [sh, sm] = event.attendanceStartTime.split(':').map(Number);
+      const [eh, em] = event.attendanceEndTime.split(':').map(Number);
+      const winStart = new Date(nowPH); winStart.setHours(sh, sm, 0, 0);
+      const winEnd   = new Date(nowPH); winEnd.setHours(eh, em, 59, 999);
+      if (nowPH < winStart || nowPH > winEnd) {
+        return res.status(403).json({
+          message: `Attendance window is ${event.attendanceStartTime} – ${event.attendanceEndTime}. Submissions outside this range are not accepted.`,
+          timeWindowClosed: true,
+          attendanceStartTime: event.attendanceStartTime,
+          attendanceEndTime:   event.attendanceEndTime,
+        });
+      }
+    }
 
     const hasStudentId = studentId && studentId.trim();
 
@@ -475,6 +501,8 @@ const getEventAttendance = async (req, res) => {
         location: event.location,
         isActive: event.isActive,
         hasImage: !!(event.imageData),
+        attendanceStartTime: event.attendanceStartTime || null,
+        attendanceEndTime:   event.attendanceEndTime   || null,
       },
       summary: {
         total:      records.length,

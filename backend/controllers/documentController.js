@@ -691,9 +691,12 @@ const getAllDocuments = async (req, res) => {
     let filter = {};
 
     if (callerRole === 'admin') {
-      /* Admin sees ALL documents — both pending their action and everything else.
-         This ensures admin-created docs (current_role: completed) are visible. */
-      filter = {};
+      /* WORKFLOW FIX: Admin sees ONLY documents that are in the admin stage
+         or have been finalized (completed). Admin must NOT see documents still
+         being processed by staff or faculty — this preserves workflow integrity.
+         Admin-relevant statuses: 'Pending Final Approval' (current_role:'admin')
+         and all terminal states (current_role:'completed'). */
+      filter = { current_role: { $in: ['admin', 'completed'] } };
     } else if (callerRole === 'staff') {
       filter = { current_role: 'staff' };
     } else if (callerRole === 'faculty') {
