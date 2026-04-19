@@ -159,26 +159,33 @@ async function openEventDetailModal(eventId) {
   var pct      = total > 0 ? Math.round((data.summary.attending/total)*100) : 0;
 
   /* ── Countdown timer ── */
+  /* Countdown — always rendered so the timer can tick live.
+     When diff <= 0 the chips show 00:00:00 and the ticker fires on the
+     next second (no harm — the interval clears itself when diff == 0). */
   var countdownHtml = '';
   if (data.event.date) {
-    var target = new Date(data.event.date + (data.event.time ? ' ' + data.event.time : 'T10:00:00'));
-    var diff   = Math.max(0, Math.floor((target - Date.now()) / 1000));
-    var cd_d   = Math.floor(diff / 86400);
-    var cd_h   = Math.floor((diff % 86400) / 3600);
-    var cd_m   = Math.floor((diff % 3600) / 60);
-    var cd_s   = diff % 60;
-    if (diff > 0) {
-      countdownHtml =
-        '<div style="display:flex;gap:6px;margin-top:10px" id="evt-countdown-' + _ea(eventId) + '">' +
-        _cdChip(String(cd_d).padStart(2,'0'), 'days') +
-        '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
-        _cdChip(String(cd_h).padStart(2,'0'), 'hrs') +
-        '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
-        _cdChip(String(cd_m).padStart(2,'0'), 'min') +
-        '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
-        _cdChip(String(cd_s).padStart(2,'0'), 'sec') +
-        '</div>';
-    }
+    var _cdTarget = new Date(data.event.date + (data.event.time ? ' ' + data.event.time : 'T10:00:00'));
+    var _cdDiff   = Math.max(0, Math.floor((_cdTarget - Date.now()) / 1000));
+    var cd_d = Math.floor(_cdDiff / 86400);
+    var cd_h = Math.floor((_cdDiff % 86400) / 3600);
+    var cd_m = Math.floor((_cdDiff % 3600) / 60);
+    var cd_s = _cdDiff % 60;
+    /* Always render the countdown — show "Event started" label when past */
+    var _cdLabel = _cdDiff > 0 ? '' :
+      '<div style="font-size:10px;color:rgba(255,255,255,.5);text-align:center;margin-top:4px;font-weight:600;letter-spacing:.5px">EVENT IN PROGRESS / ENDED</div>';
+    countdownHtml =
+      '<div style="margin-top:12px">' +
+      '<div style="display:flex;gap:6px" id="evt-countdown-' + _ea(eventId) + '">' +
+      _cdChip(String(cd_d).padStart(2,'0'), 'days') +
+      '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
+      _cdChip(String(cd_h).padStart(2,'0'), 'hrs') +
+      '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
+      _cdChip(String(cd_m).padStart(2,'0'), 'min') +
+      '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
+      _cdChip(String(cd_s).padStart(2,'0'), 'sec') +
+      '</div>' +
+      _cdLabel +
+      '</div>';
   }
 
   /* ── Tags / badges ── */
@@ -193,7 +200,7 @@ async function openEventDetailModal(eventId) {
     '<div style="background:' + gradient + ';padding:22px 22px 20px;position:relative;overflow:hidden">' +
       '<div style="position:absolute;inset:0;background:rgba(0,0,0,.18)"></div>' +
       '<div style="position:relative;z-index:1">' +
-        /* Event Details sub-label removed per UI requirements */
+        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.6);text-transform:uppercase;margin-bottom:6px">Event Details</div>' +
         '<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:8px">' + _ea(data.event.title) + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap">' + tagHtml + '</div>' +
         countdownHtml +
@@ -202,17 +209,12 @@ async function openEventDetailModal(eventId) {
 
   /* ── Info grid ── */
   var updatedAt = new Date().toLocaleDateString('en-PH', { timeZone:'Asia/Manila', year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-  var attWindow = (data.event.attendanceStartTime && data.event.attendanceEndTime)
-    ? data.event.attendanceStartTime + ' – ' + data.event.attendanceEndTime
-    : '—';
   var infoGridHtml =
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--border-lt)">' +
       _infoCell('Date', data.event.date || '—') +
       _infoCell('Time', data.event.time || '—') +
       _infoCell('Venue', data.event.location || '—') +
       _infoCell('Status', isActive ? '<span style="color:#16a34a;font-weight:700">Open</span>' : '<span style="color:#ef4444;font-weight:700">Closed</span>') +
-      _infoCell('Organizer', (cachedEvt && cachedEvt.organizer) ? cachedEvt.organizer : '—') +
-      _infoCell('Attendance Window', attWindow) +
     '</div>' +
     '<div style="padding:8px 16px;border-bottom:1px solid var(--border-lt)">' +
       '<span style="font-size:11px;color:var(--muted)">Last updated: ' + updatedAt + '</span>' +
@@ -349,18 +351,26 @@ function _cdChip(val, label) {
 }
 
 function _startCountdown(eventId, date, time) {
-  var target = new Date(date + (time ? ' ' + time : 'T10:00:00'));
-  var wrap   = document.getElementById('evt-countdown-' + eventId);
+  /* Parse date + time safely. time may be "10:00 AM" (12h) or "10:00" (24h). */
+  var target;
+  if (time) {
+    /* Try direct parse first, fall back to Date constructor */
+    var raw = new Date(date + 'T' + time);
+    if (isNaN(raw)) raw = new Date(date + ' ' + time);
+    target = isNaN(raw) ? new Date(date + 'T10:00:00') : raw;
+  } else {
+    target = new Date(date + 'T10:00:00');
+  }
+
+  var wrap = document.getElementById('evt-countdown-' + eventId);
   if (!wrap) return;
 
-  var timer = setInterval(function() {
-    var diff = Math.max(0, Math.floor((target - Date.now()) / 1000));
-    if (diff === 0) { clearInterval(timer); return; }
+  var _render = function(diff) {
     var d = Math.floor(diff / 86400);
     var h = Math.floor((diff % 86400) / 3600);
     var m = Math.floor((diff % 3600) / 60);
     var s = diff % 60;
-    wrap.innerHTML =
+    var chips =
       _cdChip(String(d).padStart(2,'0'), 'days') +
       '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
       _cdChip(String(h).padStart(2,'0'), 'hrs') +
@@ -368,6 +378,20 @@ function _startCountdown(eventId, date, time) {
       _cdChip(String(m).padStart(2,'0'), 'min') +
       '<span style="font-size:14px;color:rgba(255,255,255,.4);margin-top:4px">:</span>' +
       _cdChip(String(s).padStart(2,'0'), 'sec');
+    var label = diff === 0
+      ? '<div style="font-size:10px;color:rgba(255,255,255,.5);text-align:center;margin-top:4px;font-weight:600;letter-spacing:.5px">EVENT IN PROGRESS / ENDED</div>'
+      : '';
+    wrap.innerHTML = chips + label;
+  };
+
+  /* Tick immediately then every second */
+  var initialDiff = Math.max(0, Math.floor((target - Date.now()) / 1000));
+  _render(initialDiff);
+
+  var timer = setInterval(function() {
+    var diff = Math.max(0, Math.floor((target - Date.now()) / 1000));
+    _render(diff);
+    if (diff === 0) clearInterval(timer);
   }, 1000);
 }
 
@@ -523,16 +547,6 @@ function _buildCreateEventForm() {
     '<div>' +
       '<label style="' + lbl + '">Organizer</label>' +
       '<input id="evt-organizer" type="text" placeholder="e.g. SSG, Class Adviser" style="' + inp + '" onfocus="this.style.borderColor=\'#6366f1\'" onblur="this.style.borderColor=\'\'"></div>' +
-    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px">' +
-      '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">&#9201; Attendance Time Window <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>' +
-      '<p style="font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.5">Set a window during which students may submit attendance. Outside this range, the backend will reject submissions even if the QR is active.</p>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-        '<div><label style="' + lbl + '">Open at (24h)</label>' +
-          '<input id="evt-att-start" type="time" style="' + inp + '" onfocus="this.style.borderColor=\'#6366f1\'" onblur="this.style.borderColor=\'\'"></div>' +
-        '<div><label style="' + lbl + '">Close at (24h)</label>' +
-          '<input id="evt-att-end" type="time" style="' + inp + '" onfocus="this.style.borderColor=\'#6366f1\'" onblur="this.style.borderColor=\'\'"></div>' +
-      '</div>' +
-    '</div>' +
     '<div id="create-event-error" style="display:none;font-size:13px;color:#f87171;padding:10px 14px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:8px"></div>' +
     '<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">' +
       '<button class="btn btn-ghost" onclick="closeModal(\'create-event-modal\')">Cancel</button>' +
@@ -547,9 +561,7 @@ async function submitCreateEvent() {
   var date      = ((document.getElementById('evt-date')     ||{}).value||'').trim();
   var time      = ((document.getElementById('evt-time')     ||{}).value||'').trim();
   var location  = ((document.getElementById('evt-location') ||{}).value||'').trim();
-  var organizer  = ((document.getElementById('evt-organizer') ||{}).value||'').trim();
-  var attStart   = ((document.getElementById('evt-att-start')  ||{}).value||'').trim() || null;
-  var attEnd     = ((document.getElementById('evt-att-end')    ||{}).value||'').trim() || null;
+  var organizer = ((document.getElementById('evt-organizer')||{}).value||'').trim();
   var errEl     = document.getElementById('create-event-error');
   var btn       = document.getElementById('create-event-btn');
 
@@ -560,7 +572,7 @@ async function submitCreateEvent() {
   btn.disabled    = true;
   btn.textContent = 'Creating...';
 
-  var result = await apiCreateEvent({ title, description: desc, date, time, location, organizer, attendanceStartTime: attStart, attendanceEndTime: attEnd }, null);
+  var result = await apiCreateEvent({ title, description: desc, date, time, location, organizer }, null);
 
   if (!result || result._error) {
     errEl.textContent   = (result && result.message) ? result.message : 'Failed to create event. Try again.';

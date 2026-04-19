@@ -11,11 +11,19 @@ async function initEventPage() {
   var eventId = params.get('event');
   if (!eventId) return;
 
-  /* Hide main app, show event page */
-  var appEl   = document.getElementById('app');
-  var eventEl = document.getElementById('event-page');
-  if (appEl)   appEl.style.display   = 'none';
-  if (eventEl) eventEl.style.display = 'flex';
+  /* Hide main app shell and public landing, show the standalone event page.
+     NOTE: the actual wrapper IDs in index.html are #public-view and #app-view
+     — there is no #app element. Hiding both ensures nothing is visible behind. */
+  var publicView = document.getElementById('public-view');
+  var appView    = document.getElementById('app-view');
+  var topnav     = document.getElementById('topnav');
+  var eventEl    = document.getElementById('event-page');
+  if (publicView) publicView.style.display = 'none';
+  if (appView)    appView.style.display    = 'none';
+  if (topnav)     topnav.style.display     = 'none';
+  if (eventEl)    eventEl.style.display    = 'flex';
+  document.body.style.background = '#0d1117';
+  window.scrollTo(0, 0);
 
   await loadEventPage(eventId);
 }
@@ -45,7 +53,7 @@ function _renderEventPage(container, evt) {
   /* ── Banner ── */
   var bannerHtml =
     '<div style="background:linear-gradient(150deg,#1a3d22 0%,#0d2318 60%,#091510 100%);padding:24px 20px 28px;border-bottom:1px solid rgba(52,199,90,.12)">' +
-      /* CIT Document Tracker label removed per UI requirements */
+      '<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.35);text-transform:uppercase;margin-bottom:10px">CIT Document Tracker</div>' +
       (evt.imageData ? '<div style="width:100%;border-radius:12px;overflow:hidden;margin-bottom:16px;border:1px solid rgba(255,255,255,.08)">' +
         '<img src="' + _ee(evt.imageData) + '" alt="" style="width:100%;display:block;object-fit:cover;max-height:180px"></div>' : '') +
       '<h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 10px;line-height:1.3">' + _ee(evt.title) + '</h1>' +
@@ -383,22 +391,44 @@ function _evtReset(eventId) {
 /* ── Success screen ──────────────────────────────────────────────── */
 function _evtSuccess(data, response) {
   var isAttend = response === 'attend';
-  var iconBg   = isAttend ? 'rgba(52,199,90,.15)' : 'rgba(239,68,68,.1)';
-  var iconBd   = isAttend ? 'rgba(52,199,90,.4)'  : 'rgba(239,68,68,.3)';
-  var iconClr  = isAttend ? '#34c75a' : '#ef4444';
+  /* ── Confirmation card — matches student_qr_scan_page design ── */
+  return '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 20px 28px">' +
 
-  return '<div style="text-align:center;padding:28px 0">' +
-    '<div style="width:66px;height:66px;margin:0 auto 16px;border-radius:50%;background:' + iconBg + ';border:2px solid ' + iconBd + ';display:flex;align-items:center;justify-content:center;font-size:28px;color:' + iconClr + '">' +
-      (isAttend ? '✓' : '✕') +
+    /* Big checkmark / X circle */
+    '<div style="width:72px;height:72px;border-radius:50%;background:' +
+      (isAttend ? '#e1f5ee' : '#fde8e8') +
+      ';display:flex;align-items:center;justify-content:center;margin:0 auto 20px">' +
+      '<svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:32px;height:32px">' +
+        (isAttend
+          ? '<path d="M5 14l7 7L23 7" stroke="#0F6E56" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+          : '<path d="M6 6l16 16M22 6L6 22" stroke="#993C1D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>') +
+      '</svg>' +
     '</div>' +
-    '<h3 style="font-size:18px;font-weight:800;color:#fff;margin:0 0 8px">' + (isAttend ? "Attendance Confirmed!" : "Response Recorded") + '</h3>' +
-    '<p style="font-size:13px;color:rgba(255,255,255,.5);margin:0 0 20px;line-height:1.6;padding:0 8px">' + _ee(data.message) + '</p>' +
-    '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-bottom:12px">' +
-      '<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.85)">' + _ee(data.studentName) + '</div>' +
-      (data.section ? '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:3px">Section ' + _ee(data.section) + '</div>' : '') +
+
+    /* Title */
+    '<div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:8px">' +
+      (isAttend ? 'Attendance confirmed!' : 'Response recorded.') +
     '</div>' +
-    (!isAttend ? '<div style="padding:10px 14px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:8px;font-size:12px;color:rgba(255,255,255,.45);margin-bottom:12px">Your excuse letter has been received and recorded.</div>' : '') +
-    '<div style="font-size:11px;color:rgba(255,255,255,.2)">You may now close this page.</div>' +
+
+    /* Subtitle */
+    '<div style="font-size:13px;color:rgba(255,255,255,.55);line-height:1.6;margin-bottom:24px;max-width:280px">' +
+      (isAttend
+        ? "You\'re all set. See you at the event. Don\'t forget what to bring!"
+        : "Got it! We\'ve noted that you cannot attend. Thank you for letting us know.") +
+    '</div>' +
+
+    /* Event detail card */
+    '<div style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px 20px;text-align:left">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
+        '<div>' +
+          '<div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:4px">' + _ee(data.eventTitle || '') + '</div>' +
+          '<div style="font-size:12px;color:rgba(255,255,255,.4)">' + _ee(data.section ? 'Section ' + data.section : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      (data.studentId ? '<div style="margin-top:14px;display:inline-block;font-size:12px;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.25);padding:4px 14px;border-radius:20px">ID: ' + _ee(data.studentId) + '</div>' : '') +
+      (!isAttend ? '<div style="margin-top:12px;padding:10px 12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);border-radius:8px;font-size:12px;color:rgba(255,255,255,.5)">Your excuse letter has been received and recorded.</div>' : '') +
+    '</div>' +
+
   '</div>';
 }
 
@@ -414,11 +444,9 @@ function _evtAlreadySubmitted(existingResponse) {
 }
 
 
-/* ── Time-window helpers ───────────────────────────────────────── */
+/* ── Attendance time-window helpers ───────────────────────────── */
 function _isOutsideTimeWindow(evt) {
   if (!evt.attendanceStartTime || !evt.attendanceEndTime) return false;
-  /* Compare current Asia/Manila wall-clock time against the window.
-     We parse the PH time from a locale string to avoid TZ offset issues. */
   var nowPH = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
   var sh = parseInt(evt.attendanceStartTime.split(':')[0], 10);
   var sm = parseInt(evt.attendanceStartTime.split(':')[1], 10);
@@ -432,11 +460,8 @@ function _isOutsideTimeWindow(evt) {
 function _timeWindowMsg(evt) {
   var fmt = function(t) {
     if (!t) return t;
-    var parts = t.split(':');
-    var h = parseInt(parts[0], 10), m = parts[1];
-    var ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return h + ':' + m + ' ' + ampm;
+    var p = t.split(':'), h = parseInt(p[0], 10), m = p[1];
+    return (h % 12 || 12) + ':' + m + ' ' + (h >= 12 ? 'PM' : 'AM');
   };
   return '<div style="text-align:center;padding:32px 20px">' +
     '<div style="font-size:40px;margin-bottom:14px">⏱</div>' +
