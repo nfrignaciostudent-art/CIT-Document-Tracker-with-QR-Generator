@@ -1,12 +1,9 @@
 /* ══════════════════════════════════════════════════════════════════════
-   public/js/event.js — Public Event Page + Attendance
+   public/js/event.js — Student QR Scan Page
    CIT Document Tracker - Group 6
 
-   UPDATES:
-     - Section dropdown (always shown, pre-filled from DB)
-     - Excuse letter required when cannot attend
-     - Renamed buttons to school context
-     - Student ID validation: 10 digits only
+   REDESIGNED: Mobile-first, matches existing dark green theme.
+   Full event info, section dropdown, excuse letter required.
 ══════════════════════════════════════════════════════════════════════ */
 
 async function initEventPage() {
@@ -14,6 +11,7 @@ async function initEventPage() {
   var eventId = params.get('event');
   if (!eventId) return;
 
+  /* Hide main app, show event page */
   var appEl   = document.getElementById('app');
   var eventEl = document.getElementById('event-page');
   if (appEl)   appEl.style.display   = 'none';
@@ -27,113 +25,186 @@ async function loadEventPage(eventId) {
   if (!container) return;
 
   container.innerHTML =
-    '<div style="text-align:center;padding:60px 20px;color:rgba(255,255,255,.5)">' +
-    '<div class="spinner" style="margin:0 auto 16px"></div><p>Loading event...</p></div>';
+    '<div style="text-align:center;padding:60px 20px;color:rgba(255,255,255,.4)">' +
+    '<div class="spinner" style="margin:0 auto 16px;border-top-color:#34c75a"></div>' +
+    '<p style="font-size:13px">Loading event...</p></div>';
 
   try {
     var res  = await fetch('/api/events/public/' + encodeURIComponent(eventId));
     var data = await res.json();
     if (!res.ok) { container.innerHTML = _evtError(data.message || 'Event not found.'); return; }
-    _renderEventDetails(container, data);
+    _renderEventPage(container, data);
   } catch (err) {
     container.innerHTML = _evtError('Could not connect to server. Please try again.');
   }
 }
 
-function _renderEventDetails(container, evt) {
+function _renderEventPage(container, evt) {
   var isActive = evt.isActive;
-  var statusBadge = isActive
-    ? '<span style="background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3);padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700">Open</span>'
-    : '<span style="background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700">Closed</span>';
 
-  var imageSection = '';
-  if (evt.imageData) {
-    imageSection = '<div style="width:100%;max-width:480px;margin:0 auto 24px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08)">' +
-      '<img src="' + _ee(evt.imageData) + '" alt="' + _ee(evt.title) + '" style="width:100%;display:block;object-fit:cover;max-height:260px"></div>';
-  }
+  /* ── Banner ── */
+  var bannerHtml =
+    '<div style="background:linear-gradient(150deg,#1a3d22 0%,#0d2318 60%,#091510 100%);padding:24px 20px 28px;border-bottom:1px solid rgba(52,199,90,.12)">' +
+      '<div style="font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.35);text-transform:uppercase;margin-bottom:10px">CIT Document Tracker</div>' +
+      (evt.imageData ? '<div style="width:100%;border-radius:12px;overflow:hidden;margin-bottom:16px;border:1px solid rgba(255,255,255,.08)">' +
+        '<img src="' + _ee(evt.imageData) + '" alt="" style="width:100%;display:block;object-fit:cover;max-height:180px"></div>' : '') +
+      '<h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 10px;line-height:1.3">' + _ee(evt.title) + '</h1>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">' +
+        '<span style="font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-weight:600">School Event</span>' +
+        (isActive
+          ? '<span style="font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(52,199,90,.25);color:#a7f3c0;font-weight:700">Open</span>'
+          : '<span style="font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(239,68,68,.2);color:#fca5a5;font-weight:700">Closed</span>') +
+      '</div>' +
+    '</div>';
 
-  var infoRows = '';
-  if (evt.date)      infoRows += _infoRow('Date',      _ee(evt.date) + (evt.time ? ' &middot; ' + _ee(evt.time) : ''));
-  if (evt.location)  infoRows += _infoRow('Location',  _ee(evt.location));
-  if (evt.organizer) infoRows += _infoRow('Organizer', _ee(evt.organizer));
+  /* ── Info strip ── */
+  var infoHtml =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid rgba(255,255,255,.07)">' +
+      _evtInfoCell('Date',     (evt.date || '—') + (evt.time ? ' · ' + evt.time : '')) +
+      _evtInfoCell('Venue',    evt.location || '—') +
+      _evtInfoCell('Organizer', evt.organizer || '—') +
+      _evtInfoCell('Responses', (evt.attendCount + evt.cantAttendCount) + ' submitted') +
+    '</div>';
+
+  /* ── Description ── */
+  var descHtml = evt.description
+    ? '<div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07)">' +
+        '<div style="font-size:10px;font-weight:700;color:rgba(52,199,90,.6);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">About this event</div>' +
+        '<p style="font-size:13px;color:rgba(255,255,255,.65);line-height:1.7;margin:0">' + _ee(evt.description) + '</p>' +
+      '</div>'
+    : '';
+
+  /* ── Pinned announcement ── */
+  var announcementHtml =
+    '<div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07)">' +
+      '<div style="font-size:10px;font-weight:700;color:rgba(52,199,90,.6);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Announcement</div>' +
+      '<div style="background:rgba(239,159,39,.1);border-left:3px solid #ef9f27;border-radius:0 8px 8px 0;padding:10px 14px">' +
+        '<div style="font-size:10px;font-weight:700;color:#ef9f27;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">From the organizer</div>' +
+        '<p style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.6;margin:0">Please be on time. Bring your Student ID for attendance verification. Wear appropriate school attire.</p>' +
+      '</div>' +
+    '</div>';
+
+  /* ── What to bring ── */
+  var bringHtml =
+    '<div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07)">' +
+      '<div style="font-size:10px;font-weight:700;color:rgba(52,199,90,.6);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">What to bring</div>' +
+      '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px">' +
+        _evtBringItem('Student ID card') +
+        _evtBringItem('School uniform or prescribed attire') +
+        _evtBringItem('Water bottle') +
+      '</ul>' +
+    '</div>';
+
+  /* ── Organizer strip ── */
+  var orgHtml = (evt.organizer)
+    ? '<div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.07)">' +
+        '<div style="font-size:10px;font-weight:700;color:rgba(52,199,90,.6);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Organized by</div>' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<div style="width:34px;height:34px;border-radius:50%;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#a5b4fc;flex-shrink:0">' +
+            _ee(evt.organizer.slice(0,2).toUpperCase()) +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:600;color:#fff">' + _ee(evt.organizer) + '</div>' +
+            '<div style="font-size:11px;color:rgba(255,255,255,.4)">Event Organizer</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    : '';
+
+  /* ── Attendance counter ── */
+  var counterHtml =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.07)">' +
+      '<div style="text-align:center;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:12px">' +
+        '<div style="font-size:20px;font-weight:800;color:#22c55e">' + (evt.attendCount||0) + '</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Will Attend</div>' +
+      '</div>' +
+      '<div style="text-align:center;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:10px;padding:12px">' +
+        '<div style="font-size:20px;font-weight:800;color:#ef4444">' + (evt.cantAttendCount||0) + '</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Cannot Attend</div>' +
+      '</div>' +
+    '</div>';
+
+  /* ── Attendance form or closed message ── */
+  var formHtml =
+    '<div id="event-form-area" style="padding:20px">' +
+      (isActive ? _lookupForm(evt.eventId) : _closedMsg()) +
+    '</div>';
+
+  /* ── Footer ── */
+  var footerHtml =
+    '<div style="padding:16px 20px;text-align:center;border-top:1px solid rgba(255,255,255,.06)">' +
+      '<p style="font-size:10px;color:rgba(255,255,255,.2);font-family:\'DM Mono\',monospace">CIT Document Tracker · Group 6</p>' +
+    '</div>';
 
   container.innerHTML =
-    imageSection +
-    '<div style="text-align:center;margin-bottom:32px">' +
-      '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.35);margin-bottom:12px;text-transform:uppercase">CIT Event</div>' +
-      '<h1 style="font-size:26px;font-weight:800;color:#fff;margin:0 0 12px;line-height:1.3">' + _ee(evt.title) + '</h1>' +
-      statusBadge +
-    '</div>' +
-    '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px;margin-bottom:24px">' +
-      (evt.description ? '<p style="font-size:14px;color:rgba(255,255,255,.65);line-height:1.7;margin:0 0 20px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.07)">' + _ee(evt.description) + '</p>' : '') +
-      (infoRows ? '<div style="display:grid;gap:14px">' + infoRows + '</div>' : '') +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)">' +
-        '<div style="text-align:center;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:10px;padding:14px">' +
-          '<div style="font-size:22px;font-weight:800;color:#22c55e">' + evt.attendCount + '</div>' +
-          '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Will Attend</div>' +
-        '</div>' +
-        '<div style="text-align:center;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:10px;padding:14px">' +
-          '<div style="font-size:22px;font-weight:800;color:#ef4444">' + evt.cantAttendCount + '</div>' +
-          '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Cannot Attend</div>' +
-        '</div>' +
+    '<div style="background:#0d1a10;border-radius:16px;overflow:hidden;border:1px solid rgba(52,199,90,.1)">' +
+      bannerHtml + infoHtml + descHtml + announcementHtml + bringHtml + orgHtml + counterHtml + formHtml + footerHtml +
+    '</div>';
+}
+
+/* ── Info cell helper ──────────────────────────────────────────── */
+function _evtInfoCell(key, val) {
+  return '<div style="padding:12px 16px;border-right:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07)">' +
+    '<div style="font-size:10px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">' + key + '</div>' +
+    '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.8)">' + _ee(val) + '</div>' +
+  '</div>';
+}
+
+function _evtBringItem(text) {
+  return '<li style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.65)">' +
+    '<div style="width:6px;height:6px;border-radius:50%;background:#6366f1;flex-shrink:0"></div>' +
+    text + '</li>';
+}
+
+/* ── Lookup form ─────────────────────────────────────────────────── */
+function _lookupForm(eventId) {
+  var iStyle = 'width:100%;padding:12px 16px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:15px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;letter-spacing:.06em;-webkit-appearance:none;';
+  return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">' +
+    '<h3 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 4px">Confirm Your Attendance</h3>' +
+    '<p style="font-size:13px;color:rgba(255,255,255,.4);margin:0 0 18px;line-height:1.5">Enter your 10-digit Student ID to look up your record.</p>' +
+
+    /* ID input */
+    '<div style="margin-bottom:12px">' +
+      '<label style="font-size:12px;font-weight:600;color:rgba(255,255,255,.5);display:block;margin-bottom:6px">Student ID</label>' +
+      '<div style="display:flex;gap:8px">' +
+        '<input id="evt-student-id-input" type="text" inputmode="numeric" placeholder="e.g. 2026000010" maxlength="10"' +
+          ' style="' + iStyle + 'flex:1"' +
+          ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"' +
+          ' onkeydown="if(event.key===\'Enter\') _evtLookup(\'' + eventId + '\')">' +
+        '<button onclick="_evtLookup(\'' + eventId + '\')"' +
+          ' style="padding:12px 18px;background:#34c75a;color:#0d1117;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">' +
+          'Search' +
+        '</button>' +
       '</div>' +
     '</div>' +
-    '<div id="event-form-area">' + (isActive ? _lookupForm(evt.eventId) : _closedMsg()) + '</div>';
-}
 
-function _infoRow(label, valueHtml) {
-  return '<div style="display:flex;align-items:flex-start;gap:14px">' +
-    '<div style="width:36px;height:36px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);border-radius:10px;display:grid;place-items:center;flex-shrink:0;color:#818cf8;font-size:15px">' +
-      (label === 'Date' ? '📅' : label === 'Location' ? '📍' : '👤') +
-    '</div>' +
-    '<div><div style="font-size:11px;color:rgba(255,255,255,.35);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">' + label + '</div>' +
-    '<div style="font-size:14px;color:rgba(255,255,255,.85);font-weight:600">' + valueHtml + '</div></div></div>';
-}
-
-/* ── Student ID lookup form ──────────────────────────────────────── */
-function _lookupForm(eventId) {
-  var inp = 'width:100%;padding:12px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:15px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;letter-spacing:.08em;';
-  return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px">' +
-    '<h3 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 4px">Confirm Your Attendance</h3>' +
-    '<p style="font-size:13px;color:rgba(255,255,255,.4);margin:0 0 20px">Enter your 10-digit Student ID to confirm attendance.</p>' +
-    '<div style="display:flex;gap:10px;margin-bottom:10px">' +
-      '<input id="evt-student-id-input" type="text" inputmode="numeric" placeholder="e.g. 2026000010" maxlength="10"' +
-        ' style="' + inp + 'flex:1"' +
-        ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"' +
-        ' onkeydown="if(event.key===\'Enter\') _evtLookup(\'' + eventId + '\')">' +
-      '<button onclick="_evtLookup(\'' + eventId + '\')"' +
-        ' style="padding:12px 20px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">' +
-        'Search' +
-      '</button>' +
-    '</div>' +
     '<div id="evt-lookup-error" style="display:none;font-size:13px;color:#f87171;padding:10px 14px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:8px;margin-bottom:12px;line-height:1.5"></div>' +
     '<div id="evt-student-confirm" style="display:none"></div>' +
   '</div>';
 }
 
-/* ── Sections list ───────────────────────────────────────────────── */
+/* ── Sections ─────────────────────────────────────────────────────── */
 var _SECTIONS = ['A','B','C','D','E','F','G','H'];
 
-function _sectionSelect(currentSection) {
-  var opts = '<option value="">-- Select your section --</option>';
+function _sectionSelect(current) {
+  var style = 'width:100%;padding:11px 14px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:14px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;-webkit-appearance:none;appearance:none;cursor:pointer;margin-top:6px';
+  var opts  = '<option value="" style="background:#0d1117">-- Select your section --</option>';
   _SECTIONS.forEach(function(s) {
-    opts += '<option value="' + s + '"' + (currentSection === s ? ' selected' : '') + '>Section ' + s + '</option>';
+    opts += '<option value="' + s + '"' + (current === s ? ' selected' : '') + ' style="background:#0d1117">Section ' + s + '</option>';
   });
-  return '<select id="evt-section-select" style="width:100%;padding:11px 14px;background:rgba(255,255,255,.06);' +
-    'border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:14px;' +
-    'font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;' +
-    '-webkit-appearance:none;appearance:none;cursor:pointer">' + opts + '</select>';
+  return '<select id="evt-section-select" style="' + style + '">' + opts + '</select>';
 }
 
 /* ── Lookup student ──────────────────────────────────────────────── */
 async function _evtLookup(eventId) {
-  var input   = document.getElementById('evt-student-id-input');
-  var errEl   = document.getElementById('evt-lookup-error');
-  var confirm = document.getElementById('evt-student-confirm');
+  var input  = document.getElementById('evt-student-id-input');
+  var errEl  = document.getElementById('evt-lookup-error');
+  var confEl = document.getElementById('evt-student-confirm');
   if (!input) return;
 
   var studentId = input.value.trim();
   errEl.style.display = 'none';
+  confEl.style.display = 'none';
 
   if (!studentId) {
     errEl.textContent   = 'Please enter your Student ID.';
@@ -163,56 +234,63 @@ async function _evtLookup(eventId) {
     if (!res.ok || !data.found) {
       errEl.innerHTML =
         '<strong>' + _ee(data.message || 'Student ID not found.') + '</strong>' +
-        '<br><span style="font-size:12px;opacity:.8;margin-top:4px;display:block">' +
-        'If you don\'t have a Student ID yet, please contact your administrator.' +
-        '</span>';
+        '<br><span style="font-size:12px;opacity:.8;margin-top:4px;display:block">Contact your administrator if you believe this is an error.</span>';
       errEl.style.display = 'block';
       return;
     }
 
-    /* ── Show student info + section dropdown + action buttons ── */
-    confirm.style.display = 'block';
-    confirm.innerHTML =
-      '<div style="margin-top:16px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:18px">' +
-        '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Student Found</div>' +
-        '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px">' + _ee(data.studentName) + '</div>' +
-        '<div style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:16px">' +
-          'ID: <span style="font-family:\'DM Mono\',monospace">' + _ee(data.studentId) + '</span>' +
+    /* ── Show student confirmation card ── */
+    confEl.style.display = 'block';
+    confEl.innerHTML =
+      '<div style="margin-top:14px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:18px">' +
+
+        /* Student found header */
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.08)">' +
+          '<div style="width:38px;height:38px;border-radius:50%;background:rgba(99,102,241,.25);border:1px solid rgba(99,102,241,.4);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#a5b4fc;flex-shrink:0">' +
+            _ee(data.studentName.charAt(0).toUpperCase()) +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:15px;font-weight:700;color:#fff">' + _ee(data.studentName) + '</div>' +
+            '<div style="font-size:12px;color:rgba(255,255,255,.45);font-family:\'DM Mono\',monospace">ID: ' + _ee(data.studentId) + '</div>' +
+          '</div>' +
         '</div>' +
 
         /* Section dropdown */
         '<div style="margin-bottom:16px">' +
-          '<label style="font-size:12px;font-weight:600;color:rgba(255,255,255,.55);display:block;margin-bottom:6px">Your Section</label>' +
+          '<label style="font-size:12px;font-weight:600;color:rgba(255,255,255,.5);display:block">Your Section</label>' +
           _sectionSelect(data.section || '') +
-          '<div id="evt-section-error" style="display:none;font-size:12px;color:#f87171;margin-top:5px">Please select your section before confirming.</div>' +
+          '<div id="evt-section-error" style="display:none;font-size:12px;color:#f87171;margin-top:5px">Please select your section.</div>' +
         '</div>' +
 
         /* Action buttons */
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
           '<button onclick="_evtSubmitAttend(\'' + eventId + '\',\'' + _ee(data.studentId) + '\')"' +
-            ' style="padding:13px;background:#22c55e;color:#0d1117;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
-            'I will Attend' +
+            ' style="padding:14px 10px;background:#34c75a;color:#0d1117;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
+            '✓ I will Attend' +
           '</button>' +
           '<button onclick="_evtShowExcuseForm()"' +
-            ' style="padding:13px;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
-            'Cannot Attend' +
+            ' style="padding:14px 10px;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
+            '✕ Cannot Attend' +
           '</button>' +
         '</div>' +
 
         '<button onclick="_evtReset(\'' + eventId + '\')"' +
-          ' style="width:100%;padding:9px;background:transparent;color:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.08);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:12px;cursor:pointer">' +
+          ' style="width:100%;padding:9px;background:transparent;color:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.08);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:12px;cursor:pointer">' +
           'Not you? Search again' +
         '</button>' +
 
-        /* Excuse letter form — hidden until Cannot Attend is clicked */
+        /* Excuse letter form */
         '<div id="evt-excuse-form" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)">' +
-          '<div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Excuse Letter Required</div>' +
+          '<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">' +
+            '<div style="width:18px;height:18px;background:rgba(239,68,68,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#f87171;font-weight:700;flex-shrink:0">!</div>' +
+            '<div style="font-size:12px;font-weight:700;color:#f87171">Excuse Letter Required</div>' +
+          '</div>' +
           '<p style="font-size:12px;color:rgba(255,255,255,.45);margin:0 0 10px;line-height:1.6">Please write your reason for not attending. This will be recorded for the organizer.</p>' +
-          '<textarea id="evt-excuse-text" placeholder="Write your reason here (e.g. I have a medical appointment, family emergency, etc.)" rows="4"' +
-            ' style="width:100%;padding:11px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:13px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;resize:vertical;line-height:1.5"></textarea>' +
+          '<textarea id="evt-excuse-text" placeholder="Write your reason here (e.g. medical appointment, family emergency...)" rows="4"' +
+            ' style="width:100%;padding:11px 14px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:13px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;resize:vertical;line-height:1.5"></textarea>' +
           '<div id="evt-excuse-error" style="display:none;font-size:12px;color:#f87171;margin-top:6px"></div>' +
           '<button id="evt-excuse-submit-btn" onclick="_evtSubmitCannotAttend(\'' + eventId + '\',\'' + _ee(data.studentId) + '\')"' +
-            ' style="width:100%;margin-top:10px;padding:13px;background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.35);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
+            ' style="width:100%;margin-top:10px;padding:13px;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
             'Submit Excuse Letter' +
           '</button>' +
         '</div>' +
@@ -227,43 +305,35 @@ async function _evtLookup(eventId) {
   }
 }
 
-/* ── Show excuse letter form ─────────────────────────────────────── */
 function _evtShowExcuseForm() {
   var form = document.getElementById('evt-excuse-form');
-  if (form) {
-    form.style.display = 'block';
-    var textarea = document.getElementById('evt-excuse-text');
-    if (textarea) textarea.focus();
-  }
+  if (form) { form.style.display = 'block'; var ta = document.getElementById('evt-excuse-text'); if (ta) ta.focus(); }
 }
 
-/* ── Validate section helper ─────────────────────────────────────── */
 function _evtValidateSection() {
   var sel = document.getElementById('evt-section-select');
-  var errEl = document.getElementById('evt-section-error');
+  var err = document.getElementById('evt-section-error');
   if (!sel || !sel.value) {
-    if (errEl) errEl.style.display = 'block';
-    if (sel) sel.style.border = '1px solid rgba(239,68,68,.5)';
+    if (err) err.style.display = 'block';
+    if (sel) sel.style.borderColor = 'rgba(239,68,68,.5)';
     return null;
   }
-  if (errEl) errEl.style.display = 'none';
-  if (sel) sel.style.border = '';
+  if (err) err.style.display = 'none';
+  if (sel) sel.style.borderColor = '';
   return sel.value;
 }
 
-/* ── Submit attending ────────────────────────────────────────────── */
 async function _evtSubmitAttend(eventId, studentId) {
   var section = _evtValidateSection();
   if (!section) return;
   await _evtDoSubmit(eventId, studentId, 'attend', section, null);
 }
 
-/* ── Submit cannot attend ────────────────────────────────────────── */
 async function _evtSubmitCannotAttend(eventId, studentId) {
   var section = _evtValidateSection();
   if (!section) return;
 
-  var excuseText = (document.getElementById('evt-excuse-text') || {}).value || '';
+  var excuseText  = (document.getElementById('evt-excuse-text') || {}).value || '';
   var excuseErrEl = document.getElementById('evt-excuse-error');
 
   if (!excuseText.trim()) {
@@ -275,14 +345,14 @@ async function _evtSubmitCannotAttend(eventId, studentId) {
   await _evtDoSubmit(eventId, studentId, 'cant_attend', section, excuseText.trim());
 }
 
-/* ── Core submit ─────────────────────────────────────────────────── */
 async function _evtDoSubmit(eventId, studentId, response, section, excuseLetter) {
   var formArea = document.getElementById('event-form-area');
   if (!formArea) return;
 
   formArea.innerHTML =
-    '<div style="text-align:center;padding:40px 20px;color:rgba(255,255,255,.5)">' +
-    '<div class="spinner" style="margin:0 auto 16px"></div><p>Submitting your response...</p></div>';
+    '<div style="text-align:center;padding:40px 20px;color:rgba(255,255,255,.4)">' +
+    '<div class="spinner" style="margin:0 auto 16px;border-top-color:#34c75a"></div>' +
+    '<p style="font-size:13px">Submitting your response...</p></div>';
 
   try {
     var body = { eventId, studentId, section, response };
@@ -306,53 +376,54 @@ async function _evtDoSubmit(eventId, studentId, response, section, excuseLetter)
 }
 
 function _evtReset(eventId) {
-  var formArea = document.getElementById('event-form-area');
-  if (formArea) formArea.innerHTML = _lookupForm(eventId);
+  var fa = document.getElementById('event-form-area');
+  if (fa) fa.innerHTML = _lookupForm(eventId);
 }
 
+/* ── Success screen ──────────────────────────────────────────────── */
 function _evtSuccess(data, response) {
   var isAttend = response === 'attend';
-  return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px;text-align:center">' +
-    '<div style="width:64px;height:64px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;' +
-      'background:' + (isAttend ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.1)') + ';' +
-      'border:2px solid ' + (isAttend ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.25)') + ';' +
-      'font-size:32px;color:' + (isAttend ? '#22c55e' : '#ef4444') + '">' +
+  var iconBg   = isAttend ? 'rgba(52,199,90,.15)' : 'rgba(239,68,68,.1)';
+  var iconBd   = isAttend ? 'rgba(52,199,90,.4)'  : 'rgba(239,68,68,.3)';
+  var iconClr  = isAttend ? '#34c75a' : '#ef4444';
+
+  return '<div style="text-align:center;padding:28px 0">' +
+    '<div style="width:66px;height:66px;margin:0 auto 16px;border-radius:50%;background:' + iconBg + ';border:2px solid ' + iconBd + ';display:flex;align-items:center;justify-content:center;font-size:28px;color:' + iconClr + '">' +
       (isAttend ? '✓' : '✕') +
     '</div>' +
-    '<h3 style="font-size:18px;font-weight:800;color:#fff;margin:0 0 8px">' + (isAttend ? "You're In!" : 'Response Recorded') + '</h3>' +
-    '<p style="font-size:14px;color:rgba(255,255,255,.5);margin:0 0 20px;line-height:1.6">' + _ee(data.message) + '</p>' +
-    '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px">' +
-      '<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.8)">' + _ee(data.studentName) + '</div>' +
+    '<h3 style="font-size:18px;font-weight:800;color:#fff;margin:0 0 8px">' + (isAttend ? "Attendance Confirmed!" : "Response Recorded") + '</h3>' +
+    '<p style="font-size:13px;color:rgba(255,255,255,.5);margin:0 0 20px;line-height:1.6;padding:0 8px">' + _ee(data.message) + '</p>' +
+    '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-bottom:12px">' +
+      '<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.85)">' + _ee(data.studentName) + '</div>' +
       (data.section ? '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:3px">Section ' + _ee(data.section) + '</div>' : '') +
     '</div>' +
-    (!isAttend ? '<div style="margin-top:12px;padding:10px 14px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:8px;font-size:12px;color:rgba(255,255,255,.45)">Your excuse letter has been submitted and recorded.</div>' : '') +
-    '<div style="font-size:11px;color:rgba(255,255,255,.25);margin-top:12px">You can now close this page.</div>' +
+    (!isAttend ? '<div style="padding:10px 14px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:8px;font-size:12px;color:rgba(255,255,255,.45);margin-bottom:12px">Your excuse letter has been received and recorded.</div>' : '') +
+    '<div style="font-size:11px;color:rgba(255,255,255,.2)">You may now close this page.</div>' +
   '</div>';
 }
 
 function _evtAlreadySubmitted(existingResponse) {
   var wasAttend = existingResponse === 'attend';
-  return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px;text-align:center">' +
-    '<div style="width:48px;height:48px;margin:0 auto 14px;border-radius:50%;background:rgba(245,158,11,.1);border:2px solid rgba(245,158,11,.25);display:grid;place-items:center;color:#f59e0b;font-size:22px;font-weight:700">!</div>' +
+  return '<div style="text-align:center;padding:28px 0">' +
+    '<div style="width:48px;height:48px;margin:0 auto 14px;border-radius:50%;background:rgba(245,158,11,.1);border:2px solid rgba(245,158,11,.3);display:flex;align-items:center;justify-content:center;color:#f59e0b;font-size:20px;font-weight:700">!</div>' +
     '<h3 style="font-size:16px;font-weight:700;color:#fff;margin:0 0 8px">Already Submitted</h3>' +
-    '<p style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.6;margin:0">' +
-      'You already responded as <strong style="color:' + (wasAttend ? '#22c55e' : '#f87171') + '">' + (wasAttend ? 'Attending' : 'Cannot Attend') + '</strong>.<br>' +
-      'You can only submit once per event.' +
+    '<p style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.6;margin:0;padding:0 8px">' +
+      'You already responded as <strong style="color:' + (wasAttend ? '#34c75a' : '#f87171') + '">' + (wasAttend ? 'Attending' : 'Cannot Attend') + '</strong>.<br>You can only submit once per event.' +
     '</p>' +
   '</div>';
 }
 
 function _closedMsg() {
-  return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px;text-align:center">' +
-    '<div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);display:grid;place-items:center;color:rgba(255,255,255,.4);font-size:22px">🔒</div>' +
+  return '<div style="text-align:center;padding:28px 0">' +
+    '<div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.4);font-size:22px">🔒</div>' +
     '<h3 style="font-size:16px;font-weight:700;color:#fff;margin:0 0 8px">Attendance Closed</h3>' +
-    '<p style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.6;margin:0">This event is no longer accepting attendance responses.</p>' +
+    '<p style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.6;margin:0">This event is no longer accepting responses.</p>' +
   '</div>';
 }
 
 function _evtError(msg) {
-  return '<div style="text-align:center;padding:60px 20px">' +
-    '<div style="width:48px;height:48px;margin:0 auto 14px;border-radius:50%;background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.2);display:grid;place-items:center;color:#ef4444;font-size:22px">✕</div>' +
+  return '<div style="text-align:center;padding:40px 20px">' +
+    '<div style="width:48px;height:48px;margin:0 auto 14px;border-radius:50%;background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.2);display:flex;align-items:center;justify-content:center;color:#ef4444;font-size:22px">✕</div>' +
     '<p style="font-size:15px;font-weight:700;color:#fff;margin:0 0 8px">Something went wrong</p>' +
     '<p style="font-size:13px;color:rgba(255,255,255,.4);margin:0">' + _ee(msg) + '</p>' +
   '</div>';
