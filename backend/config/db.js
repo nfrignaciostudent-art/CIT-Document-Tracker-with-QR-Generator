@@ -14,20 +14,42 @@ const connectDB = async () => {
     });
     console.log(`MongoDB Connected: ${conn.connection.host}`);
 
-    /* Drop stale legacy indexes that cause E11000 on null values */
+    /* ── Drop stale legacy indexes on 'documents' collection ─────────
+       These non-sparse unique indexes cause E11000 on null values.   */
     try {
       const docsCollection = conn.connection.collection('documents');
-      const indexes = await docsCollection.indexes();
-      const staleNames = ['docId_1', 'documentId_1'];
-      for (const name of staleNames) {
-        if (indexes.some(idx => idx.name === name)) {
+      const docsIndexes    = await docsCollection.indexes();
+      const staleDocNames  = ['docId_1', 'documentId_1'];
+      for (const name of staleDocNames) {
+        if (docsIndexes.some(idx => idx.name === name)) {
           await docsCollection.dropIndex(name);
-          console.log(`Dropped stale index: ${name}`);
+          console.log(`Dropped stale documents index: ${name}`);
         }
       }
     } catch (idxErr) {
       if (!idxErr.message.includes('index not found')) {
-        console.warn('Could not clean up indexes:', idxErr.message);
+        console.warn('Could not clean up documents indexes:', idxErr.message);
+      }
+    }
+
+    /* ── Drop stale legacy indexes on 'users' collection ─────────────
+       FIX: employee_id_1 was created without sparse:true, causing
+       E11000 duplicate key errors when multiple users have null
+       employee_id (i.e. regular user/admin accounts).
+       Dropping it here lets Mongoose recreate it as sparse on startup. */
+    try {
+      const usersCollection = conn.connection.collection('users');
+      const usersIndexes    = await usersCollection.indexes();
+      const staleUserNames  = ['employee_id_1', 'studentId_1'];
+      for (const name of staleUserNames) {
+        if (usersIndexes.some(idx => idx.name === name && !idx.sparse)) {
+          await usersCollection.dropIndex(name);
+          console.log(`Dropped stale users index: ${name}`);
+        }
+      }
+    } catch (idxErr) {
+      if (!idxErr.message.includes('index not found')) {
+        console.warn('Could not clean up users indexes:', idxErr.message);
       }
     }
 
