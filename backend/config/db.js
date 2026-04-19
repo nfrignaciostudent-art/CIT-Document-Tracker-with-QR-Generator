@@ -14,43 +14,31 @@ const connectDB = async () => {
     });
     console.log(`MongoDB Connected: ${conn.connection.host}`);
 
-    /* ── Drop stale legacy indexes on 'documents' collection ─────────
-       These non-sparse unique indexes cause E11000 on null values.   */
+    /* ── Drop stale legacy indexes on 'documents' collection ──────── */
     try {
       const docsCollection = conn.connection.collection('documents');
-      const docsIndexes    = await docsCollection.indexes();
       const staleDocNames  = ['docId_1', 'documentId_1'];
       for (const name of staleDocNames) {
-        if (docsIndexes.some(idx => idx.name === name)) {
-          await docsCollection.dropIndex(name);
-          console.log(`Dropped stale documents index: ${name}`);
-        }
+        await docsCollection.dropIndex(name).catch(() => {});
+        console.log(`Cleaned up documents index: ${name}`);
       }
     } catch (idxErr) {
-      if (!idxErr.message.includes('index not found')) {
-        console.warn('Could not clean up documents indexes:', idxErr.message);
-      }
+      console.warn('Could not clean up documents indexes:', idxErr.message);
     }
 
     /* ── Drop stale legacy indexes on 'users' collection ─────────────
-       FIX: employee_id_1 was created without sparse:true, causing
-       E11000 duplicate key errors when multiple users have null
-       employee_id (i.e. regular user/admin accounts).
-       Dropping it here lets Mongoose recreate it as sparse on startup. */
+       FIX: employee_id_1 and studentId_1 were created without
+       sparse:true, causing E11000 when multiple users have null values.
+       We drop them unconditionally — Mongoose recreates them as sparse. */
     try {
       const usersCollection = conn.connection.collection('users');
-      const usersIndexes    = await usersCollection.indexes();
       const staleUserNames  = ['employee_id_1', 'studentId_1'];
       for (const name of staleUserNames) {
-        if (usersIndexes.some(idx => idx.name === name && !idx.sparse)) {
-          await usersCollection.dropIndex(name);
-          console.log(`Dropped stale users index: ${name}`);
-        }
+        await usersCollection.dropIndex(name).catch(() => {});
+        console.log(`Cleaned up users index: ${name}`);
       }
     } catch (idxErr) {
-      if (!idxErr.message.includes('index not found')) {
-        console.warn('Could not clean up users indexes:', idxErr.message);
-      }
+      console.warn('Could not clean up users indexes:', idxErr.message);
     }
 
   } catch (error) {
