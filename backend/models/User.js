@@ -1,21 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
    models/User.js — User Schema
    CIT Document Tracker - Group 6
-
-   STAFF / FACULTY ADDITION:
-     role         — extended to include 'staff' and 'faculty'.
-                    Only admin can create staff/faculty accounts.
-                    Self-registration is blocked for these roles in
-                    authController.registerUser().
-
-     employee_id  — unique identifier for staff and faculty accounts.
-                    Sparse index: allows multiple null values so that
-                    existing admin/user accounts are unaffected.
-                    Required at the controller level when role is
-                    'staff' or 'faculty'.
-
-   ZERO-KNOWLEDGE VAULT FIELDS (unchanged):
-     encryptedIdeaKey / passwordSalt — see original comments below.
 ══════════════════════════════════════════════════════════════════════ */
 
 const mongoose = require('mongoose');
@@ -31,16 +16,13 @@ const UserSchema = new mongoose.Schema({
   role:        { type: String, enum: ['admin', 'user', 'staff', 'faculty'], default: 'user' },
   color:       { type: String, default: '#4ade80' },
 
-  /**
-   * employee_id — required for staff and faculty accounts.
-   * Validated at the controller level (not here) so that legacy
-   * admin/user accounts with no employee_id pass mongoose validation.
-   * sparse: true lets multiple documents have employee_id = null
-   * without triggering the unique constraint.
-   */
-  employee_id: { type: String, default: null, trim: true },
-  studentId:   { type: String, default: null, trim: true },   // student's school ID e.g. "2021-00123"
-  section:     { type: String, default: null, trim: true },   // e.g. "3A", "3B"
+  /* FIX: default must be undefined (not null) so MongoDB does NOT
+     store the field for regular users. Sparse unique indexes only
+     skip documents where the field is ABSENT — they still index null,
+     which causes E11000 when two regular users both have null. */
+  employee_id: { type: String, trim: true },   // no default → undefined → field absent
+  studentId:   { type: String, trim: true },   // no default → undefined → field absent
+  section:     { type: String, trim: true },
 
   /* ── Session tracking ──────────────────────────────────────── */
   lastLogin: { type: Date, default: null },
@@ -52,7 +34,7 @@ const UserSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-/* ── Sparse unique index for employee_id ── */
+/* ── Sparse unique indexes (skip absent/undefined fields) ── */
 UserSchema.index({ employee_id: 1 }, { unique: true, sparse: true });
 UserSchema.index({ studentId: 1 },   { unique: true, sparse: true });
 

@@ -1,30 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
    controllers/authController.js
    CIT Document Tracker - Group 6
-
-   STAFF / FACULTY ADDITIONS:
-     registerUser    — blocks self-registration for 'staff' and 'faculty'.
-                       These roles can only be created by an admin via
-                       createUserByAdmin().
-
-     loginUser       — now accepts employee_id as well as username.
-                       The frontend can send { login: 'empId or username',
-                       password } and the backend checks both fields.
-                       Backward-compatible: { username, password } still works.
-
-     createUserByAdmin (NEW)
-                     — POST /api/auth/users/create  (admin only).
-                       Creates staff or faculty accounts with a required
-                       employee_id.  Also accepts admin/user creation for
-                       convenience (e.g. seeding).  Passwords are hashed
-                       automatically via the User pre-save hook.
-                       Returns the same shape as registerUser so the
-                       frontend can reuse the same handling code.
-
-   VAULT CHANGES (unchanged from original):
-     registerUser — accepts { encryptedIdeaKey, passwordSalt }.
-     loginUser    — returns { encryptedIdeaKey, passwordSalt }.
-     getMe        — returns vault fields for session restore.
 ══════════════════════════════════════════════════════════════════════ */
 
 const jwt  = require('jsonwebtoken');
@@ -36,11 +12,6 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
 const generateToken = (id) =>
   jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 
-/* ── Auto-generate Student ID ─────────────────────────────────────
-   Format: CurrentYear (4 digits) + UniqueNumber (6 digits, zero-padded)
-   Example: 2026 + 000001 → "2026000001"
-   Deterministic: counts existing user-role accounts, increments,
-   retries up to 20 times to guarantee uniqueness.               */
 async function generateStudentId() {
   const year = new Date().getFullYear().toString();
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -50,11 +21,9 @@ async function generateStudentId() {
     const exists = await User.findOne({ studentId });
     if (!exists) return studentId;
   }
-  /* Absolute fallback: timestamp-based suffix */
   return year + String(Date.now()).slice(-6);
 }
 
-/* ── Helper: safe public user shape ──────────────────────────────── */
 function _publicUser(user, token) {
   return {
     _id:              user._id,
@@ -81,7 +50,6 @@ const registerUser = async (req, res) => {
       encryptedIdeaKey, passwordSalt,
     } = req.body;
 
-    /* ── Basic validation ── */
     if (!username || !name || !password)
       return res.status(400).json({ message: 'Username, name and password are required.' });
 
@@ -91,10 +59,6 @@ const registerUser = async (req, res) => {
     if (password.length < 4)
       return res.status(400).json({ message: 'Password must be at least 4 characters.' });
 
-    /* ── SECURITY: block self-registration for privileged roles ──
-       Staff and faculty accounts must be created by an admin via
-       POST /api/auth/users/create.  Admin self-registration is also
-       blocked here — admins are seeded directly (see seed.js).    */
     const requestedRole = (role || 'user').toLowerCase();
     if (['admin', 'staff', 'faculty'].includes(requestedRole)) {
       return res.status(403).json({
@@ -106,18 +70,15 @@ const registerUser = async (req, res) => {
     const exists = await User.findOne({ username });
     if (exists) return res.status(409).json({ message: 'Username already taken.' });
 
-    /* ── Vault field validation ── */
-    if (encryptedIdeaKey && encryptedIdeaKey.length !== 32)
-      console.warn('[registerUser] encryptedIdeaKey has unexpected length:', encryptedIdeaKey.length);
-    if (passwordSalt && passwordSalt.length !== 32)
-      console.warn('[registerUser] passwordSalt has unexpected length:', passwordSalt.length);
-
     const user = new User({
       userId:   userId || ('USR-' + Date.now().toString(36).toUpperCase()),
       username, name, password,
-      role:     'user',   // always 'user' for self-registration
+      role:     'user',
       color:    color || '#4ade80',
-      studentId: await generateStudentId(),   // auto-generated, always unique
+      studentId: await generateStudentId(),
+      /* FIX: employee_id intentionally omitted (undefined) so the
+         sparse index does not store/index this document.
+         Do NOT set employee_id: null — null is indexed and causes E11000. */
       encryptedIdeaKey: encryptedIdeaKey || null,
       passwordSalt:     passwordSalt     || null,
     });
@@ -127,31 +88,27 @@ const registerUser = async (req, res) => {
     res.status(201).json(_publicUser(user, token));
   } catch (err) {
     console.error('[registerUser]', err);
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue || {})[0] || 'field';
+      return res.status(409).json({ message: `${field} is already taken.` });
+    }
     res.status(500).json({ message: err.message });
   }
 };
 
 /* ══════════════════════════════════════════════════════════════════════
    POST /api/auth/login
-   Accepts { username, password }  OR  { login, password }
-   where `login` is matched against BOTH username and employee_id.
-   This lets staff/faculty use their employee_id to sign in.
 ══════════════════════════════════════════════════════════════════════ */
 const loginUser = async (req, res) => {
   try {
     const { username, login, password } = req.body;
-
-    /* Support both { username, password } (legacy) and { login, password } (new) */
     const loginField = (login || username || '').toLowerCase().trim();
 
     if (!loginField || !password)
       return res.status(400).json({ message: 'Username/Employee ID and password are required.' });
 
-    /* Search by username first, then by employee_id */
     let user = await User.findOne({ username: loginField });
-    if (!user) {
-      user = await User.findOne({ employee_id: loginField });
-    }
+    if (!user) user = await User.findOne({ employee_id: loginField });
 
     if (!user) {
       console.warn('[loginUser] user not found:', loginField);
@@ -164,11 +121,6 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ message: 'Incorrect username/employee ID or password.' });
     }
 
-    /* ── FIX: use findByIdAndUpdate instead of user.save() ──────────
-       user.save() triggers full Mongoose validation, which fails for
-       legacy accounts that were created before 'userId' became a
-       required field.  findByIdAndUpdate bypasses that validation and
-       only updates the lastLogin field.                              */
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
 
     const token = generateToken(user._id);
@@ -195,6 +147,8 @@ const getMe = async (req, res) => {
       role:             user.role,
       color:            user.color,
       employee_id:      user.employee_id || null,
+      studentId:        user.studentId   || null,
+      section:          user.section     || null,
       createdAt:        user.createdAt,
       lastLogin:        user.lastLogin,
       lastSeen:         user.lastSeen,
@@ -202,35 +156,24 @@ const getMe = async (req, res) => {
       passwordSalt:     user.passwordSalt     || null,
     });
   } catch (err) {
+    console.error('[getMe]', err);
     res.status(500).json({ message: err.message });
   }
 };
 
 /* ══════════════════════════════════════════════════════════════════════
    POST /api/auth/users/create  (admin only)
-
-   Creates staff, faculty, or any role account on behalf of the admin.
-   Rules enforced here:
-     - employee_id is required when role is 'staff' or 'faculty'
-     - employee_id must be unique
-     - Passwords are hashed automatically by the User pre-save hook
-     - Passwords are NEVER returned in responses
 ══════════════════════════════════════════════════════════════════════ */
 const createUserByAdmin = async (req, res) => {
   try {
     const {
-      username, name, password, role, color,
-      employee_id,
-      /* Vault fields — optional, admin accounts may supply them */
+      username, name, password, role,
+      employee_id, color,
       encryptedIdeaKey, passwordSalt,
     } = req.body;
 
-    /* ── Validation ── */
     if (!username || !name || !password || !role)
       return res.status(400).json({ message: 'username, name, password and role are required.' });
-
-    if (!/^[a-z0-9_]+$/.test(username))
-      return res.status(400).json({ message: 'Username: lowercase letters, numbers, underscores only.' });
 
     if (password.length < 4)
       return res.status(400).json({ message: 'Password must be at least 4 characters.' });
@@ -239,45 +182,51 @@ const createUserByAdmin = async (req, res) => {
     if (!allowedRoles.includes(role))
       return res.status(400).json({ message: `Invalid role. Allowed: ${allowedRoles.join(', ')}.` });
 
-    /* employee_id required for staff / faculty */
     if (['staff', 'faculty'].includes(role)) {
       if (!employee_id || !employee_id.trim())
         return res.status(400).json({ message: `employee_id is required for the "${role}" role.` });
-
-      /* Check employee_id uniqueness */
       const empExists = await User.findOne({ employee_id: employee_id.trim() });
       if (empExists)
         return res.status(409).json({ message: 'employee_id is already in use.' });
     }
 
-    /* Check username uniqueness */
     const usernameExists = await User.findOne({ username: username.toLowerCase().trim() });
     if (usernameExists)
       return res.status(409).json({ message: 'Username already taken.' });
 
-    const user = new User({
+    /* FIX: use undefined (not null) for absent optional fields so
+       sparse indexes skip these documents entirely.                */
+    const userData = {
       userId:      'USR-' + Date.now().toString(36).toUpperCase(),
       username:    username.toLowerCase().trim(),
       name:        name.trim(),
-      password,            // hashed by pre-save hook
+      password,
       role,
       color:       color || _defaultColorForRole(role),
-      employee_id: (['staff', 'faculty'].includes(role)) ? employee_id.trim() : null,
-      studentId:   role === 'user' ? await generateStudentId() : null,  // auto-generated for students
       encryptedIdeaKey: encryptedIdeaKey || null,
       passwordSalt:     passwordSalt     || null,
-    });
+    };
+
+    if (['staff', 'faculty'].includes(role)) {
+      userData.employee_id = employee_id.trim();   // set only for staff/faculty
+    }
+    // employee_id left undefined for admin/user → sparse index skips it
+
+    if (role === 'user') {
+      userData.studentId = await generateStudentId();  // set only for users
+    }
+    // studentId left undefined for admin/staff/faculty → sparse index skips it
+
+    const user = new User(userData);
     await user.save();
 
     const token = generateToken(user._id);
-
     res.status(201).json({
-      message:     `${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully.`,
-      user:        _publicUser(user, token),
+      message: `${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully.`,
+      user:    _publicUser(user, token),
     });
   } catch (err) {
     console.error('[createUserByAdmin]', err);
-    /* Friendly duplicate key error */
     if (err.code === 11000) {
       const field = Object.keys(err.keyValue || {})[0] || 'field';
       return res.status(409).json({ message: `Duplicate value for ${field}.` });
@@ -286,7 +235,6 @@ const createUserByAdmin = async (req, res) => {
   }
 };
 
-/* Role → default avatar colour */
 function _defaultColorForRole(role) {
   const map = { admin: '#4ade80', user: '#60a5fa', staff: '#f59e0b', faculty: '#a78bfa' };
   return map[role] || '#64748b';
@@ -294,12 +242,9 @@ function _defaultColorForRole(role) {
 
 /* ══════════════════════════════════════════════════════════════════════
    GET /api/auth/users  (admin only)
-   Returns all non-admin users with their document counts.
-   Now includes staff and faculty in the list.
 ══════════════════════════════════════════════════════════════════════ */
 const getUsers = async (req, res) => {
   try {
-    /* Return all non-password user fields; exclude vault secrets from list */
     const users = await User.find({})
       .select('-password -encryptedIdeaKey -passwordSalt')
       .sort({ createdAt: -1 })
@@ -377,32 +322,21 @@ const updateVaultKey = async (req, res) => {
 
 /* ══════════════════════════════════════════════════════════════════════
    PATCH /api/auth/users/:userId/student-id  (admin only)
-
-   Allows admin to assign or update the studentId of any user.
-   Useful for users registered BEFORE the studentId feature was added
-   (legacy accounts that have studentId = null).
-
-   Body: { studentId: string }
-   The studentId must be unique and non-empty.
 ══════════════════════════════════════════════════════════════════════ */
 const updateUserStudentId = async (req, res) => {
   try {
     const { userId } = req.params;
     const { studentId } = req.body;
 
-    if (!studentId || !String(studentId).trim()) {
+    if (!studentId || !String(studentId).trim())
       return res.status(400).json({ message: 'studentId is required and cannot be blank.' });
-    }
 
     const trimmedId = String(studentId).trim();
 
-    /* Check uniqueness — allow updating the same user to the same ID */
     const existing = await User.findOne({ studentId: trimmedId });
-    if (existing && String(existing._id) !== userId && existing.userId !== userId) {
+    if (existing && String(existing._id) !== userId && existing.userId !== userId)
       return res.status(409).json({ message: `Student ID "${trimmedId}" is already assigned to another user.` });
-    }
 
-    /* Find the target user by _id OR userId string */
     const user = await User.findOneAndUpdate(
       { $or: [{ _id: userId }, { userId }] },
       { studentId: trimmedId },
