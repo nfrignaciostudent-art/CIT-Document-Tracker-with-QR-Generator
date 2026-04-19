@@ -175,6 +175,9 @@ const createUserByAdmin = async (req, res) => {
     if (!username || !name || !password || !role)
       return res.status(400).json({ message: 'username, name, password and role are required.' });
 
+    if (!/^[a-z0-9_]+$/.test(username))
+      return res.status(400).json({ message: 'Username: lowercase letters, numbers, underscores only.' });
+
     if (password.length < 4)
       return res.status(400).json({ message: 'Password must be at least 4 characters.' });
 
