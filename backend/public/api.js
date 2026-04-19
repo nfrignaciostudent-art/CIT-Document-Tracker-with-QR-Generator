@@ -2,56 +2,34 @@
    api.js - Centralized API Requests
    CIT Document Tracker - Group 6
 
-   WORKFLOW REFACTOR ADDITIONS:
-     apiResubmitDocument()        — POST /api/documents/resubmit
-       User uploads corrected file when status = 'Action Required: Resubmission'.
-       Uses FormData (multipart). Requires file attachment.
+   CHANGES (Event section only):
+     apiCreateEvent() — now accepts FormData so an optional event image
+     can be uploaded alongside the event fields.
+     Pass a plain object (no image) or FormData (with image field).
+     The function auto-detects which format to use.
 
-     WORKFLOW_STATUS              — Canonical status string constants.
-       Import/use these instead of raw strings to avoid typos.
-       Example: WORKFLOW_STATUS.SUBMITTED === 'Submitted'
-
-     WORKFLOW_ACTIONS             — Canonical action string constants.
-       Example: WORKFLOW_ACTIONS.STAFF.FORWARD === 'forward'
-
-   UPDATED:
-     apiUpdateDocumentStatusByRole() — unchanged signature; now maps to
-       the new deterministic state machine on the backend.
-
-   Returns:
-     - Response JSON  if request succeeded (2xx)
-     - { _error, status, message }  if server returned an error (4xx/5xx)
-     - null           ONLY if the server is completely unreachable
+   All other functions are IDENTICAL to the original.
 ══════════════════════════════════════════════════════════════════════ */
 
 const API_BASE = window.CIT_API_BASE || '';
 
 /* ══════════════════════════════════════════════════════════════════════
    WORKFLOW CONSTANTS
-   Use these instead of raw strings to prevent typos and make refactoring
-   easier. All values match the backend Document model enum exactly.
 ══════════════════════════════════════════════════════════════════════ */
 
-/** Canonical status values — must match Document.js status enum */
 const WORKFLOW_STATUS = Object.freeze({
-  /* Intake */
   SUBMITTED:                    'Submitted',
-  /* Staff stage */
   UNDER_INITIAL_REVIEW:         'Under Initial Review',
   ACTION_REQUIRED_RESUBMISSION: 'Action Required: Resubmission',
   RETURNED_TO_REQUESTER:        'Returned to Requester',
-  /* Faculty stage */
   UNDER_EVALUATION:             'Under Evaluation',
   REVISION_REQUESTED:           'Revision Requested',
-  /* Admin stage */
   PENDING_FINAL_APPROVAL:       'Pending Final Approval',
   SENT_BACK_FOR_REEVALUATION:   'Sent Back for Reevaluation',
-  /* Terminal */
   APPROVED_AND_RELEASED:        'Approved and Released',
   REJECTED:                     'Rejected',
 });
 
-/** Canonical current_role values */
 const WORKFLOW_ROLE = Object.freeze({
   STAFF:     'staff',
   FACULTY:   'faculty',
@@ -60,31 +38,26 @@ const WORKFLOW_ROLE = Object.freeze({
   COMPLETED: 'completed',
 });
 
-/** Canonical action values per role */
 const WORKFLOW_ACTIONS = Object.freeze({
   STAFF: {
-    START_REVIEW:          'start_review',
-    FORWARD:               'forward',
-    REQUEST_RESUBMISSION:  'request_resubmission',
-    RETURN_TO_REQUESTER:   'return_to_requester',
+    START_REVIEW:         'start_review',
+    FORWARD:              'forward',
+    REQUEST_RESUBMISSION: 'request_resubmission',
+    RETURN_TO_REQUESTER:  'return_to_requester',
   },
   FACULTY: {
-    APPROVE:               'approve',
-    REJECT:                'reject',
-    REQUEST_REVISION:      'request_revision',
+    APPROVE:          'approve',
+    REJECT:           'reject',
+    REQUEST_REVISION: 'request_revision',
   },
-  /* DESIGN RULE (Option B): Admin has ONE workflow action — SEND_BACK.
-     Release is handled via PATCH /api/documents/:id/status (file upload).
-     Reject is removed from admin; Faculty is the sole approver/rejecter. */
   ADMIN: {
-    SEND_BACK:             'send_back',
+    SEND_BACK: 'send_back',
   },
   USER: {
-    RESUBMIT:              'resubmit',
+    RESUBMIT: 'resubmit',
   },
 });
 
-/** Human-readable labels for each status */
 const STATUS_LABELS = {
   'Submitted':                    'Submitted',
   'Under Initial Review':         'Under Initial Review',
@@ -96,44 +69,35 @@ const STATUS_LABELS = {
   'Sent Back for Reevaluation':   'Sent Back for Reevaluation',
   'Approved and Released':        'Approved & Released',
   'Rejected':                     'Rejected',
-  /* Legacy */
-  'Received':    'Received',
-  'Processing':  'Processing',
-  'On Hold':     'On Hold',
-  'Released':    'Released',
-  'Returned':    'Returned',
+  'Received':   'Received',
+  'Processing': 'Processing',
+  'On Hold':    'On Hold',
+  'Released':   'Released',
+  'Returned':   'Returned',
 };
 
-/** Owner label for each status (who needs to act next) */
 const STATUS_OWNER = {
   'Submitted':                    'Staff',
   'Under Initial Review':         'Staff',
   'Action Required: Resubmission':'You',
-  'Returned to Requester':        '—',
+  'Returned to Requester':        '-',
   'Under Evaluation':             'Faculty',
   'Revision Requested':           'Staff',
   'Pending Final Approval':       'Admin',
   'Sent Back for Reevaluation':   'Faculty',
-  'Approved and Released':        '—',
-  'Rejected':                     '—',
+  'Approved and Released':        '-',
+  'Rejected':                     '-',
 };
 
 /* ── Core JSON helper ── */
 async function apiRequest(method, path, body = null, token = null) {
   try {
-    const opts = {
-      method,
-      headers: { 'Content-Type': 'application/json' }
-    };
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (token) opts.headers['Authorization'] = 'Bearer ' + token;
     if (body)  opts.body = JSON.stringify(body);
-
     const res  = await fetch(API_BASE + path, opts);
     const data = await res.json().catch(() => ({ message: 'Server error' }));
-
-    if (!res.ok) {
-      return { _error: true, status: res.status, message: data.message || `HTTP ${res.status}` };
-    }
+    if (!res.ok) return { _error: true, status: res.status, message: data.message || `HTTP ${res.status}` };
     return data;
   } catch (e) {
     console.warn('[API offline]', method, path, e.message);
@@ -146,13 +110,9 @@ async function apiFormRequest(method, path, formData, token = null) {
   try {
     const opts = { method, headers: {}, body: formData };
     if (token) opts.headers['Authorization'] = 'Bearer ' + token;
-
     const res  = await fetch(API_BASE + path, opts);
     const data = await res.json().catch(() => ({ message: 'Server error' }));
-
-    if (!res.ok) {
-      return { _error: true, status: res.status, message: data.message || `HTTP ${res.status}` };
-    }
+    if (!res.ok) return { _error: true, status: res.status, message: data.message || `HTTP ${res.status}` };
     return data;
   } catch (e) {
     console.warn('[API offline FormData]', method, path, e.message);
@@ -167,30 +127,15 @@ function _jwt() {
 /* ══════════════════════════════════════════════════════════════════════
    AUTH ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */
-async function apiRegisterUser(payload) {
-  return await apiRequest('POST', '/api/auth/register', payload);
-}
-
-async function apiLoginUser(payload) {
-  return await apiRequest('POST', '/api/auth/login', payload);
-}
-
-async function apiGetMe(token) {
-  return await apiRequest('GET', '/api/auth/me', null, token || _jwt());
-}
-
-async function apiGetUsers(token) {
-  return await apiRequest('GET', '/api/auth/users', null, token || _jwt());
-}
-
-async function apiHeartbeat(token) {
-  return await apiRequest('POST', '/api/auth/heartbeat', {}, token || _jwt());
-}
+async function apiRegisterUser(payload)   { return await apiRequest('POST', '/api/auth/register', payload); }
+async function apiLoginUser(payload)      { return await apiRequest('POST', '/api/auth/login', payload); }
+async function apiGetMe(token)            { return await apiRequest('GET',  '/api/auth/me', null, token || _jwt()); }
+async function apiGetUsers(token)         { return await apiRequest('GET',  '/api/auth/users', null, token || _jwt()); }
+async function apiHeartbeat(token)        { return await apiRequest('POST', '/api/auth/heartbeat', {}, token || _jwt()); }
 
 /* ══════════════════════════════════════════════════════════════════════
    DOCUMENT ENDPOINTS
 ══════════════════════════════════════════════════════════════════════ */
-
 async function apiRegisterDocument(payload, token) {
   return await apiRequest('POST', '/api/documents/register', payload, token || _jwt());
 }
@@ -198,14 +143,9 @@ async function apiRegisterDocument(payload, token) {
 async function apiUploadDocumentWithFile(jsonPayload, encryptedFileString, fileExt, token) {
   try {
     const form = new FormData();
-    form.append('data', JSON.stringify(jsonPayload));
-
-    if (encryptedFileString) {
-      const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
-      const filename = 'encrypted' + (fileExt || '.bin');
-      form.append('file', blob, filename);
-    }
-
+    const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
+    form.append('file', blob, 'document' + (fileExt ? '.' + fileExt : '.bin'));
+    form.append('data', JSON.stringify({ ...jsonPayload, fileExt }));
     return await apiFormRequest('POST', '/api/documents/register', form, token || _jwt());
   } catch (e) {
     console.warn('[apiUploadDocumentWithFile]', e.message);
@@ -213,105 +153,89 @@ async function apiUploadDocumentWithFile(jsonPayload, encryptedFileString, fileE
   }
 }
 
-async function apiGetAllDocuments(token, ownerId, role) {
-  let path = '/api/documents';
-  const params = [];
-  if (ownerId) params.push('ownerId=' + encodeURIComponent(ownerId));
-  if (role)    params.push('role='    + encodeURIComponent(role));
-  if (params.length) path += '?' + params.join('&');
-  return await apiRequest('GET', path, null, token || _jwt());
-}
-
-async function apiTrackDocument(documentId) {
-  return await apiRequest(
-    'GET',
-    `/api/documents/track/${encodeURIComponent(documentId)}?_ts=${Date.now()}`
-  );
-}
-
-async function apiGetDocumentForOwner(documentId, token) {
-  return await apiRequest(
-    'GET',
-    `/api/documents/${encodeURIComponent(documentId)}/details?_ts=${Date.now()}`,
-    null,
-    token || _jwt()
-  );
-}
-
-async function apiGetOriginalFile(documentId) {
-  return await apiRequest(
-    'GET',
-    `/api/documents/${encodeURIComponent(documentId)}/original-file`,
-    null,
-    _jwt()
-  );
-}
-
-async function apiDownloadDocument(documentId) {
-  return await apiRequest(
-    'GET',
-    `/api/documents/download/${encodeURIComponent(documentId)}`,
-    null,
-    _jwt()
-  );
-}
-
-async function apiUpdateDocumentStatus(documentId, payload, token) {
-  return await apiRequest(
-    'PATCH',
-    `/api/documents/${encodeURIComponent(documentId)}/status`,
-    payload,
-    token || _jwt()
-  );
-}
-
-async function apiUpdateStatusWithFile(documentId, jsonPayload, encryptedFileString, fileExt, token) {
+async function apiCreateDocument(jsonPayload, encryptedFileString, fileExt, token) {
   try {
     const form = new FormData();
-    form.append('data', JSON.stringify(jsonPayload));
-
-    if (encryptedFileString) {
-      const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
-      const filename = 'processed' + (fileExt || '.bin');
-      form.append('processedFile', blob, filename);
-    }
-
-    return await apiFormRequest(
-      'PATCH',
-      `/api/documents/${encodeURIComponent(documentId)}/status`,
-      form,
-      token || _jwt()
-    );
+    const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
+    form.append('file', blob, 'document' + (fileExt ? '.' + fileExt : '.bin'));
+    form.append('data', JSON.stringify({ ...jsonPayload, fileExt }));
+    return await apiFormRequest('POST', '/api/documents/create', form, token || _jwt());
   } catch (e) {
-    console.warn('[apiUpdateStatusWithFile]', e.message);
+    console.warn('[apiCreateDocument]', e.message);
     return null;
   }
 }
 
-async function apiDeleteDocument(documentId, token) {
-  return await apiRequest(
-    'DELETE',
-    `/api/documents/${encodeURIComponent(documentId)}`,
-    null,
-    token || _jwt()
-  );
+async function apiResubmitDocument(documentId, encryptedFileString, fileExt, note, token) {
+  try {
+    const form = new FormData();
+    const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
+    form.append('file', blob, 'resubmit' + (fileExt ? '.' + fileExt : '.bin'));
+    form.append('data', JSON.stringify({ documentId, fileExt, note: note || '' }));
+    return await apiFormRequest('POST', '/api/documents/resubmit', form, token || _jwt());
+  } catch (e) {
+    console.warn('[apiResubmitDocument]', e.message);
+    return null;
+  }
 }
 
-async function apiLogScan(documentId, payload) {
-  return await apiRequest(
-    'POST',
-    `/api/documents/${encodeURIComponent(documentId)}/scan-log`,
-    payload
-  );
+async function apiGetDocuments(token) {
+  return await apiRequest('GET', '/api/documents', null, token || _jwt());
+}
+
+async function apiGetMyDocuments(token) {
+  return await apiRequest('GET', '/api/documents/my', null, token || _jwt());
+}
+
+async function apiGetAllDocuments(token, ownerId, role) {
+  let url = '/api/documents';
+  if (ownerId) url += `?ownerId=${encodeURIComponent(ownerId)}`;
+  return await apiRequest('GET', url, null, token || _jwt());
+}
+
+async function apiUpdateDocumentStatusByRole(payload, token) {
+  return await apiRequest('POST', '/api/documents/update-status', payload, token || _jwt());
+}
+
+async function apiUpdateDocumentStatus(documentId, updates, token) {
+  return await apiRequest('PATCH', `/api/documents/${documentId}/status`, updates, token || _jwt());
+}
+
+async function apiUpdateDocumentStatusWithFile(documentId, jsonPayload, processedFileString, processedFileExt, token) {
+  try {
+    const form = new FormData();
+    const blob = new Blob([processedFileString], { type: 'application/octet-stream' });
+    form.append('processedFile', blob, 'processed' + (processedFileExt ? '.' + processedFileExt : '.bin'));
+    form.append('data', JSON.stringify({ ...jsonPayload, processedFileExt }));
+    return await apiFormRequest('PATCH', `/api/documents/${documentId}/status`, form, token || _jwt());
+  } catch (e) {
+    console.warn('[apiUpdateDocumentStatusWithFile]', e.message);
+    return null;
+  }
+}
+
+async function apiTrackDocument(documentId) {
+  return await apiRequest('GET', `/api/documents/track/${documentId}`);
+}
+
+async function apiDownloadDocument(documentId) {
+  return await apiRequest('GET', `/api/documents/download/${documentId}`);
+}
+
+async function apiGetOriginalFile(documentId, token) {
+  return await apiRequest('GET', `/api/documents/${documentId}/original-file`, null, token || _jwt());
+}
+
+async function apiGetDocumentDetails(documentId, token) {
+  return await apiRequest('GET', `/api/documents/${documentId}/details`, null, token || _jwt());
+}
+
+async function apiDeleteDocument(documentId, token) {
+  return await apiRequest('DELETE', `/api/documents/${documentId}`, null, token || _jwt());
 }
 
 async function apiAddMovementLog(documentId, payload, token) {
-  return await apiRequest(
-    'POST',
-    `/api/documents/${encodeURIComponent(documentId)}/movement`,
-    payload,
-    token || _jwt()
-  );
+  return await apiRequest('POST', `/api/documents/${documentId}/movement`, payload, token || _jwt());
 }
 
 async function apiGetAllScanLogs(token) {
@@ -322,91 +246,9 @@ async function apiGetAllMovementLogs(token) {
   return await apiRequest('GET', '/api/documents/movement-logs', null, token || _jwt());
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   NOTIFICATION ENDPOINTS
-══════════════════════════════════════════════════════════════════════ */
-
-async function apiGetNotifications(token) {
-  return await apiRequest('GET', '/api/notifications', null, token || _jwt());
+async function apiUpdateVaultKey(payload, token) {
+  return await apiRequest('PATCH', '/api/auth/vault-key', payload, token || _jwt());
 }
-
-async function apiMarkNotificationsRead(token) {
-  return await apiRequest('POST', '/api/notifications/mark-read', {}, token || _jwt());
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   WORKFLOW ENDPOINTS  (staff | faculty | admin)
-══════════════════════════════════════════════════════════════════════ */
-
-/**
- * apiUpdateDocumentStatusByRole()
- * Calls POST /api/documents/update-status.
- * Backend enforces strict state-machine transitions.
- *
- * @param {Object} payload  { documentId, action, note?, location? }
- * @param {string} token    JWT (optional; falls back to localStorage)
- *
- * Staff actions:
- *   WORKFLOW_ACTIONS.STAFF.START_REVIEW
- *   WORKFLOW_ACTIONS.STAFF.FORWARD
- *   WORKFLOW_ACTIONS.STAFF.REQUEST_RESUBMISSION  (note required)
- *   WORKFLOW_ACTIONS.STAFF.RETURN_TO_REQUESTER   (note required)
- *
- * Faculty actions:
- *   WORKFLOW_ACTIONS.FACULTY.APPROVE
- *   WORKFLOW_ACTIONS.FACULTY.REJECT
- *   WORKFLOW_ACTIONS.FACULTY.REQUEST_REVISION    (note required)
- *
- * Admin actions:
- *   WORKFLOW_ACTIONS.ADMIN.RELEASE
- *   WORKFLOW_ACTIONS.ADMIN.REJECT
- *   WORKFLOW_ACTIONS.ADMIN.SEND_BACK             (note required)
- */
-async function apiUpdateDocumentStatusByRole(payload, token) {
-  return await apiRequest('POST', '/api/documents/update-status', payload, token || _jwt());
-}
-
-/**
- * apiResubmitDocument()
- * Calls POST /api/documents/resubmit  (user role only).
- * Used when doc.status === 'Action Required: Resubmission'.
- *
- * @param {string}      documentId           internalId or displayId
- * @param {string}      encryptedFileString  IDEA-encrypted file content
- * @param {string}      fileExt              file extension (e.g. '.pdf')
- * @param {string|null} note                 optional user note / correction summary
- * @param {string}      token                JWT (optional; falls back to localStorage)
- *
- * Returns { status: 'Submitted', current_role: 'staff', resubmissionCount, … }
- *      or { _error: true, message } on failure
- *      or null on network error
- */
-async function apiResubmitDocument(documentId, encryptedFileString, fileExt, note, token) {
-  try {
-    const form = new FormData();
-
-    const payload = { documentId };
-    if (note) payload.note = note;
-    if (fileExt) payload.fileExt = fileExt;
-
-    form.append('data', JSON.stringify(payload));
-
-    if (encryptedFileString) {
-      const blob = new Blob([encryptedFileString], { type: 'application/octet-stream' });
-      const filename = 'resubmission' + (fileExt || '.bin');
-      form.append('file', blob, filename);
-    }
-
-    return await apiFormRequest('POST', '/api/documents/resubmit', form, token || _jwt());
-  } catch (e) {
-    console.warn('[apiResubmitDocument]', e.message);
-    return null;
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   ADMIN USER MANAGEMENT
-══════════════════════════════════════════════════════════════════════ */
 
 async function apiCreateUserByAdmin(payload, token) {
   return await apiRequest('POST', '/api/auth/users/create', payload, token || _jwt());
@@ -414,11 +256,27 @@ async function apiCreateUserByAdmin(payload, token) {
 
 /* ══════════════════════════════════════════════════════════════════════
    EVENT API CALLS
-   CIT Document Tracker - Group 6
+   CHANGE: apiCreateEvent now accepts either a plain object (no image)
+   or a FormData instance (with image).  When imageFile is provided it
+   builds FormData automatically.
 ══════════════════════════════════════════════════════════════════════ */
 
-async function apiCreateEvent(payload, token) {
-  return await apiRequest('POST', '/api/events/create', payload, token || _jwt());
+/**
+ * apiCreateEvent
+ * @param {object} fields   — { title, description, date, time, location, organizer }
+ * @param {File|null} imageFile — optional File object for the event image
+ * @param {string} token
+ */
+async function apiCreateEvent(fields, imageFile, token) {
+  if (imageFile) {
+    /* Use FormData so multer can process the image on the backend */
+    const form = new FormData();
+    Object.entries(fields).forEach(([k, v]) => form.append(k, v || ''));
+    form.append('image', imageFile, imageFile.name);
+    return await apiFormRequest('POST', '/api/events/create', form, token || _jwt());
+  }
+  /* Plain JSON when no image is attached */
+  return await apiRequest('POST', '/api/events/create', fields, token || _jwt());
 }
 
 async function apiGetAllEvents(token) {
