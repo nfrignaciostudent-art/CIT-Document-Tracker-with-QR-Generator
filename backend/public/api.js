@@ -411,3 +411,28 @@ async function apiResubmitDocument(documentId, encryptedFileString, fileExt, not
 async function apiCreateUserByAdmin(payload, token) {
   return await apiRequest('POST', '/api/auth/users/create', payload, token || _jwt());
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   EVENT API CALLS
+   CIT Document Tracker - Group 6
+══════════════════════════════════════════════════════════════════════ */
+
+async function apiCreateEvent(payload, token) {
+  return await apiRequest('POST', '/api/events/create', payload, token || _jwt());
+}
+
+async function apiGetAllEvents(token) {
+  return await apiRequest('GET', '/api/events', null, token || _jwt());
+}
+
+async function apiGetEventAttendance(eventId, token) {
+  return await apiRequest('GET', `/api/events/${eventId}/attendance`, null, token || _jwt());
+}
+
+async function apiToggleEvent(eventId, token) {
+  return await apiRequest('PATCH', `/api/events/${eventId}/toggle`, {}, token || _jwt());
+}
+
+async function apiDeleteEvent(eventId, token) {
+  return await apiRequest('DELETE', `/api/events/${eventId}`, null, token || _jwt());
+}

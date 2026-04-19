@@ -39,6 +39,8 @@ const UserSchema = new mongoose.Schema({
    * without triggering the unique constraint.
    */
   employee_id: { type: String, default: null, trim: true },
+  studentId:   { type: String, default: null, trim: true },   // student's school ID e.g. "2021-00123"
+  section:     { type: String, default: null, trim: true },   // e.g. "3A", "3B"
 
   /* ── Session tracking ──────────────────────────────────────── */
   lastLogin: { type: Date, default: null },
@@ -52,6 +54,7 @@ const UserSchema = new mongoose.Schema({
 
 /* ── Sparse unique index for employee_id ── */
 UserSchema.index({ employee_id: 1 }, { unique: true, sparse: true });
+UserSchema.index({ studentId: 1 },   { unique: true, sparse: true });
 
 /* ── Hash password before save ── */
 UserSchema.pre('save', async function (next) {
