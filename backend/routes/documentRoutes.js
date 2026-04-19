@@ -115,9 +115,11 @@ router.post('/:documentId/movement',   protect, adminOnly, addMovementLog);
  * POST /api/documents/create  (user role only)
  * Submit a new document. Sets status = 'Submitted', current_role = 'staff'.
  */
+/* Allow both users AND admins to create/register documents.
+   Admin-created docs bypass the workflow and go straight to
+   "Approved and Released" via the admin bypass in registerDocument. */
 router.post('/create',
   protect,
-  userOnly,
   upload.single('file'),
   createDocument,
 );

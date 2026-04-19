@@ -375,8 +375,60 @@ const updateVaultKey = async (req, res) => {
   }
 };
 
+/* ══════════════════════════════════════════════════════════════════════
+   PATCH /api/auth/users/:userId/student-id  (admin only)
+
+   Allows admin to assign or update the studentId of any user.
+   Useful for users registered BEFORE the studentId feature was added
+   (legacy accounts that have studentId = null).
+
+   Body: { studentId: string }
+   The studentId must be unique and non-empty.
+══════════════════════════════════════════════════════════════════════ */
+const updateUserStudentId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { studentId } = req.body;
+
+    if (!studentId || !String(studentId).trim()) {
+      return res.status(400).json({ message: 'studentId is required and cannot be blank.' });
+    }
+
+    const trimmedId = String(studentId).trim();
+
+    /* Check uniqueness — allow updating the same user to the same ID */
+    const existing = await User.findOne({ studentId: trimmedId });
+    if (existing && String(existing._id) !== userId && existing.userId !== userId) {
+      return res.status(409).json({ message: `Student ID "${trimmedId}" is already assigned to another user.` });
+    }
+
+    /* Find the target user by _id OR userId string */
+    const user = await User.findOneAndUpdate(
+      { $or: [{ _id: userId }, { userId }] },
+      { studentId: trimmedId },
+      { new: true }
+    ).select('-password');
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    res.json({
+      message:   `Student ID updated to "${trimmedId}" for ${user.name}.`,
+      userId:    user.userId,
+      studentId: user.studentId,
+      name:      user.name,
+      username:  user.username,
+    });
+  } catch (err) {
+    console.error('[updateUserStudentId]', err);
+    if (err.code === 11000)
+      return res.status(409).json({ message: 'That Student ID is already in use.' });
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   registerUser, loginUser, getMe, getUsers,
   heartbeat, updateVaultKey,
-  createUserByAdmin,   // NEW
+  createUserByAdmin,
+  updateUserStudentId,
 };

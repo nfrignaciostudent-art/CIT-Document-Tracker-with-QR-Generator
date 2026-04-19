@@ -320,28 +320,7 @@ async function _createDocument(body, fileBuffer, fileExt) {
         dateFiled: nowManila,
       });
 
-      const staffMsg =
-        `New document "<strong>${doc.name}</strong>" submitted by ${ownerName || ownerId} ` +
-        `(${doc.fullDisplayId}) — awaiting initial review.`;
-      await _notifyRole('staff', staffMsg, doc.internalId);
-
-      try {
-        const admins = await User.find({ role: 'admin' }).select('userId _id').lean();
-        if (admins.length) {
-          await Notification.insertMany(
-            admins.map(a => ({
-              userId:     a.userId || String(a._id),
-              msg:        `New document registered: "<strong>${doc.name}</strong>" by ` +
-                          `${ownerName || ownerId} — ${doc.fullDisplayId}`,
-              documentId: doc.internalId,
-              read:       false,
-            }))
-          );
-        }
-      } catch (e) {
-        console.warn('[_createDocument] Admin notification failed:', e.message);
-      }
-
+      /* Notifications sent by caller (registerDocument) — see below. */
       return doc;
     } catch (err) {
       if (err.code === 11000 && attempt < MAX_RETRIES) {
@@ -372,8 +351,41 @@ const registerDocument = async (req, res) => {
 
     const doc = await _createDocument(body, fileBuffer, fileExt);
 
+    /* ── Send notifications conditionally based on caller role ──
+       Admin-created documents bypass the workflow, so staff should NOT
+       get a "new document awaiting review" notification.             */
+    const callerIsAdmin = req.user && req.user.role === 'admin';
+    const ownerName = body.ownerName || body.by || '';
+    const ownerId   = body.ownerId   || '';
+
+    if (!callerIsAdmin) {
+      /* Notify staff — document awaits initial review */
+      const staffMsg =
+        `New document "<strong>${doc.name}</strong>" submitted by ${ownerName || ownerId} ` +
+        `(${doc.fullDisplayId}) — awaiting initial review.`;
+      await _notifyRole('staff', staffMsg, doc.internalId);
+
+      /* Notify admins — informational */
+      try {
+        const admins = await User.find({ role: 'admin' }).select('userId _id').lean();
+        if (admins.length) {
+          await Notification.insertMany(
+            admins.map(a => ({
+              userId:     a.userId || String(a._id),
+              msg:        `New document registered: "<strong>${doc.name}</strong>" by ` +
+                          `${ownerName || ownerId} — ${doc.fullDisplayId}`,
+              documentId: doc.internalId,
+              read:       false,
+            }))
+          );
+        }
+      } catch (e) {
+        console.warn('[registerDocument] Admin notification failed:', e.message);
+      }
+    }
+
     /* ADMIN BYPASS: admin documents skip staff/faculty review entirely */
-    if (req.user && req.user.role === 'admin') {
+    if (callerIsAdmin) {
       const nowManila = manilaTimestamp();
       await Document.findByIdAndUpdate(doc._id, {
         status:        'Approved and Released',
@@ -426,10 +438,13 @@ const registerDocument = async (req, res) => {
    POST /api/documents/create  (user role only — strict alias)
 ══════════════════════════════════════════════════════════════════════ */
 const createDocument = async (req, res) => {
-  if (!req.user || req.user.role !== 'user') {
+  /* Allow both regular users and admins to create documents.
+     Admin-created documents are immediately approved via the bypass
+     in registerDocument — they never enter the staff/faculty queue. */
+  if (!req.user || !['user', 'admin'].includes(req.user.role)) {
     return res.status(403).json({
-      message: 'Only users can submit documents. ' +
-               'Staff, faculty and admins manage documents through workflow endpoints.',
+      message: 'Staff and faculty cannot create documents here. ' +
+               'Use the workflow endpoints to manage existing documents.',
     });
   }
   return registerDocument(req, res);
@@ -675,10 +690,15 @@ const getAllDocuments = async (req, res) => {
     const callerRole = req.user.role;
     let filter = {};
 
-    if      (callerRole === 'admin')   filter = { current_role: 'admin' };
-    else if (callerRole === 'staff')   filter = { current_role: 'staff' };
-    else if (callerRole === 'faculty') filter = { current_role: 'faculty' };
-    else {
+    if (callerRole === 'admin') {
+      /* Admin sees ALL documents — both pending their action and everything else.
+         This ensures admin-created docs (current_role: completed) are visible. */
+      filter = {};
+    } else if (callerRole === 'staff') {
+      filter = { current_role: 'staff' };
+    } else if (callerRole === 'faculty') {
+      filter = { current_role: 'faculty' };
+    } else {
       const { ownerId } = req.query;
       const effectiveOwnerId = ownerId || req.user.userId || String(req.user._id);
       filter = { ownerId: effectiveOwnerId };

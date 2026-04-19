@@ -18,6 +18,7 @@ const {
   registerUser, loginUser, getMe, getUsers,
   heartbeat, updateVaultKey,
   createUserByAdmin,
+  updateUserStudentId,
 } = require('../controllers/authController');
 const protect  = require('../middleware/authMiddleware');
 
@@ -46,5 +47,12 @@ router.get ('/users',            protect, adminOnly, getUsers);
  * Body: { username, name, password, role, employee_id?, color? }
  */
 router.post('/users/create',     protect, adminOnly, createUserByAdmin);
+
+/**
+ * PATCH /api/auth/users/:userId/student-id
+ * Admin assigns or updates a user's Student ID.
+ * For users registered before the studentId feature was added.
+ */
+router.patch('/users/:userId/student-id', protect, adminOnly, updateUserStudentId);
 
 module.exports = router;
