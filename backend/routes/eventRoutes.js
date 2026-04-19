@@ -34,6 +34,7 @@ const {
   lookupStudent,
   submitAttendance,
   getEventAttendance,
+  downloadAttendanceRecord,
 } = require('../controllers/eventController');
 
 /* ── Multer for event image uploads (memory storage, 5 MB max) ── */
@@ -67,5 +68,6 @@ router.get   ('/',                        protect, adminOnly, getAllEvents);
 router.patch ('/:eventId/toggle',         protect, adminOnly, toggleEventStatus);
 router.delete('/:eventId',                protect, adminOnly, deleteEvent);
 router.get   ('/:eventId/attendance',     protect, adminOnly, getEventAttendance);
+router.get   ('/:eventId/download-record',protect, adminOnly, downloadAttendanceRecord);
 
 module.exports = router;

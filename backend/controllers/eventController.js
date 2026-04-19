@@ -311,13 +311,26 @@ const lookupStudent = async (req, res) => {
 ══════════════════════════════════════════════════════════════════ */
 const submitAttendance = async (req, res) => {
   try {
-    const { eventId, studentId, studentName: manualName, section: manualSection, response } = req.body;
+    const {
+      eventId,
+      studentId,
+      studentName: manualName,
+      section: manualSection,
+      response,
+      excuseLetter,
+      excuseLetterFile,
+      excuseLetterFileExt,
+    } = req.body;
 
     if (!eventId || !response)
       return res.status(400).json({ message: 'eventId and response are required.' });
 
     if (!['attend', 'cant_attend'].includes(response))
       return res.status(400).json({ message: 'Response must be "attend" or "cant_attend".' });
+
+    /* Excuse letter is required when cannot attend */
+    if (response === 'cant_attend' && !excuseLetter && !excuseLetterFile)
+      return res.status(400).json({ message: 'An excuse letter or reason is required when you cannot attend.' });
 
     /* Check event exists and is active */
     const event = await Event.findOne({ eventId }).lean();
@@ -334,7 +347,7 @@ const submitAttendance = async (req, res) => {
       if (!user)
         return res.status(404).json({ message: 'Student ID not found. Please check and try again.' });
 
-      /* Check for duplicate by studentId (DB unique index also enforces this) */
+      /* Check for duplicate by studentId */
       const existing = await Attendance.findOne({ eventId, studentId: studentId.trim() });
       if (existing) {
         return res.status(409).json({
@@ -344,25 +357,31 @@ const submitAttendance = async (req, res) => {
         });
       }
 
+      const resolvedSection = manualSection || user.section || '';
+
       const attendance = new Attendance({
         eventId,
-        studentId:   user.studentId,
-        studentName: user.name,
-        section:     manualSection || user.section || '',
-        userId:      user.userId || String(user._id),
+        studentId:           user.studentId,
+        studentName:         user.name,
+        section:             resolvedSection,
+        userId:              user.userId || String(user._id),
         response,
-        scannedAt:   new Date().toISOString(),
-        displayDate: phDate(),
+        excuseLetter:        excuseLetter        || '',
+        excuseLetterFile:    excuseLetterFile     || null,
+        excuseLetterFileExt: excuseLetterFileExt  || null,
+        hasExcuseLetter:     !!(excuseLetter || excuseLetterFile),
+        scannedAt:           new Date().toISOString(),
+        displayDate:         phDate(),
       });
 
       await attendance.save();
 
       return res.status(201).json({
         message:     response === 'attend'
-          ? 'Thank you! You are marked as attending.'
-          : 'Response recorded. Thank you for letting us know!',
+          ? 'Attendance confirmed! See you at the event.'
+          : 'Response recorded. Thank you for submitting your excuse letter.',
         studentName: user.name,
-        section:     manualSection || user.section || '',
+        section:     resolvedSection,
         response,
         eventTitle:  event.title,
       });
@@ -392,21 +411,25 @@ const submitAttendance = async (req, res) => {
 
     const attendance = new Attendance({
       eventId,
-      studentId:   '',            // no student ID
-      studentName: resolvedName,
-      section:     resolvedSection,
-      userId:      '',
+      studentId:           '',
+      studentName:         resolvedName,
+      section:             resolvedSection,
+      userId:              '',
       response,
-      scannedAt:   new Date().toISOString(),
-      displayDate: phDate(),
+      excuseLetter:        excuseLetter        || '',
+      excuseLetterFile:    excuseLetterFile     || null,
+      excuseLetterFileExt: excuseLetterFileExt  || null,
+      hasExcuseLetter:     !!(excuseLetter || excuseLetterFile),
+      scannedAt:           new Date().toISOString(),
+      displayDate:         phDate(),
     });
 
     await attendance.save();
 
     return res.status(201).json({
       message:     response === 'attend'
-        ? 'Thank you! You are marked as attending.'
-        : 'Response recorded. Thank you for letting us know!',
+        ? 'Attendance confirmed! See you at the event.'
+        : 'Response recorded. Thank you for submitting your excuse letter.',
       studentName: resolvedName,
       section:     resolvedSection,
       response,
@@ -468,6 +491,60 @@ const getEventAttendance = async (req, res) => {
   }
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   GET /api/events/:eventId/download-record  (admin only)
+   Returns attendance data as CSV — sorted: attending first, then cannot attend.
+   Includes excuse letters for cannot-attend entries.
+══════════════════════════════════════════════════════════════════ */
+const downloadAttendanceRecord = async (req, res) => {
+  try {
+    const event = await Event.findOne({ eventId: req.params.eventId })
+      .select('-imageData').lean();
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+
+    const records = await Attendance.find({ eventId: req.params.eventId })
+      .sort({ createdAt: 1 }).lean();
+
+    const attending  = records.filter(r => r.response === 'attend');
+    const cantAttend = records.filter(r => r.response === 'cant_attend');
+
+    /* Build CSV */
+    const lines = [];
+    lines.push(`CIT Document Tracker — Attendance Record`);
+    lines.push(`Event: ${event.title}`);
+    lines.push(`Date: ${event.date}${event.time ? ' · ' + event.time : ''}`);
+    lines.push(`Location: ${event.location || 'N/A'}`);
+    lines.push(`Generated: ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`);
+    lines.push(`Total Responses: ${records.length} (Attending: ${attending.length} | Cannot Attend: ${cantAttend.length})`);
+    lines.push('');
+
+    lines.push(`ATTENDING (${attending.length})`);
+    lines.push('No.,Student ID,Name,Section,Date Submitted');
+    attending.forEach((r, i) => {
+      lines.push(`${i + 1},"${r.studentId || '—'}","${r.studentName}","${r.section || '—'}","${r.displayDate || r.scannedAt}"`);
+    });
+
+    lines.push('');
+    lines.push(`CANNOT ATTEND (${cantAttend.length})`);
+    lines.push('No.,Student ID,Name,Section,Excuse Letter,Date Submitted');
+    cantAttend.forEach((r, i) => {
+      const excuse = (r.excuseLetter || '').replace(/"/g, '""').replace(/\n/g, ' ');
+      lines.push(`${i + 1},"${r.studentId || '—'}","${r.studentName}","${r.section || '—'}","${excuse || 'No reason provided'}","${r.displayDate || r.scannedAt}"`);
+    });
+
+    const csv = lines.join('\r\n');
+    const filename = `Attendance_${event.title.replace(/[^a-z0-9]/gi, '_')}_${event.date}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send('\uFEFF' + csv); /* BOM for Excel UTF-8 compatibility */
+
+  } catch (err) {
+    console.error('[downloadAttendanceRecord]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   createEvent,
   getAllEvents,
@@ -477,4 +554,5 @@ module.exports = {
   lookupStudent,
   submitAttendance,
   getEventAttendance,
+  downloadAttendanceRecord,
 };

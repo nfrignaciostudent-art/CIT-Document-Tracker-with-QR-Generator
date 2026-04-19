@@ -252,6 +252,7 @@ async function openEventDetailModal(eventId) {
       '<button class="btn btn-sm btn-ghost" onclick="toggleEventActive(\'' + _ea(eventId) + '\');closeModal(\'event-attendance-modal\')">' +
         (isActive ? 'Close Attendance' : 'Open Attendance') +
       '</button>' +
+      '<button class="btn btn-sm btn-ghost" onclick="downloadEventRecord(\'' + _ea(eventId) + '\',\'' + _ea(data.event.title) + '\')" style="background:rgba(52,199,90,.08);color:var(--accent);border-color:rgba(52,199,90,.25)">Download Record</button>' +
       '<button class="btn btn-sm" style="background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.2)" ' +
         'onclick="deleteAdminEvent(\'' + _ea(eventId) + '\',\'' + _ea(data.event.title) + '\');closeModal(\'event-attendance-modal\')">' +
         'Delete Event' +
@@ -269,13 +270,28 @@ function _attendeeRow(r, type) {
   var dot    = isAttend ? '#22c55e' : '#ef4444';
   var initial = _ea((r.studentName||'S').charAt(0).toUpperCase());
 
-  return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:10px">' +
-    '<div style="width:32px;height:32px;border-radius:50%;background:' + dot + ';display:grid;place-items:center;flex-shrink:0;font-size:14px;color:#fff;font-weight:700">' + initial + '</div>' +
-    '<div style="flex:1;min-width:0">' +
-      '<div style="font-size:13px;font-weight:600;color:var(--text)">' + _ea(r.studentName) + '</div>' +
-      '<div style="font-size:11px;color:var(--muted)">ID: <span style="font-family:\'DM Mono\',monospace">' + _ea(r.studentId||'—') + '</span>' + (r.section ? ' · Section: <strong>' + _ea(r.section) + '</strong>' : '') + '</div>' +
+  var excuseBadge = '';
+  if (!isAttend && r.hasExcuseLetter) {
+    excuseBadge = '<span style="display:inline-block;font-size:9px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);padding:1px 7px;border-radius:20px;margin-left:6px">Letter</span>';
+  }
+
+  var excuseRow = '';
+  if (!isAttend && r.excuseLetter) {
+    excuseRow = '<div style="margin-top:6px;padding:7px 10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.12);border-radius:7px;font-size:11px;color:rgba(255,255,255,.55);font-style:italic;line-height:1.5">' +
+      '"' + _ea((r.excuseLetter || '').slice(0, 120) + (r.excuseLetter && r.excuseLetter.length > 120 ? '…' : '')) + '"' +
+      '</div>';
+  }
+
+  return '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:10px;margin-bottom:8px">' +
+    '<div style="display:flex;align-items:center;gap:12px">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:' + dot + ';display:grid;place-items:center;flex-shrink:0;font-size:14px;color:#fff;font-weight:700">' + initial + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--text)">' + _ea(r.studentName) + excuseBadge + '</div>' +
+        '<div style="font-size:11px;color:var(--muted)">ID: <span style="font-family:\'DM Mono\',monospace">' + _ea(r.studentId||'—') + '</span>' + (r.section ? ' · Section: <strong>' + _ea(r.section) + '</strong>' : '') + '</div>' +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--muted);white-space:nowrap">' + _ea((r.displayDate||'').split(' ').slice(0,2).join(' ')) + '</div>' +
     '</div>' +
-    '<div style="font-size:10px;color:var(--muted);white-space:nowrap">' + _ea((r.displayDate||'').split(' ').slice(0,2).join(' ')) + '</div>' +
+    excuseRow +
   '</div>';
 }
 
@@ -585,6 +601,34 @@ async function deleteAdminEvent(eventId, title) {
   if (!result || result._error) { if (typeof toast==='function') toast('Failed to delete event.'); return; }
   if (typeof toast==='function') toast('Event deleted.');
   await loadAdminEvents();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DOWNLOAD RECORD
+   Fetches the CSV from the backend and triggers a browser download.
+══════════════════════════════════════════════════════════════════ */
+async function downloadEventRecord(eventId, title) {
+  if (typeof toast === 'function') toast('Preparing download record...');
+  try {
+    var result = await apiDownloadAttendanceRecord(eventId);
+    if (!result || result._error) {
+      if (typeof toast === 'function') toast('Failed to download record.');
+      return;
+    }
+    /* Trigger browser download */
+    var url = URL.createObjectURL(result.blob);
+    var a   = document.createElement('a');
+    a.href     = url;
+    a.download = result.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (typeof toast === 'function') toast('Download record saved — ' + result.filename);
+  } catch(e) {
+    console.error('[downloadEventRecord]', e);
+    if (typeof toast === 'function') toast('Download failed. Please try again.');
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════

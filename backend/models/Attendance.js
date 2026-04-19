@@ -27,6 +27,12 @@ const AttendanceSchema = new mongoose.Schema({
     required: true,
   },
 
+  /* ── Excuse Letter (required when response = cant_attend) ─── */
+  excuseLetter:        { type: String, default: '' },
+  excuseLetterFile:    { type: String, default: null },   // base64 encoded file
+  excuseLetterFileExt: { type: String, default: null },   // e.g. 'pdf', 'jpg'
+  hasExcuseLetter:     { type: Boolean, default: false },
+
   /* ── Timestamp ─────────────────────────────────────────────── */
   scannedAt: { type: String, default: () => new Date().toISOString() },
   displayDate: { type: String, default: '' },

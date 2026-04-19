@@ -294,3 +294,29 @@ async function apiToggleEvent(eventId, token) {
 async function apiDeleteEvent(eventId, token) {
   return await apiRequest('DELETE', `/api/events/${eventId}`, null, token || _jwt());
 }
+async function apiDownloadAttendanceRecord(eventId, token) {
+  /* Returns a raw CSV blob — use fetch directly for binary download */
+  try {
+    const res = await fetch(API_BASE + `/api/events/${eventId}/download-record`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + (token || _jwt()) }
+    });
+    if (!res.ok) return { _error: true, status: res.status, message: 'Download failed.' };
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `attendance_${eventId}.csv`;
+    return { blob, filename };
+  } catch (e) {
+    console.warn('[apiDownloadAttendanceRecord]', e.message);
+    return null;
+  }
+}
+
+async function apiGetNotifications(token) {
+  return await apiRequest('GET', '/api/notifications', null, token || _jwt());
+}
+
+async function apiMarkNotificationsRead(token) {
+  return await apiRequest('POST', '/api/notifications/mark-read', {}, token || _jwt());
+}

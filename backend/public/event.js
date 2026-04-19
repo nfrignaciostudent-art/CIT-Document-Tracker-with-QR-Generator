@@ -2,20 +2,11 @@
    public/js/event.js — Public Event Page + Attendance
    CIT Document Tracker - Group 6
 
-   RULES:
-     - Student ID is the ONLY way to mark attendance.
-     - Manual name entry removed entirely.
-     - Users without a Student ID must ask admin to assign one via
-       PATCH /api/auth/users/:userId/student-id
-     - No SVG icon variables — clean emoji/text approach.
-
-   FLOW:
-     1. Page loads → reads ?event= param → fetches event info
-     2. Shows event details
-     3. Student enters Student ID → clicks Search
-     4. System looks up student → shows name + section confirmation
-     5. Student clicks Attend or Cannot Attend
-     6. Success screen
+   UPDATES:
+     - Section dropdown (always shown, pre-filled from DB)
+     - Excuse letter required when cannot attend
+     - Renamed buttons to school context
+     - Student ID validation: 10 digits only
 ══════════════════════════════════════════════════════════════════════ */
 
 async function initEventPage() {
@@ -42,11 +33,7 @@ async function loadEventPage(eventId) {
   try {
     var res  = await fetch('/api/events/public/' + encodeURIComponent(eventId));
     var data = await res.json();
-
-    if (!res.ok) {
-      container.innerHTML = _evtError(data.message || 'Event not found.');
-      return;
-    }
+    if (!res.ok) { container.innerHTML = _evtError(data.message || 'Event not found.'); return; }
     _renderEventDetails(container, data);
   } catch (err) {
     container.innerHTML = _evtError('Could not connect to server. Please try again.');
@@ -55,17 +42,14 @@ async function loadEventPage(eventId) {
 
 function _renderEventDetails(container, evt) {
   var isActive = evt.isActive;
-
   var statusBadge = isActive
     ? '<span style="background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3);padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700">Open</span>'
     : '<span style="background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700">Closed</span>';
 
   var imageSection = '';
   if (evt.imageData) {
-    imageSection =
-      '<div style="width:100%;max-width:480px;margin:0 auto 24px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08)">' +
-        '<img src="' + _ee(evt.imageData) + '" alt="' + _ee(evt.title) + '" style="width:100%;display:block;object-fit:cover;max-height:260px">' +
-      '</div>';
+    imageSection = '<div style="width:100%;max-width:480px;margin:0 auto 24px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08)">' +
+      '<img src="' + _ee(evt.imageData) + '" alt="' + _ee(evt.title) + '" style="width:100%;display:block;object-fit:cover;max-height:260px"></div>';
   }
 
   var infoRows = '';
@@ -80,7 +64,6 @@ function _renderEventDetails(container, evt) {
       '<h1 style="font-size:26px;font-weight:800;color:#fff;margin:0 0 12px;line-height:1.3">' + _ee(evt.title) + '</h1>' +
       statusBadge +
     '</div>' +
-
     '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px;margin-bottom:24px">' +
       (evt.description ? '<p style="font-size:14px;color:rgba(255,255,255,.65);line-height:1.7;margin:0 0 20px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.07)">' + _ee(evt.description) + '</p>' : '') +
       (infoRows ? '<div style="display:grid;gap:14px">' + infoRows + '</div>' : '') +
@@ -95,10 +78,7 @@ function _renderEventDetails(container, evt) {
         '</div>' +
       '</div>' +
     '</div>' +
-
-    '<div id="event-form-area">' +
-      (isActive ? _lookupForm(evt.eventId) : _closedMsg()) +
-    '</div>';
+    '<div id="event-form-area">' + (isActive ? _lookupForm(evt.eventId) : _closedMsg()) + '</div>';
 }
 
 function _infoRow(label, valueHtml) {
@@ -106,34 +86,46 @@ function _infoRow(label, valueHtml) {
     '<div style="width:36px;height:36px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);border-radius:10px;display:grid;place-items:center;flex-shrink:0;color:#818cf8;font-size:15px">' +
       (label === 'Date' ? '📅' : label === 'Location' ? '📍' : '👤') +
     '</div>' +
-    '<div>' +
-      '<div style="font-size:11px;color:rgba(255,255,255,.35);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">' + label + '</div>' +
-      '<div style="font-size:14px;color:rgba(255,255,255,.85);font-weight:600">' + valueHtml + '</div>' +
-    '</div>' +
-  '</div>';
+    '<div><div style="font-size:11px;color:rgba(255,255,255,.35);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">' + label + '</div>' +
+    '<div style="font-size:14px;color:rgba(255,255,255,.85);font-weight:600">' + valueHtml + '</div></div></div>';
 }
 
 /* ── Student ID lookup form ──────────────────────────────────────── */
 function _lookupForm(eventId) {
+  var inp = 'width:100%;padding:12px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:15px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;letter-spacing:.08em;';
   return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px">' +
-    '<h3 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 4px">Mark Your Attendance</h3>' +
-    '<p style="font-size:13px;color:rgba(255,255,255,.4);margin:0 0 20px">Enter your Student ID to find your record.</p>' +
-
+    '<h3 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 4px">Confirm Your Attendance</h3>' +
+    '<p style="font-size:13px;color:rgba(255,255,255,.4);margin:0 0 20px">Enter your 10-digit Student ID to confirm attendance.</p>' +
     '<div style="display:flex;gap:10px;margin-bottom:10px">' +
-      '<input id="evt-student-id-input" type="text" placeholder="Enter your Student ID" maxlength="30"' +
-        ' style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px 16px;color:#fff;font-size:14px;font-family:\'DM Sans\',sans-serif;outline:none"' +
+      '<input id="evt-student-id-input" type="text" inputmode="numeric" placeholder="e.g. 2026000010" maxlength="10"' +
+        ' style="' + inp + 'flex:1"' +
+        ' oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"' +
         ' onkeydown="if(event.key===\'Enter\') _evtLookup(\'' + eventId + '\')">' +
       '<button onclick="_evtLookup(\'' + eventId + '\')"' +
         ' style="padding:12px 20px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">' +
         'Search' +
       '</button>' +
     '</div>' +
-
     '<div id="evt-lookup-error" style="display:none;font-size:13px;color:#f87171;padding:10px 14px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:8px;margin-bottom:12px;line-height:1.5"></div>' +
     '<div id="evt-student-confirm" style="display:none"></div>' +
   '</div>';
 }
 
+/* ── Sections list ───────────────────────────────────────────────── */
+var _SECTIONS = ['A','B','C','D','E','F','G','H'];
+
+function _sectionSelect(currentSection) {
+  var opts = '<option value="">-- Select your section --</option>';
+  _SECTIONS.forEach(function(s) {
+    opts += '<option value="' + s + '"' + (currentSection === s ? ' selected' : '') + '>Section ' + s + '</option>';
+  });
+  return '<select id="evt-section-select" style="width:100%;padding:11px 14px;background:rgba(255,255,255,.06);' +
+    'border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:14px;' +
+    'font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;' +
+    '-webkit-appearance:none;appearance:none;cursor:pointer">' + opts + '</select>';
+}
+
+/* ── Lookup student ──────────────────────────────────────────────── */
 async function _evtLookup(eventId) {
   var input   = document.getElementById('evt-student-id-input');
   var errEl   = document.getElementById('evt-lookup-error');
@@ -148,6 +140,11 @@ async function _evtLookup(eventId) {
     errEl.style.display = 'block';
     return;
   }
+  if (!/^\d{10}$/.test(studentId)) {
+    errEl.textContent   = 'Student ID must be exactly 10 digits (e.g. 2026000010).';
+    errEl.style.display = 'block';
+    return;
+  }
 
   input.disabled = true;
   var btn = input.nextElementSibling;
@@ -155,9 +152,8 @@ async function _evtLookup(eventId) {
 
   try {
     var res  = await fetch('/api/events/lookup-student', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ studentId }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId }),
     });
     var data = await res.json();
 
@@ -168,35 +164,59 @@ async function _evtLookup(eventId) {
       errEl.innerHTML =
         '<strong>' + _ee(data.message || 'Student ID not found.') + '</strong>' +
         '<br><span style="font-size:12px;opacity:.8;margin-top:4px;display:block">' +
-        'If you don\'t have a Student ID yet, please contact your administrator to have one assigned to your account.' +
+        'If you don\'t have a Student ID yet, please contact your administrator.' +
         '</span>';
       errEl.style.display = 'block';
       return;
     }
 
+    /* ── Show student info + section dropdown + action buttons ── */
     confirm.style.display = 'block';
     confirm.innerHTML =
       '<div style="margin-top:16px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:18px">' +
         '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Student Found</div>' +
         '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px">' + _ee(data.studentName) + '</div>' +
-        '<div style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:' + (data.section ? '4px' : '16px') + '">' +
+        '<div style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:16px">' +
           'ID: <span style="font-family:\'DM Mono\',monospace">' + _ee(data.studentId) + '</span>' +
         '</div>' +
-        (data.section ? '<div style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:16px">Section: <strong style="color:rgba(255,255,255,.8)">' + _ee(data.section) + '</strong></div>' : '') +
+
+        /* Section dropdown */
+        '<div style="margin-bottom:16px">' +
+          '<label style="font-size:12px;font-weight:600;color:rgba(255,255,255,.55);display:block;margin-bottom:6px">Your Section</label>' +
+          _sectionSelect(data.section || '') +
+          '<div id="evt-section-error" style="display:none;font-size:12px;color:#f87171;margin-top:5px">Please select your section before confirming.</div>' +
+        '</div>' +
+
+        /* Action buttons */
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
-          '<button onclick="_evtSubmit(\'' + eventId + '\',\'' + _ee(data.studentId) + '\',\'attend\')"' +
+          '<button onclick="_evtSubmitAttend(\'' + eventId + '\',\'' + _ee(data.studentId) + '\')"' +
             ' style="padding:13px;background:#22c55e;color:#0d1117;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
             'I will Attend' +
           '</button>' +
-          '<button onclick="_evtSubmit(\'' + eventId + '\',\'' + _ee(data.studentId) + '\',\'cant_attend\')"' +
+          '<button onclick="_evtShowExcuseForm()"' +
             ' style="padding:13px;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
             'Cannot Attend' +
           '</button>' +
         '</div>' +
+
         '<button onclick="_evtReset(\'' + eventId + '\')"' +
           ' style="width:100%;padding:9px;background:transparent;color:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.08);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:12px;cursor:pointer">' +
           'Not you? Search again' +
         '</button>' +
+
+        /* Excuse letter form — hidden until Cannot Attend is clicked */
+        '<div id="evt-excuse-form" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)">' +
+          '<div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Excuse Letter Required</div>' +
+          '<p style="font-size:12px;color:rgba(255,255,255,.45);margin:0 0 10px;line-height:1.6">Please write your reason for not attending. This will be recorded for the organizer.</p>' +
+          '<textarea id="evt-excuse-text" placeholder="Write your reason here (e.g. I have a medical appointment, family emergency, etc.)" rows="4"' +
+            ' style="width:100%;padding:11px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:13px;font-family:\'DM Sans\',sans-serif;outline:none;box-sizing:border-box;resize:vertical;line-height:1.5"></textarea>' +
+          '<div id="evt-excuse-error" style="display:none;font-size:12px;color:#f87171;margin-top:6px"></div>' +
+          '<button id="evt-excuse-submit-btn" onclick="_evtSubmitCannotAttend(\'' + eventId + '\',\'' + _ee(data.studentId) + '\')"' +
+            ' style="width:100%;margin-top:10px;padding:13px;background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.35);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;cursor:pointer">' +
+            'Submit Excuse Letter' +
+          '</button>' +
+        '</div>' +
+
       '</div>';
 
   } catch (err) {
@@ -207,7 +227,56 @@ async function _evtLookup(eventId) {
   }
 }
 
-async function _evtSubmit(eventId, studentId, response) {
+/* ── Show excuse letter form ─────────────────────────────────────── */
+function _evtShowExcuseForm() {
+  var form = document.getElementById('evt-excuse-form');
+  if (form) {
+    form.style.display = 'block';
+    var textarea = document.getElementById('evt-excuse-text');
+    if (textarea) textarea.focus();
+  }
+}
+
+/* ── Validate section helper ─────────────────────────────────────── */
+function _evtValidateSection() {
+  var sel = document.getElementById('evt-section-select');
+  var errEl = document.getElementById('evt-section-error');
+  if (!sel || !sel.value) {
+    if (errEl) errEl.style.display = 'block';
+    if (sel) sel.style.border = '1px solid rgba(239,68,68,.5)';
+    return null;
+  }
+  if (errEl) errEl.style.display = 'none';
+  if (sel) sel.style.border = '';
+  return sel.value;
+}
+
+/* ── Submit attending ────────────────────────────────────────────── */
+async function _evtSubmitAttend(eventId, studentId) {
+  var section = _evtValidateSection();
+  if (!section) return;
+  await _evtDoSubmit(eventId, studentId, 'attend', section, null);
+}
+
+/* ── Submit cannot attend ────────────────────────────────────────── */
+async function _evtSubmitCannotAttend(eventId, studentId) {
+  var section = _evtValidateSection();
+  if (!section) return;
+
+  var excuseText = (document.getElementById('evt-excuse-text') || {}).value || '';
+  var excuseErrEl = document.getElementById('evt-excuse-error');
+
+  if (!excuseText.trim()) {
+    if (excuseErrEl) { excuseErrEl.textContent = 'Please write your reason for not attending.'; excuseErrEl.style.display = 'block'; }
+    return;
+  }
+  if (excuseErrEl) excuseErrEl.style.display = 'none';
+
+  await _evtDoSubmit(eventId, studentId, 'cant_attend', section, excuseText.trim());
+}
+
+/* ── Core submit ─────────────────────────────────────────────────── */
+async function _evtDoSubmit(eventId, studentId, response, section, excuseLetter) {
   var formArea = document.getElementById('event-form-area');
   if (!formArea) return;
 
@@ -216,10 +285,12 @@ async function _evtSubmit(eventId, studentId, response) {
     '<div class="spinner" style="margin:0 auto 16px"></div><p>Submitting your response...</p></div>';
 
   try {
+    var body = { eventId, studentId, section, response };
+    if (excuseLetter) body.excuseLetter = excuseLetter;
+
     var res  = await fetch('/api/events/attend', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ eventId, studentId, response }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
     var data = await res.json();
 
@@ -248,12 +319,13 @@ function _evtSuccess(data, response) {
       'font-size:32px;color:' + (isAttend ? '#22c55e' : '#ef4444') + '">' +
       (isAttend ? '✓' : '✕') +
     '</div>' +
-    '<h3 style="font-size:18px;font-weight:800;color:#fff;margin:0 0 8px">' + (isAttend ? "You\'re In!" : 'Got It!') + '</h3>' +
+    '<h3 style="font-size:18px;font-weight:800;color:#fff;margin:0 0 8px">' + (isAttend ? "You're In!" : 'Response Recorded') + '</h3>' +
     '<p style="font-size:14px;color:rgba(255,255,255,.5);margin:0 0 20px;line-height:1.6">' + _ee(data.message) + '</p>' +
     '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px">' +
       '<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.8)">' + _ee(data.studentName) + '</div>' +
       (data.section ? '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:3px">Section ' + _ee(data.section) + '</div>' : '') +
     '</div>' +
+    (!isAttend ? '<div style="margin-top:12px;padding:10px 14px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:8px;font-size:12px;color:rgba(255,255,255,.45)">Your excuse letter has been submitted and recorded.</div>' : '') +
     '<div style="font-size:11px;color:rgba(255,255,255,.25);margin-top:12px">You can now close this page.</div>' +
   '</div>';
 }
@@ -288,8 +360,5 @@ function _evtError(msg) {
 
 function _ee(str) {
   if (!str) return '';
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-    .replace(/'/g,'&#39;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
