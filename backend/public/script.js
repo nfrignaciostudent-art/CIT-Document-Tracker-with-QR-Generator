@@ -3256,17 +3256,29 @@ function renderUsers() {
     var lastLogin = u.lastLogin
       ? '<span style="color:#4ade80;font-size:11px">&#9679; Active &nbsp;&middot;&nbsp; Last login: ' + _fmtDate(u.lastLogin) + '</span>'
       : '<span style="color:var(--muted);font-size:11px">&#9675; Never logged in</span>';
+    var roleBadge = '';
+    if (u.role === 'staff')   roleBadge = '<span style="font-size:10px;font-weight:700;background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.25);padding:1px 7px;border-radius:20px;margin-left:6px">Staff</span>';
+    if (u.role === 'faculty') roleBadge = '<span style="font-size:10px;font-weight:700;background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.25);padding:1px 7px;border-radius:20px;margin-left:6px">Faculty</span>';
+    if (u.role === 'admin')   roleBadge = '<span style="font-size:10px;font-weight:700;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25);padding:1px 7px;border-radius:20px;margin-left:6px">Admin</span>';
+    var studentIdBadge = (u.role === 'user' && u.studentId)
+      ? '<span style="font-size:11px;color:var(--muted)">&nbsp;&middot;&nbsp;ID: <strong style="color:var(--text);font-family:\'DM Mono\',monospace">' + u.studentId + '</strong></span>'
+      : (u.role === 'user' ? '<span style="font-size:11px;color:#f87171">&nbsp;&middot;&nbsp;No Student ID</span>' : '');
+    var empIdBadge = (u.employee_id)
+      ? '<span style="font-size:11px;color:var(--muted)">&nbsp;&middot;&nbsp;Emp: ' + u.employee_id + '</span>'
+      : '';
     return '<div style="display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)">' +
       '<div class="user-avatar" style="background:' + bg + '">' + initials(u.name || u.username) + '</div>' +
       '<div style="flex:1">' +
-        '<div style="font-weight:600;font-size:14px">' + (u.name || u.username) + '</div>' +
+        '<div style="font-weight:600;font-size:14px">' + (u.name || u.username) + roleBadge + '</div>' +
         '<div style="font-size:12px;color:var(--muted);margin-top:2px">' +
-          '@' + u.username + ' &nbsp;&middot;&nbsp; ' +
-          docCnt + ' doc' + (docCnt !== 1 ? 's' : '') + ' &nbsp;&middot;&nbsp; Joined ' + _fmtDate(u.createdAt) +
+          '@' + u.username +
+          studentIdBadge + empIdBadge +
+          ' &nbsp;&middot;&nbsp; ' + docCnt + ' doc' + (docCnt !== 1 ? 's' : '') +
+          ' &nbsp;&middot;&nbsp; Joined ' + _fmtDate(u.createdAt) +
         '</div>' +
         '<div style="margin-top:3px">' + lastLogin + '</div>' +
       '</div>' +
-      '<button class="btn btn-sm btn-blue" onclick="openUserVaultById(\'' + uid + '\',\'' + (u.username||'') + '\',\'' + (u.name||'') + '\')">View Docs</button>' +
+      (u.role === 'user' ? '<button class="btn btn-sm btn-blue" onclick="openUserVaultById(\'' + uid + '\',\'' + (u.username||'') + '\',\'' + (u.name||'') + '\')">View Docs</button>' : '') +
     '</div>';
   }).join('');
 }

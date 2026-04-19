@@ -528,6 +528,36 @@ const registerDocument = async (req, res) => {
     const fileExt    = req.file ? (body.fileExt || '') : (body.fileExt || null);
 
     const doc = await _createDocument(body, fileBuffer, fileExt);
+
+    /* ── ADMIN BYPASS: admin is highest authority — skip staff/faculty review ──
+       When an admin registers a document it goes directly to
+       "Approved and Released" (current_role: 'completed').
+       No staff or faculty review is needed.                                    */
+    if (req.user && req.user.role === 'admin') {
+      const nowManila = manilaTimestamp();
+      await Document.findByIdAndUpdate(doc._id, {
+        status:        'Approved and Released',
+        current_role:  'completed',
+        current_stage: 'completed',
+        processedBy:   req.user.name || req.user.username || 'Admin',
+        processedAt:   nowManila,
+        $push: {
+          history: {
+            action:   'Status Update',
+            status:   'Approved and Released',
+            date:     nowManila,
+            note:     'Document registered and approved directly by admin.',
+            by:       req.user.name || req.user.username || 'Admin',
+            location: '',
+            handler:  req.user.name || req.user.username || 'Admin',
+          },
+        },
+      });
+      doc.status        = 'Approved and Released';
+      doc.current_role  = 'completed';
+      doc.current_stage = 'completed';
+    }
+
     const url = trackUrl(doc.internalId);
 
     return res.status(201).json({
@@ -542,7 +572,9 @@ const registerDocument = async (req, res) => {
       qrCode:          doc.qrCode,
       trackUrl:        url,
       hasOriginalFile: doc.hasOriginalFile,
-      message:         'Document submitted successfully.',
+      message:         req.user && req.user.role === 'admin'
+        ? 'Document registered and approved directly by admin.'
+        : 'Document submitted successfully.',
     });
   } catch (err) {
     console.error('[registerDocument]', err);

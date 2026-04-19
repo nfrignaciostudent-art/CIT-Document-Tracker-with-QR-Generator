@@ -36,6 +36,24 @@ const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
 const generateToken = (id) =>
   jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 
+/* ── Auto-generate Student ID ─────────────────────────────────────
+   Format: CurrentYear (4 digits) + UniqueNumber (6 digits, zero-padded)
+   Example: 2026 + 000001 → "2026000001"
+   Deterministic: counts existing user-role accounts, increments,
+   retries up to 20 times to guarantee uniqueness.               */
+async function generateStudentId() {
+  const year = new Date().getFullYear().toString();
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const count = await User.countDocuments({ role: 'user' });
+    const unique = String(count + 1 + attempt).padStart(6, '0');
+    const studentId = year + unique;
+    const exists = await User.findOne({ studentId });
+    if (!exists) return studentId;
+  }
+  /* Absolute fallback: timestamp-based suffix */
+  return year + String(Date.now()).slice(-6);
+}
+
 /* ── Helper: safe public user shape ──────────────────────────────── */
 function _publicUser(user, token) {
   return {
@@ -46,6 +64,7 @@ function _publicUser(user, token) {
     role:             user.role,
     color:            user.color,
     employee_id:      user.employee_id || null,
+    studentId:        user.studentId   || null,
     encryptedIdeaKey: user.encryptedIdeaKey || null,
     passwordSalt:     user.passwordSalt     || null,
     token:            token || null,
@@ -98,6 +117,7 @@ const registerUser = async (req, res) => {
       username, name, password,
       role:     'user',   // always 'user' for self-registration
       color:    color || '#4ade80',
+      studentId: await generateStudentId(),   // auto-generated, always unique
       encryptedIdeaKey: encryptedIdeaKey || null,
       passwordSalt:     passwordSalt     || null,
     });
@@ -243,6 +263,7 @@ const createUserByAdmin = async (req, res) => {
       role,
       color:       color || _defaultColorForRole(role),
       employee_id: (['staff', 'faculty'].includes(role)) ? employee_id.trim() : null,
+      studentId:   role === 'user' ? await generateStudentId() : null,  // auto-generated for students
       encryptedIdeaKey: encryptedIdeaKey || null,
       passwordSalt:     passwordSalt     || null,
     });
@@ -299,6 +320,8 @@ const getUsers = async (req, res) => {
       role:        u.role,
       color:       u.color,
       employee_id: u.employee_id || null,
+      studentId:   u.studentId   || null,
+      section:     u.section     || null,
       createdAt:   u.createdAt,
       lastLogin:   u.lastLogin || null,
       lastSeen:    u.lastSeen  || null,
