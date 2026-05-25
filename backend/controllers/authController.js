@@ -29,6 +29,7 @@ function _publicUser(user, token) {
     _id:              user._id,
     userId:           user.userId,
     username:         user.username,
+    email:            user.username,
     name:             user.name,
     role:             user.role,
     color:            user.color,
@@ -51,10 +52,16 @@ const registerUser = async (req, res) => {
     } = req.body;
 
     if (!username || !name || !password)
-      return res.status(400).json({ message: 'Username, name and password are required.' });
+      return res.status(400).json({ message: 'Student ID Number, name and password are required.' });
 
-    if (!/^[a-z0-9_]+$/.test(username))
-      return res.status(400).json({ message: 'Username: letters, numbers, underscores only.' });
+    const trimmedUsername = String(username).trim();
+    if (!/^\d+$/.test(trimmedUsername)) {
+      return res.status(400).json({ message: 'Student ID Number must contain numbers only.' });
+    }
+
+    if (trimmedUsername.length < 10 || trimmedUsername.length > 12) {
+      return res.status(400).json({ message: 'Student ID Number must be between 10 and 12 characters.' });
+    }
 
     if (password.length < 4)
       return res.status(400).json({ message: 'Password must be at least 4 characters.' });
@@ -67,15 +74,24 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const exists = await User.findOne({ username });
-    if (exists) return res.status(409).json({ message: 'Username already taken.' });
+    const exists = await User.findOne({
+      $or: [
+        { username: trimmedUsername },
+        { studentId: trimmedUsername }
+      ]
+    });
+    if (exists) {
+      return res.status(409).json({ message: 'This Student ID is already registered.' });
+    }
 
     const user = new User({
       userId:   userId || ('USR-' + Date.now().toString(36).toUpperCase()),
-      username, name, password,
+      username: trimmedUsername,
+      name,
+      password,
       role:     'user',
       color:    color || '#4ade80',
-      studentId: await generateStudentId(),
+      studentId: trimmedUsername,
       /* FIX: employee_id intentionally omitted (undefined) so the
          sparse index does not store/index this document.
          Do NOT set employee_id: null — null is indexed and causes E11000. */
@@ -90,7 +106,7 @@ const registerUser = async (req, res) => {
     console.error('[registerUser]', err);
     if (err.code === 11000) {
       const field = Object.keys(err.keyValue || {})[0] || 'field';
-      return res.status(409).json({ message: `${field} is already taken.` });
+      return res.status(409).json({ message: `Duplicate entry for ${field}.` });
     }
     res.status(500).json({ message: err.message });
   }
@@ -112,13 +128,13 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       console.warn('[loginUser] user not found:', loginField);
-      return res.status(401).json({ message: 'Incorrect username/employee ID or password.' });
+      return res.status(401).json({ message: 'This account is not registered.' });
     }
 
     const passwordMatch = await user.matchPassword(password);
     if (!passwordMatch) {
       console.warn('[loginUser] password mismatch:', loginField);
-      return res.status(401).json({ message: 'Incorrect username/employee ID or password.' });
+      return res.status(401).json({ message: 'Incorrect password.' });
     }
 
     await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
@@ -149,6 +165,7 @@ const getMe = async (req, res) => {
       employee_id:      user.employee_id || null,
       studentId:        user.studentId   || null,
       section:          user.section     || null,
+      department:       user.department  || null,
       createdAt:        user.createdAt,
       lastLogin:        user.lastLogin,
       lastSeen:         user.lastSeen,
@@ -167,25 +184,24 @@ const getMe = async (req, res) => {
 const createUserByAdmin = async (req, res) => {
   try {
     const {
-      username, name, password, role,
-      employee_id, color,
+      username, email, name, password, role,
+      employee_id, department, color,
       encryptedIdeaKey, passwordSalt,
     } = req.body;
 
-    if (!username || !name || !password || !role)
-      return res.status(400).json({ message: 'username, name, password and role are required.' });
+    const resolvedUsername = (username || email || '').toLowerCase().trim();
 
-    if (!/^[a-z0-9_]+$/.test(username))
-      return res.status(400).json({ message: 'Username: lowercase letters, numbers, underscores only.' });
+    if (!resolvedUsername || !name || !password || !role)
+      return res.status(400).json({ message: 'username/email, name, password and role are required.' });
 
     if (password.length < 4)
       return res.status(400).json({ message: 'Password must be at least 4 characters.' });
 
-    const allowedRoles = ['admin', 'user', 'staff', 'faculty'];
+    const allowedRoles = ['admin', 'user', 'staff', 'faculty', 'dean'];
     if (!allowedRoles.includes(role))
       return res.status(400).json({ message: `Invalid role. Allowed: ${allowedRoles.join(', ')}.` });
 
-    if (['staff', 'faculty'].includes(role)) {
+    if (['staff', 'faculty', 'dean'].includes(role)) {
       if (!employee_id || !employee_id.trim())
         return res.status(400).json({ message: `employee_id is required for the "${role}" role.` });
       const empExists = await User.findOne({ employee_id: employee_id.trim() });
@@ -193,7 +209,7 @@ const createUserByAdmin = async (req, res) => {
         return res.status(409).json({ message: 'employee_id is already in use.' });
     }
 
-    const usernameExists = await User.findOne({ username: username.toLowerCase().trim() });
+    const usernameExists = await User.findOne({ username: resolvedUsername });
     if (usernameExists)
       return res.status(409).json({ message: 'Username already taken.' });
 
@@ -201,7 +217,7 @@ const createUserByAdmin = async (req, res) => {
        sparse indexes skip these documents entirely.                */
     const userData = {
       userId:      'USR-' + Date.now().toString(36).toUpperCase(),
-      username:    username.toLowerCase().trim(),
+      username:    resolvedUsername,
       name:        name.trim(),
       password,
       role,
@@ -210,8 +226,9 @@ const createUserByAdmin = async (req, res) => {
       passwordSalt:     passwordSalt     || null,
     };
 
-    if (['staff', 'faculty'].includes(role)) {
-      userData.employee_id = employee_id.trim();   // set only for staff/faculty
+    if (['staff', 'faculty', 'dean'].includes(role)) {
+      userData.employee_id = employee_id.trim();   // set only for staff/faculty/dean
+      userData.department = department ? department.trim() : '';
     }
     // employee_id left undefined for admin/user → sparse index skips it
 
@@ -239,7 +256,7 @@ const createUserByAdmin = async (req, res) => {
 };
 
 function _defaultColorForRole(role) {
-  const map = { admin: '#4ade80', user: '#60a5fa', staff: '#f59e0b', faculty: '#a78bfa' };
+  const map = { admin: '#4ade80', user: '#60a5fa', staff: '#f59e0b', faculty: '#a78bfa', dean: '#ec4899' };
   return map[role] || '#64748b';
 }
 
@@ -262,14 +279,17 @@ const getUsers = async (req, res) => {
 
     const payload = users.map(u => ({
       _id:         u._id,
+      id:          u.userId || String(u._id),
       userId:      u.userId,
       username:    u.username,
+      email:       u.username,
       name:        u.name,
       role:        u.role,
       color:       u.color,
       employee_id: u.employee_id || null,
       studentId:   u.studentId   || null,
       section:     u.section     || null,
+      department:  u.department  || null,
       createdAt:   u.createdAt,
       lastLogin:   u.lastLogin || null,
       lastSeen:    u.lastSeen  || null,
@@ -363,9 +383,45 @@ const updateUserStudentId = async (req, res) => {
   }
 };
 
+const resetUserPassword = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword, encryptedIdeaKey, passwordSalt } = req.body;
+
+    if (!newPassword || newPassword.length < 4) {
+      return res.status(400).json({ message: 'Password must be at least 4 characters.' });
+    }
+
+    const user = await User.findOne({ $or: [{ _id: userId }, { userId }] });
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    user.password = newPassword;
+    user.encryptedIdeaKey = encryptedIdeaKey || null;
+    user.passwordSalt = passwordSalt || null;
+
+    await user.save();
+
+    res.json({
+      message: `Password reset successfully for ${user.name}.`,
+      user: {
+        _id: user._id,
+        userId: user.userId,
+        username: user.username,
+        role: user.role,
+        encryptedIdeaKey: user.encryptedIdeaKey,
+        passwordSalt: user.passwordSalt,
+      }
+    });
+  } catch (err) {
+    console.error('[resetUserPassword]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   registerUser, loginUser, getMe, getUsers,
   heartbeat, updateVaultKey,
   createUserByAdmin,
   updateUserStudentId,
+  resetUserPassword,
 };

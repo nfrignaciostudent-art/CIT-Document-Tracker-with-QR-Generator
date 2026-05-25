@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 const User     = require('./models/User');
 
 async function seed() {
-  const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/cit_doctracker';
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/cit_doctracker';
   await mongoose.connect(uri);
   console.log('Connected to MongoDB');
 

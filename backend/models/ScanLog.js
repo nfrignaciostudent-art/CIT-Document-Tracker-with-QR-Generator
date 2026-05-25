@@ -19,6 +19,15 @@ const ScanLogSchema = new mongoose.Schema({
   docStatus:    { type: String, default: '' },
   timestamp:    { type: String, required: true },   // ISO UTC string
   displayDate:  { type: String, default: '' },      // Asia/Manila formatted
+
+  // New tracking fields
+  browser:      { type: String, default: 'Unknown' },
+  device:       { type: String, default: 'Unknown' },
+  os:           { type: String, default: 'Unknown' },
+  isAnonymous:  { type: Boolean, default: true },
+  viewerName:   { type: String, default: 'Anonymous' },
+  viewerRole:   { type: String, default: 'visitor' },
+  ipAddress:    { type: String, default: 'Unknown' },
 }, { timestamps: true });
 
 ScanLogSchema.index({ timestamp: -1 });

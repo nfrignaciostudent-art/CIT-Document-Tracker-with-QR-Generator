@@ -13,6 +13,7 @@ const authRoutes         = require('./routes/authRoutes');
 const documentRoutes     = require('./routes/documentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const eventRoutes        = require('./routes/eventRoutes');
+const publicDocumentRoutes = require('./routes/publicDocumentRoutes');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -29,6 +30,7 @@ app.use('/api/auth',          authRoutes);
 app.use('/api/documents',     documentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/events',        eventRoutes);
+app.use('/api/public-documents', publicDocumentRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'CIT DocTracker API running', group: 'Group 6' });

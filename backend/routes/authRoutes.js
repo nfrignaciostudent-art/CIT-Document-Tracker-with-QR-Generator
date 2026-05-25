@@ -19,6 +19,7 @@ const {
   heartbeat, updateVaultKey,
   createUserByAdmin,
   updateUserStudentId,
+  resetUserPassword,
 } = require('../controllers/authController');
 const protect  = require('../middleware/authMiddleware');
 
@@ -54,5 +55,11 @@ router.post('/users/create',     protect, adminOnly, createUserByAdmin);
  * For users registered before the studentId feature was added.
  */
 router.patch('/users/:userId/student-id', protect, adminOnly, updateUserStudentId);
+
+/**
+ * PATCH /api/auth/users/:userId/reset-password
+ * Admin resets a user's password.
+ */
+router.patch('/users/:userId/reset-password', protect, adminOnly, resetUserPassword);
 
 module.exports = router;

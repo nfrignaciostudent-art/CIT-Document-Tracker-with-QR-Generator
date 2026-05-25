@@ -67,6 +67,7 @@ const DocumentSchema = new mongoose.Schema({
   /* ── Non-sensitive metadata ─────────────────────────────────── */
   type:     { type: String, required: true, enum: ['Academic', 'Laboratory', 'Administrative', 'Financial', 'Medical', 'Other'] },
   by:       { type: String, required: true, trim: true },
+  department: { type: String, default: '' },
   /* priority and due removed — priority system fully removed per system standardization */
 
   status: {
@@ -104,7 +105,7 @@ const DocumentSchema = new mongoose.Schema({
    */
   current_role: {
     type: String,
-    enum: ['staff', 'faculty', 'admin', 'user', 'completed'],
+    enum: ['staff', 'faculty', 'dean', 'admin', 'user', 'completed'],
     default: 'staff',
   },
 
@@ -116,7 +117,7 @@ const DocumentSchema = new mongoose.Schema({
    */
   current_stage: {
     type: String,
-    enum: ['staff', 'faculty', 'admin', 'completed'],
+    enum: ['staff', 'faculty', 'dean', 'admin', 'completed'],
     default: 'staff',
   },
 
@@ -136,8 +137,14 @@ const DocumentSchema = new mongoose.Schema({
   processedBy:      { type: String, default: null },
   processedAt:      { type: String, default: null },
 
+  signedFile:       { type: String, default: null },
+  signedFileExt:    { type: String, default: null },
+  signedBy:         { type: String, default: null },
+  signedAt:         { type: String, default: null },
+
   hasOriginalFile:  { type: Boolean, default: false },
   hasProcessedFile: { type: Boolean, default: false },
+  hasSignedFile:    { type: Boolean, default: false },
 
   /* ── Resubmission tracking ────────────────────────────────────── */
   resubmissionCount: { type: Number, default: 0 },
@@ -150,8 +157,6 @@ const DocumentSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-DocumentSchema.index({ internalId: 1 });
-DocumentSchema.index({ displayId: 1 });
 DocumentSchema.index({ current_role: 1 });
 DocumentSchema.index({ current_stage: 1 });
 DocumentSchema.index({ ownerId: 1 });

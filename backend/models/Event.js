@@ -50,7 +50,6 @@ const EventSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-EventSchema.index({ eventId: 1 });
 EventSchema.index({ isActive: 1 });
 EventSchema.index({ createdAt: -1 });
 

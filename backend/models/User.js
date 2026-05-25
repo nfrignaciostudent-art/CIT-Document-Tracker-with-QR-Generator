@@ -13,7 +13,7 @@ const UserSchema = new mongoose.Schema({
   username:    { type: String, unique: true, required: true, trim: true, lowercase: true },
   name:        { type: String, required: true, trim: true },
   password:    { type: String, required: true },
-  role:        { type: String, enum: ['admin', 'user', 'staff', 'faculty'], default: 'user' },
+  role:        { type: String, enum: ['admin', 'user', 'staff', 'faculty', 'dean'], default: 'user' },
   color:       { type: String, default: '#4ade80' },
 
   /* FIX: default must be undefined (not null) so MongoDB does NOT
@@ -23,6 +23,8 @@ const UserSchema = new mongoose.Schema({
   employee_id: { type: String, trim: true },   // no default → undefined → field absent
   studentId:   { type: String, trim: true },   // no default → undefined → field absent
   section:     { type: String, trim: true },
+  department:  { type: String, trim: true },
+
 
   /* ── Session tracking ──────────────────────────────────────── */
   lastLogin: { type: Date, default: null },

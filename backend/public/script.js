@@ -453,7 +453,7 @@ const nowStr = () => new Date().toLocaleString('en-PH', {
   timeZone: 'Asia/Manila',
   year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', second: '2-digit',
-  hour12: true
+  hour12: false
 });
 const colors = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399','#f87171','#fbbf24'];
 function avatarColor(idx){ return colors[idx % colors.length]; }

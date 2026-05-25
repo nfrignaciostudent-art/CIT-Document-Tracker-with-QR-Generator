@@ -595,34 +595,49 @@ function renderPublicTrackResult(d) {
       }).join('');
 
   /* File section — download available to owner/admin for released docs */
-  var hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.hasOriginalFile);
-  var hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.hasProcessedFile);
+  var hasOriginal  = !!(d.hasOriginalFile || d.originalFile || d.filePath);
+  var hasSigned    = !!(d.hasSignedFile || d.signedFile);
+  var hasProcessed = !!(d.hasProcessedFile || d.processedFile);
   var fileHtml = '';
-  if (hasOriginal || hasProcessed) {
+
+  if (hasProcessed || hasSigned || hasOriginal) {
     fileHtml += '<div class="cct-files"><div class="cct-sect-label">Files</div>';
-    if (hasOriginal) {
-      fileHtml += '<div class="cct-file-row">' +
-        '<div class="cct-file-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>' +
-        '<div style="flex:1;min-width:0"><div class="cct-file-name">Original File <span class="cct-file-sub">(Submitted)</span></div>' +
-        '<div class="cct-file-meta">Securely stored — Reference only</div></div>' +
-        '<span class="cct-file-badge">Reference Only</span></div>';
+    
+    var activeFileTitle = '';
+    var activeFileMeta = '';
+    var isFileDownloadable = false;
+
+    if (hasProcessed) {
+      activeFileTitle = 'Processed Document';
+      activeFileMeta = 'By ' + (d.processedBy || 'Admin') + (d.processedAt ? ' · ' + d.processedAt : '');
+      isFileDownloadable = isReleased;
+    } else if (hasSigned) {
+      activeFileTitle = 'Signed Document';
+      activeFileMeta = 'By ' + (d.signedBy || 'Faculty/Dean') + (d.signedAt ? ' · ' + d.signedAt : '');
+      isFileDownloadable = true;
+    } else {
+      activeFileTitle = 'Original Document';
+      activeFileMeta = 'Securely stored — Reference only';
+      isFileDownloadable = true;
     }
-    if (hasProcessed && isReleased && canSeeOwnerFields) {
+
+    if (isFileDownloadable && canSeeOwnerFields) {
       /* Download available only to confirmed owner/admin */
       fileHtml += '<div class="cct-file-row">' +
         '<div class="cct-file-icon final"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="3"/></svg></div>' +
-        '<div style="flex:1;min-width:0"><div class="cct-file-name final">Final File <span class="cct-file-sub">(Approved)</span></div>' +
-        '<div class="cct-file-meta">By ' + (d.processedBy||'Admin') + (d.processedAt ? ' · ' + d.processedAt : '') + '</div></div>' +
-        '<span class="cct-file-badge final">Released</span></div>' +
+        '<div style="flex:1;min-width:0"><div class="cct-file-name final">' + activeFileTitle + '</div>' +
+        '<div class="cct-file-meta">' + activeFileMeta + '</div></div>' +
+        '<span class="cct-file-badge final">Available</span></div>' +
         '<div style="text-align:center;padding:10px 0 4px">' +
         '<button onclick="decryptAndDownload(\'' + docKey + '\',this)" class="cct-dl-btn">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-        'Download File</button><div class="cct-dl-hint">Decryption is performed on your device</div></div>';
-    } else if (hasProcessed && isReleased && !canSeeOwnerFields) {
-      /* File exists and is released, but viewer is not owner */
+        'Download ' + activeFileTitle + '</button><div class="cct-dl-hint">Decryption is performed on your device</div></div>';
+    } else if (isFileDownloadable && !canSeeOwnerFields) {
+      /* File exists, but viewer is not owner */
       fileHtml += '<div class="cct-lock"><div class="cct-lock-title" style="color:rgba(239,68,68,.7)">Access Restricted</div>' +
-        '<div class="cct-lock-desc">Sign in as the document owner to download the final file.</div></div>';
-    } else if (!isReleased) {
+        '<div class="cct-lock-desc">Sign in as the document owner to download this file.</div></div>';
+    } else {
+      /* Processed file pending release */
       fileHtml += '<div class="cct-lock"><div class="cct-lock-title">Final File Pending</div>' +
         '<div class="cct-lock-desc">Admin will upload the final file before releasing.<br>' +
         'Download available when status reaches <strong style="color:#4ade80">Released</strong>.<br>' +
@@ -886,36 +901,48 @@ async function searchByTrackingId() {
   toast('Document found. QR code generated.');
 }
 
-/* ── File section for internal app view ── */
 function buildInternalFileSection(d, sc) {
-  var isReleased   = d.status === 'Released';
-  var hasOriginal  = (typeof docHasOriginalFile  === 'function') ? docHasOriginalFile(d)  : !!(d.originalFile || d.fileData);
-  var hasProcessed = (typeof docHasProcessedFile === 'function') ? docHasProcessedFile(d) : !!(d.processedFile);
+  var isReleased   = d.status === 'Released' || d.status === 'Approved and Released';
+  var hasOriginal  = !!(d.hasOriginalFile || d.originalFile || d.filePath || d.fileData);
+  var hasSigned    = !!(d.hasSignedFile || d.signedFile);
+  var hasProcessed = !!(d.hasProcessedFile || d.processedFile);
   var docKey       = d.internalId || d.id;
-  if (!hasOriginal && !hasProcessed) return '';
+
+  if (!hasOriginal && !hasSigned && !hasProcessed) return '';
+
+  var activeFileTitle = '';
+  var activeFileMeta = '';
+  var isFileDownloadable = false;
+
+  if (hasProcessed) {
+    activeFileTitle = 'Processed Document';
+    activeFileMeta = 'Processed by ' + (d.processedBy || 'Admin') + (d.processedAt ? ' · ' + d.processedAt : '');
+    isFileDownloadable = isReleased;
+  } else if (hasSigned) {
+    activeFileTitle = 'Signed Document';
+    activeFileMeta = 'Signed by ' + (d.signedBy || 'Faculty/Dean') + (d.signedAt ? ' · ' + d.signedAt : '');
+    isFileDownloadable = true;
+  } else {
+    activeFileTitle = 'Original Document';
+    activeFileMeta = 'Securely stored · Reference copy only';
+    isFileDownloadable = true;
+  }
 
   var html = '<div class="card" style="margin-top:14px"><div class="card-head"><h3>Document Files</h3></div><div class="card-body" style="padding:0">';
-  if (hasOriginal) {
-    html += '<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)">' +
-      '<div style="width:36px;height:36px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;display:grid;place-items:center;flex-shrink:0">' +
-      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>' +
-      '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">Original File <span style="font-size:11px;font-weight:400;color:var(--muted)">(Submitted)</span></div>' +
-      '<div style="font-size:11px;color:var(--muted);margin-top:2px">Securely stored · Reference copy only</div></div>' +
-      '<span style="font-size:10px;font-weight:700;color:#94a3b8;padding:3px 10px;background:#f1f5f9;border:1px solid var(--border);border-radius:20px">Reference Only</span></div>';
-  }
-  if (hasProcessed && isReleased) {
+
+  if (isFileDownloadable) {
     html += '<div style="padding:20px;text-align:center"><div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">' +
       '<div style="width:36px;height:36px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;display:grid;place-items:center;flex-shrink:0">' +
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="3"/></svg></div>' +
-      '<div style="flex:1;text-align:left"><div style="font-size:13px;font-weight:700;color:#15803d">Final File <span style="font-weight:500">(Approved)</span></div>' +
-      '<div style="font-size:11px;color:#16a34a;margin-top:1px">Processed by '+(d.processedBy||'Admin')+(d.processedAt?' · '+d.processedAt:'')+'</div></div>' +
-      '<span style="font-size:10px;font-weight:700;color:#16a34a;padding:3px 10px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:20px">Released</span></div>' +
-      '<button onclick="decryptAndDownload(\''+docKey+'\',this)" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;font-size:14px;border:none;cursor:pointer;">' +
+      '<div style="flex:1;text-align:left"><div style="font-size:13px;font-weight:700;color:#15803d">' + activeFileTitle + '</div>' +
+      '<div style="font-size:11px;color:#16a34a;margin-top:1px">' + activeFileMeta + '</div></div>' +
+      '<span style="font-size:10px;font-weight:700;color:#16a34a;padding:3px 10px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:20px">Available</span></div>' +
+      '<button onclick="decryptAndDownload(\'' + docKey + '\',this)" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;font-size:14px;border:none;cursor:pointer;">' +
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-      'Download Final File</button></div>';
+      'Download ' + activeFileTitle + '</button></div>';
   } else {
     html += '<div style="padding:24px;text-align:center"><p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:5px">Final File Pending</p>' +
-      '<p style="font-size:12px;color:var(--muted);line-height:1.6">Admin will upload the processed/approved file before releasing.<br>Current status: <strong style="color:'+sc+'">'+d.status+'</strong></p></div>';
+      '<p style="font-size:12px;color:var(--muted);line-height:1.6">Admin will upload the processed/approved file before releasing.<br>Current status: <strong style="color:' + sc + '">' + d.status + '</strong></p></div>';
   }
   html += '</div></div>';
   return html;

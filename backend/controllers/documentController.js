@@ -17,6 +17,19 @@ const Document       = require('../models/Document');
 const ScanLog        = require('../models/ScanLog');
 const Notification   = require('../models/Notification');
 const User           = require('../models/User');
+const MovementLog    = require('../models/MovementLog');
+const { decryptCBC, SHARED_KEY_STR, decryptSmart } = require('../config/crypto');
+
+/* Helper to directly decrypt a field using raw IDEA-128-CBC */
+function decryptFieldDirectly(val) {
+  if (!val) return '';
+  const trimmed = String(val).trim();
+  if (trimmed.startsWith('{')) {
+    const decrypted = decryptCBC(trimmed, SHARED_KEY_STR);
+    if (decrypted !== null) return decrypted;
+  }
+  return trimmed;
+}
 
 /* ── FIX: Use RENDER_EXTERNAL_URL when APP_BASE_URL is not explicitly set ── */
 const APP_BASE_URL =
@@ -30,9 +43,128 @@ function manilaTimestamp() {
     timeZone: 'Asia/Manila',
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: true,
+    hour12: false,
   });
 }
+
+/* User-agent parser helper */
+function parseUserAgent(ua) {
+  if (!ua) return { browser: 'Unknown', device: 'Unknown', os: 'Unknown' };
+  let browser = 'Other';
+  let device = 'Desktop';
+  let os = 'Other';
+
+  if (/mobi|android|iphone|ipad|ipod/i.test(ua)) {
+    device = 'Mobile';
+  } else if (/tablet|ipad|playbook|silk/i.test(ua)) {
+    device = 'Tablet';
+  }
+
+  if (/windows/i.test(ua)) os = 'Windows';
+  else if (/macintosh|mac os x/i.test(ua)) os = 'macOS';
+  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/linux/i.test(ua)) os = 'Linux';
+
+  if (/edg/i.test(ua)) browser = 'Edge';
+  else if (/chrome/i.test(ua) && !/chromium/i.test(ua)) browser = 'Chrome';
+  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = 'Safari';
+  else if (/firefox/i.test(ua)) browser = 'Firefox';
+  else if (/msie|trident/i.test(ua)) browser = 'IE';
+
+  return { browser, device, os };
+}
+
+/* Helper to automatically save Movement Log entries */
+const logMovementInternal = async (doc, req, actionTaken, prevStatus, prevRole, note) => {
+  try {
+    const actorName = req && req.user ? (req.user.name || req.user.username || 'System') : 'System';
+    const actorRole = req && req.user ? req.user.role : 'visitor';
+    const actorDepartment = req && req.user ? (req.user.department || '') : '';
+    const nowISO = new Date().toISOString();
+    const nowManila = manilaTimestamp();
+
+    // Gather unique usernames/names of handlers from history + current actor
+    const historyHandlers = (doc.history || []).map(h => h.by || h.handler).filter(Boolean);
+    const uniqueHandlers = Array.from(new Set([...historyHandlers, actorName]));
+
+    await MovementLog.create({
+      documentId: doc.internalId,
+      displayId: doc.fullDisplayId || doc.displayId,
+      documentName: doc.name,
+      actionTaken: actionTaken || 'Status Update',
+      actorName,
+      actorRole,
+      actorDepartment,
+      previousStatus: prevStatus || '',
+      newStatus: doc.status,
+      previousRole: prevRole || '',
+      newRole: doc.current_role,
+      timestamp: nowISO,
+      displayDate: nowManila,
+      note: note || '',
+      ownerId: doc.ownerId,
+      handledByNames: uniqueHandlers,
+    });
+  } catch (err) {
+    console.error('[logMovementInternal] Failed to log movement:', err);
+  }
+};
+
+/* Helper to automatically save Scan Log entries */
+const logScanInternal = async (doc, req) => {
+  try {
+    const ua = req.headers['user-agent'];
+    const { browser, device, os } = parseUserAgent(ua);
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip || 'Unknown';
+    
+    let isAnonymous = true;
+    let viewerName = 'Anonymous';
+    let viewerRole = 'visitor';
+
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'cit_group6_secret_key_2024');
+        const user = await User.findById(decoded.id).select('name username role');
+        if (user) {
+          isAnonymous = false;
+          viewerName = user.name || user.username;
+          viewerRole = user.role;
+        }
+      } catch (err) {
+        // Ignore JWT verify error, treat as anonymous
+      }
+    }
+
+    const nowISO = new Date().toISOString();
+    const nowManila = manilaTimestamp();
+
+    await ScanLog.create({
+      documentId: doc.internalId,
+      displayId: doc.fullDisplayId || doc.displayId,
+      documentName: doc.name,
+      handledBy: isAnonymous ? 'QR Visitor' : viewerName,
+      location: 'QR Scan',
+      note: isAnonymous ? 'Anonymous scan via QR Code' : `Scanned by logged in user: ${viewerName} (${viewerRole})`,
+      docStatus: doc.status,
+      timestamp: nowISO,
+      displayDate: nowManila,
+      
+      // New tracking fields
+      browser,
+      device,
+      os,
+      isAnonymous,
+      viewerName,
+      viewerRole,
+      ipAddress,
+    });
+  } catch (err) {
+    console.error('[logScanInternal] Failed to log scan:', err);
+  }
+};
 
 /* ── ULID Generator ── */
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -90,31 +222,54 @@ const trackUrl = (internalId) => `${APP_BASE_URL}?track=${internalId}`;
 const WORKFLOW_TRANSITIONS = {
 
   staff: {
-    start_review: {
+    receive: {
       from:         ['Submitted'],
-      to:           'Under Initial Review',
+      to:           'Received',
       toRole:       'staff',
       noteRequired: false,
       notifyRole:   null,
       ownerMsg: (doc, caller) =>
-        `Your document "<strong>${doc.name}</strong>" is now <strong>Under Initial Review</strong> ` +
+        `Your document "<strong>${doc.name}</strong>" has been <strong>Received</strong> ` +
         `by our staff team.`,
     },
-    forward: {
-      from:         ['Under Initial Review', 'Revision Requested'],
+    process: {
+      from:         ['Received'],
+      to:           'Processing',
+      toRole:       'staff',
+      noteRequired: false,
+      notifyRole:   null,
+      ownerMsg: (doc, caller) =>
+        `Your document "<strong>${doc.name}</strong>" is now <strong>Processing</strong> ` +
+        `by our staff team.`,
+    },
+    forward_to_faculty: {
+      from:         ['Processing'],
       to:           'Under Evaluation',
       toRole:       'faculty',
       noteRequired: false,
       notifyRole:   'faculty',
       ownerMsg: (doc, caller) =>
-        `Your document "<strong>${doc.name}</strong>" has been forwarded to faculty for evaluation by staff.`,
+        `Your document "<strong>${doc.name}</strong>" has been forwarded to faculty for evaluation.`,
       roleMsg: (doc, caller, note) =>
         `A document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
         `has been forwarded to faculty for evaluation by staff <strong>${caller}</strong>.` +
         (note ? ` Note: ${note}` : ''),
     },
+    forward_to_dean: {
+      from:         ['Processing'],
+      to:           'Under Evaluation',
+      toRole:       'dean',
+      noteRequired: false,
+      notifyRole:   'dean',
+      ownerMsg: (doc, caller) =>
+        `Your document "<strong>${doc.name}</strong>" has been forwarded to Dean for evaluation.`,
+      roleMsg: (doc, caller, note) =>
+        `A document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
+        `has been forwarded to Dean for evaluation by staff <strong>${caller}</strong>.` +
+        (note ? ` Note: ${note}` : ''),
+    },
     request_resubmission: {
-      from:         ['Under Initial Review'],
+      from:         ['Received', 'Processing'],
       to:           'Action Required: Resubmission',
       toRole:       'user',
       noteRequired: true,
@@ -124,35 +279,35 @@ const WORKFLOW_TRANSITIONS = {
         `requires correction and resubmission. ` +
         `Reason: <em>${note}</em> — Please upload a corrected copy to continue.`,
     },
-    return_to_requester: {
-      from:         ['Under Initial Review'],
-      to:           'Returned to Requester',
+    release: {
+      from:         ['Approved'],
+      to:           'Approved and Released',
       toRole:       'completed',
-      noteRequired: true,
+      noteRequired: false,
       notifyRole:   null,
       ownerMsg: (doc, caller, note) =>
-        `Your document "<strong>${doc.name}</strong>" has been <strong>returned</strong> ` +
-        `and the workflow has been closed. Reason: <em>${note}</em>`,
+        `Your document "<strong>${doc.name}</strong>" has been <strong>Released</strong> ` +
+        `by staff.` + (note ? ` Remarks: <em>${note}</em>` : ''),
     },
   },
 
   faculty: {
     approve: {
-      from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
-      to:           'Pending Final Approval',
-      toRole:       'admin',
+      from:         ['Under Evaluation'],
+      to:           'Approved',
+      toRole:       'staff',
       noteRequired: false,
-      notifyRole:   'admin',
-      ownerMsg: (doc, caller) =>
-        `Your document "<strong>${doc.name}</strong>" has been <strong>approved by faculty</strong> ` +
-        `and is now awaiting final admin approval.`,
+      notifyRole:   'staff',
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been <strong>Approved</strong> by faculty.` +
+        (note ? ` Remarks: <em>${note}</em>` : ''),
       roleMsg: (doc, caller, note) =>
         `Document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
-        `has been approved by faculty <strong>${caller}</strong> and requires your final decision.` +
+        `has been approved by faculty <strong>${caller}</strong> and is ready to be released by staff.` +
         (note ? ` Note: ${note}` : ''),
     },
     reject: {
-      from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
+      from:         ['Under Evaluation'],
       to:           'Rejected',
       toRole:       'completed',
       noteRequired: false,
@@ -162,7 +317,7 @@ const WORKFLOW_TRANSITIONS = {
         `by faculty.` + (note ? ` Reason: <em>${note}</em>` : ''),
     },
     request_revision: {
-      from:         ['Under Evaluation', 'Sent Back for Reevaluation'],
+      from:         ['Under Evaluation'],
       to:           'Action Required: Resubmission',
       toRole:       'user',
       noteRequired: true,
@@ -174,38 +329,64 @@ const WORKFLOW_TRANSITIONS = {
     },
   },
 
-  admin: {
-    send_back: {
-      from:         ['Pending Final Approval'],
-      to:           'Sent Back for Reevaluation',
-      toRole:       'faculty',
-      noteRequired: true,
-      notifyRole:   'faculty',
+  dean: {
+    approve: {
+      from:         ['Under Evaluation'],
+      to:           'Approved',
+      toRole:       'staff',
+      noteRequired: false,
+      notifyRole:   'staff',
       ownerMsg: (doc, caller, note) =>
-        `Your document "<strong>${doc.name}</strong>" has been sent back to faculty ` +
-        `for reevaluation by admin.` + (note ? ` Reason: <em>${note}</em>` : ''),
+        `Your document "<strong>${doc.name}</strong>" has been <strong>Approved</strong> by Dean.` +
+        (note ? ` Remarks: <em>${note}</em>` : ''),
       roleMsg: (doc, caller, note) =>
-        `Admin <strong>${caller}</strong> has sent document ` +
-        `"<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
-        `back to faculty for reevaluation. Reason: <em>${note}</em>`,
+        `Document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
+        `has been approved by Dean <strong>${caller}</strong> and is ready to be released by staff.` +
+        (note ? ` Note: ${note}` : ''),
+    },
+    reject: {
+      from:         ['Under Evaluation'],
+      to:           'Rejected',
+      toRole:       'completed',
+      noteRequired: false,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `Your document "<strong>${doc.name}</strong>" has been <strong>rejected</strong> ` +
+        `by Dean.` + (note ? ` Reason: <em>${note}</em>` : ''),
+    },
+    request_revision: {
+      from:         ['Under Evaluation'],
+      to:           'Action Required: Resubmission',
+      toRole:       'user',
+      noteRequired: true,
+      notifyRole:   null,
+      ownerMsg: (doc, caller, note) =>
+        `<strong>Action Required:</strong> Dean <strong>${caller}</strong> has requested ` +
+        `a revision on your document "<strong>${doc.name}</strong>". ` +
+        `Dean note: <em>${note}</em>`,
     },
   },
+
+  admin: {},
 };
 
 function getDocumentAllowedActions(doc, callerRole) {
+  if (callerRole === 'admin') return [];
+  if (doc.current_role && doc.current_role !== callerRole) return [];
+
   const roleTransitions = WORKFLOW_TRANSITIONS[callerRole];
   if (!roleTransitions) return [];
 
   const ACTION_LABELS = {
-    start_review:         'Start Initial Review',
-    forward:              'Forward to Faculty',
+    receive:              'Mark as Received',
+    process:              'Mark as Processing',
+    forward_to_faculty:   'Forward to Faculty',
+    forward_to_dean:      'Forward to Dean',
     request_resubmission: 'Request Resubmission',
-    return_to_requester:  'Return to Requester',
-    approve:              'Approve',
-    reject:               'Reject',
+    approve:              'Approve Document',
+    reject:               'Reject Document',
     request_revision:     'Request Revision',
     release:              'Approve & Release',
-    send_back:            'Send Back to Faculty',
   };
 
   const actions = Object.entries(roleTransitions)
@@ -218,24 +399,11 @@ function getDocumentAllowedActions(doc, callerRole) {
       label:        ACTION_LABELS[action] || action,
     }));
 
-  if (callerRole === 'admin' && doc.current_role === 'admin') {
-    const hasSendBack = actions.some(a => a.action === 'send_back');
-    if (!hasSendBack) {
-      actions.push({
-        action:       'send_back',
-        to:           'Sent Back for Reevaluation',
-        toRole:       'faculty',
-        noteRequired: true,
-        label:        ACTION_LABELS['send_back'],
-      });
-    }
-  }
-
   return actions;
 }
 
 function toLegacyStage(role) {
-  const map = { staff: 'staff', faculty: 'faculty', admin: 'admin', user: 'staff', completed: 'completed' };
+  const map = { staff: 'staff', faculty: 'faculty', dean: 'dean', admin: 'admin', user: 'staff', completed: 'completed' };
   return map[role] || 'staff';
 }
 
@@ -262,18 +430,26 @@ async function _notifyUser(userId, msg, documentId) {
 /* ══════════════════════════════════════════════════════════════════════
    Shared document creation logic
 ══════════════════════════════════════════════════════════════════════ */
-async function _createDocument(body, fileBuffer, fileExt) {
+async function _createDocument(req, body, fileBuffer, fileExt) {
   const {
     name, type, by, purpose,
     enc, encPurpose,
-    ownerId, ownerName,
+    ownerId, ownerName, department,
     history, fileData, hasOriginalFile,
   } = body;
 
   if (!name || !type || !by || !purpose || !enc || !ownerId)
     throw Object.assign(new Error('Missing required fields.'), { status: 400 });
 
-  const resolvedFileData = fileBuffer ? fileBuffer.toString('utf8') : (fileData || null);
+  let resolvedFileData = fileData || null;
+  if (fileBuffer) {
+    const ext = (fileExt || '').toLowerCase();
+    let mime = 'application/octet-stream';
+    if (ext === '.pdf') mime = 'application/pdf';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    resolvedFileData = `data:${mime};base64,` + fileBuffer.toString('base64');
+  }
   const resolvedFileExt  = fileBuffer ? (fileExt || '') : (fileExt || null);
   const nowManila        = manilaTimestamp();
   const MAX_RETRIES      = 5;
@@ -290,7 +466,7 @@ async function _createDocument(body, fileBuffer, fileExt) {
 
       const doc = await Document.create({
         internalId, displayId, verifyCode, fullDisplayId,
-        name, purpose,
+        name, purpose, department: department || '',
         enc:        enc        || '',
         encPurpose: encPurpose || '',
         type, by,
@@ -319,6 +495,8 @@ async function _createDocument(body, fileBuffer, fileExt) {
         date:      nowManila,
         dateFiled: nowManila,
       });
+
+      await logMovementInternal(doc, req, 'Submitted', '', '', 'Document submitted successfully.');
 
       /* Notifications sent by caller (registerDocument) — see below. */
       return doc;
@@ -349,16 +527,16 @@ const registerDocument = async (req, res) => {
     const fileBuffer = req.file ? req.file.buffer : null;
     const fileExt    = req.file ? (body.fileExt || '') : (body.fileExt || null);
 
-    const doc = await _createDocument(body, fileBuffer, fileExt);
+    const doc = await _createDocument(req, body, fileBuffer, fileExt);
 
     /* ── Send notifications conditionally based on caller role ──
        Admin-created documents bypass the workflow, so staff should NOT
        get a "new document awaiting review" notification.             */
-    const callerIsAdmin = req.user && req.user.role === 'admin';
+    const callerIsAdminOrDean = req.user && (req.user.role === 'admin' || req.user.role === 'dean');
     const ownerName = body.ownerName || body.by || '';
     const ownerId   = body.ownerId   || '';
 
-    if (!callerIsAdmin) {
+    if (!callerIsAdminOrDean) {
       /* Notify staff — document awaits initial review */
       const staffMsg =
         `New document "<strong>${doc.name}</strong>" submitted by ${ownerName || ownerId} ` +
@@ -384,30 +562,35 @@ const registerDocument = async (req, res) => {
       }
     }
 
-    /* ADMIN BYPASS: admin documents skip staff/faculty review entirely */
-    if (callerIsAdmin) {
+    /* ADMIN & DEAN BYPASS: admin/dean documents skip staff/faculty review entirely */
+    if (callerIsAdminOrDean) {
       const nowManila = manilaTimestamp();
+      const creatorTitle = req.user.role === 'dean' ? 'Dean' : 'Admin';
+      const actorName = req.user.name || req.user.username || creatorTitle;
+
       await Document.findByIdAndUpdate(doc._id, {
         status:        'Approved and Released',
         current_role:  'completed',
         current_stage: 'completed',
-        processedBy:   req.user.name || req.user.username || 'Admin',
+        processedBy:   actorName,
         processedAt:   nowManila,
         $push: {
           history: {
             action:   'Status Update',
             status:   'Approved and Released',
             date:     nowManila,
-            note:     'Document registered and approved directly by admin.',
-            by:       req.user.name || req.user.username || 'Admin',
+            note:     `Document registered and approved directly by ${creatorTitle.toLowerCase()}.`,
+            by:       actorName,
             location: '',
-            handler:  req.user.name || req.user.username || 'Admin',
+            handler:  actorName,
           },
         },
       });
       doc.status        = 'Approved and Released';
       doc.current_role  = 'completed';
       doc.current_stage = 'completed';
+      
+      await logMovementInternal(doc, req, 'Released', 'Submitted', 'staff', `Document registered and approved directly by ${creatorTitle.toLowerCase()}.`);
     }
 
     const url = trackUrl(doc.internalId);
@@ -424,8 +607,8 @@ const registerDocument = async (req, res) => {
       qrCode:          doc.qrCode,
       trackUrl:        url,
       hasOriginalFile: doc.hasOriginalFile,
-      message:         req.user && req.user.role === 'admin'
-        ? 'Document registered and approved directly by admin.'
+      message:         req.user && (req.user.role === 'admin' || req.user.role === 'dean')
+        ? `Document registered and approved directly by ${req.user.role === 'dean' ? 'Dean' : 'admin'}.`
         : 'Document submitted successfully.',
     });
   } catch (err) {
@@ -441,7 +624,7 @@ const createDocument = async (req, res) => {
   /* Allow both regular users and admins to create documents.
      Admin-created documents are immediately approved via the bypass
      in registerDocument — they never enter the staff/faculty queue. */
-  if (!req.user || !['user', 'admin'].includes(req.user.role)) {
+  if (!req.user || !['user', 'admin', 'dean'].includes(req.user.role)) {
     return res.status(403).json({
       message: 'Staff and faculty cannot create documents here. ' +
                'Use the workflow endpoints to manage existing documents.',
@@ -464,6 +647,11 @@ const getMyDocuments = async (req, res) => {
 
     const payload = docs.map(d => ({
       ...d,
+      name:             decryptFieldDirectly(d.name) || d.name || '',
+      purpose:          decryptFieldDirectly(d.purpose) || decryptFieldDirectly(d.encPurpose) || d.purpose || '',
+      ownerName:        decryptFieldDirectly(d.ownerName) || d.ownerName || '',
+      by:               decryptFieldDirectly(d.by) || d.by || '',
+      department:       decryptFieldDirectly(d.department) || d.department || '',
       internalId:       d.internalId || String(d._id),
       hasOriginalFile:  !!(d.hasOriginalFile),
       hasProcessedFile: !!(d.hasProcessedFile),
@@ -522,8 +710,13 @@ const resubmitDocument = async (req, res) => {
 
     const nowManila   = manilaTimestamp();
     const callerName  = req.user.name || req.user.username || 'User';
-    const newFileData = req.file.buffer.toString('utf8');
     const newFileExt  = body.fileExt || '';
+    const ext = newFileExt.toLowerCase();
+    let mime = 'application/octet-stream';
+    if (ext === '.pdf') mime = 'application/pdf';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    const newFileData = `data:${mime};base64,` + req.file.buffer.toString('base64');
 
     doc.originalFile    = newFileData;
     doc.originalFileExt = newFileExt;
@@ -551,6 +744,15 @@ const resubmitDocument = async (req, res) => {
     });
 
     await doc.save();
+
+    await logMovementInternal(
+      doc,
+      req,
+      'Resubmission',
+      previousStatus,
+      'user',
+      note ? `Resubmitted with correction: ${note}` : `Resubmitted (resubmission #${doc.resubmissionCount}).`
+    );
 
     const staffMsg =
       `Document "<strong>${doc.name}</strong>" (${doc.fullDisplayId || doc.displayId}) ` +
@@ -580,7 +782,17 @@ const resubmitDocument = async (req, res) => {
 ══════════════════════════════════════════════════════════════════════ */
 const updateDocumentStatusByRole = async (req, res) => {
   try {
-    const { documentId, action, note, location } = req.body;
+    let body = req.body;
+    const hasFiles = req.files && (req.files['processedFile'] || req.files['signedFile']);
+    if (hasFiles) {
+      try {
+        body = JSON.parse(req.body.data);
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid update data JSON in FormData.' });
+      }
+    }
+
+    const { documentId, action, note, location } = body;
     if (!documentId || !action) {
       return res.status(400).json({ message: 'documentId and action are required.' });
     }
@@ -588,7 +800,7 @@ const updateDocumentStatusByRole = async (req, res) => {
     const callerRole = req.user.role;
     const callerName = req.user.name || req.user.username || callerRole;
 
-    const allowedRoles = ['staff', 'faculty', 'admin'];
+    const allowedRoles = ['staff', 'faculty', 'dean', 'admin'];
     if (!allowedRoles.includes(callerRole)) {
       return res.status(403).json({ message: `Role "${callerRole}" cannot perform workflow actions.` });
     }
@@ -607,6 +819,12 @@ const updateDocumentStatusByRole = async (req, res) => {
       $or: [{ internalId: documentId }, { displayId: documentId }, { fullDisplayId: documentId }],
     });
     if (!doc) return res.status(404).json({ message: `Document "${documentId}" not found.` });
+
+    const mongoose = require('mongoose');
+    const ownerUser = await User.findOne({ $or: [{ userId: doc.ownerId }, { _id: mongoose.Types.ObjectId.isValid(doc.ownerId) ? doc.ownerId : null }] }).select('role').lean();
+    if (ownerUser && ownerUser.role === 'dean') {
+      return res.status(403).json({ message: 'Cannot update the status of a Dean-submitted document.' });
+    }
 
     if (!transition.from.includes(doc.status)) {
       return res.status(400).json({
@@ -629,13 +847,53 @@ const updateDocumentStatusByRole = async (req, res) => {
     const previousRole   = doc.current_role;
     const nowManila      = manilaTimestamp();
 
+    if (action === 'approve' && (callerRole === 'faculty' || callerRole === 'dean')) {
+      const fileObj = req.files && req.files['signedFile'] ? req.files['signedFile'][0] : null;
+      if (!fileObj && !doc.signedFile) {
+        return res.status(400).json({ message: 'Cannot approve without uploading a signed document.' });
+      }
+      if (fileObj) {
+        const fileExt = body.signedFileExt || (fileObj.originalname ? fileObj.originalname.substring(fileObj.originalname.lastIndexOf('.')) : '.pdf');
+        const ext = fileExt.toLowerCase();
+        let mime = 'application/octet-stream';
+        if (ext === '.pdf') mime = 'application/pdf';
+        else if (ext === '.png') mime = 'image/png';
+        else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+        doc.signedFile = `data:${mime};base64,` + fileObj.buffer.toString('base64');
+        doc.signedFileExt = fileExt;
+        doc.signedBy = callerName;
+        doc.signedAt = nowManila;
+        doc.hasSignedFile = true;
+      }
+    }
+
+    if (action === 'release') {
+      const fileObj = req.files && req.files['processedFile'] ? req.files['processedFile'][0] : null;
+      if (!fileObj && !doc.processedFile) {
+        return res.status(400).json({ message: 'Cannot release without uploading a processed/final file.' });
+      }
+      if (fileObj) {
+        const fileExt = body.processedFileExt || (fileObj.originalname ? fileObj.originalname.substring(fileObj.originalname.lastIndexOf('.')) : '.pdf');
+        const ext = fileExt.toLowerCase();
+        let mime = 'application/octet-stream';
+        if (ext === '.pdf') mime = 'application/pdf';
+        else if (ext === '.png') mime = 'image/png';
+        else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+        doc.processedFile = `data:${mime};base64,` + fileObj.buffer.toString('base64');
+        doc.processedFileExt = fileExt;
+        doc.processedBy = callerName;
+        doc.processedAt = nowManila;
+        doc.hasProcessedFile = true;
+      }
+    }
+
     doc.status        = transition.to;
     doc.current_role  = transition.toRole;
     doc.current_stage = toLegacyStage(transition.toRole);
 
     const historyNote = trimmedNote
-      ? `${action.replace(/_/g, ' ')} by ${callerRole} ${callerName}: ${trimmedNote}`
-      : `${action.replace(/_/g, ' ')} by ${callerRole} ${callerName}.`;
+      ? `${action.replace(/_/g, ' ')} by ${callerName}: ${trimmedNote}`
+      : `${action.replace(/_/g, ' ')} by ${callerName}.`;
 
     doc.history.push({
       action:   'Status Update',
@@ -648,6 +906,26 @@ const updateDocumentStatusByRole = async (req, res) => {
     });
 
     await doc.save();
+
+    let actionTakenMap = 'Forwarded';
+    const actLower = action.toLowerCase();
+    if (actLower.includes('submit')) actionTakenMap = 'Submitted';
+    else if (actLower.includes('receive') || actLower.includes('start')) actionTakenMap = 'Received';
+    else if (actLower.includes('process')) actionTakenMap = 'Processing';
+    else if (actLower.includes('approve')) actionTakenMap = 'Approved';
+    else if (actLower.includes('reject')) actionTakenMap = 'Rejected';
+    else if (actLower.includes('release')) actionTakenMap = 'Released';
+    else if (actLower.includes('forward')) actionTakenMap = 'Forwarded';
+    else if (actLower.includes('resubmit')) actionTakenMap = 'Resubmission';
+
+    await logMovementInternal(
+      doc,
+      req,
+      actionTakenMap,
+      previousStatus,
+      previousRole,
+      trimmedNote || `Status changed via action "${action}".`
+    );
 
     if (transition.ownerMsg) {
       await _notifyUser(doc.ownerId, transition.ownerMsg(doc, callerName, trimmedNote), doc.internalId);
@@ -691,16 +969,28 @@ const getAllDocuments = async (req, res) => {
     let filter = {};
 
     if (callerRole === 'admin') {
-      /* WORKFLOW FIX: Admin sees ONLY documents that are in the admin stage
-         or have been finalized (completed). Admin must NOT see documents still
-         being processed by staff or faculty — this preserves workflow integrity.
-         Admin-relevant statuses: 'Pending Final Approval' (current_role:'admin')
-         and all terminal states (current_role:'completed'). */
-      filter = { current_role: { $in: ['admin', 'completed'] } };
+      /* Admin can view all documents and full audit trails in the system */
+      filter = {};
     } else if (callerRole === 'staff') {
-      filter = { current_role: 'staff' };
-    } else if (callerRole === 'faculty') {
-      filter = { current_role: 'faculty' };
+      const names = [req.user.name, req.user.username].filter(Boolean);
+      filter = {
+        $or: [
+          { current_role: 'staff' },
+          { 'history.by': { $in: names } },
+          { 'history.handler': { $in: names } }
+        ]
+      };
+    } else if (callerRole === 'faculty' || callerRole === 'dean') {
+      const names = [req.user.name, req.user.username].filter(Boolean);
+      const effectiveOwnerId = req.user.userId || String(req.user._id);
+      filter = {
+        $or: [
+          { current_role: callerRole },
+          { ownerId: effectiveOwnerId },
+          { 'history.by': { $in: names } },
+          { 'history.handler': { $in: names } }
+        ]
+      };
     } else {
       const { ownerId } = req.query;
       const effectiveOwnerId = ownerId || req.user.userId || String(req.user._id);
@@ -708,18 +998,55 @@ const getAllDocuments = async (req, res) => {
     }
 
     const docs = await Document.find(filter)
-      .select('-filePath -fileData -originalFile -processedFile')
+      .select('-filePath -fileData -originalFile -processedFile -signedFile')
       .sort({ createdAt: -1 })
       .lean();
 
-    const payload = docs.map(d => ({
-      ...d,
-      internalId:         d.internalId || String(d._id),
-      hasOriginalFile:    !!(d.hasOriginalFile),
-      hasProcessedFile:   !!(d.hasProcessedFile),
-      requiresUserAction: d.current_role === 'user',
-      allowedActions:     getDocumentAllowedActions(d, callerRole),
-    }));
+    // Map owner roles to avoid N+1 query overhead
+    const ownerIds = docs.map(d => d.ownerId).filter(Boolean);
+    const uniqueOwnerIds = [...new Set(ownerIds)];
+    const mongoose = require('mongoose');
+    const ownerUsers = await User.find({
+      $or: [
+        { userId: { $in: uniqueOwnerIds } },
+        { _id: { $in: uniqueOwnerIds.filter(id => mongoose.Types.ObjectId.isValid(id)) } }
+      ]
+    }).select('userId role department').lean();
+
+    const ownerRoleMap = {};
+    const ownerDeptMap = {};
+    ownerUsers.forEach(u => {
+      if (u.userId) {
+        ownerRoleMap[u.userId] = u.role;
+        ownerDeptMap[u.userId] = u.department || '';
+      }
+      ownerRoleMap[String(u._id)] = u.role;
+      ownerDeptMap[String(u._id)] = u.department || '';
+    });
+
+    const payload = docs.map(d => {
+      const ownerDept = ownerDeptMap[d.ownerId] || '';
+      const resolvedDept = ownerDept || d.department || '';
+
+      return {
+        ...d,
+        name:             decryptFieldDirectly(d.name) || d.name || '',
+        purpose:          decryptFieldDirectly(d.purpose) || decryptFieldDirectly(d.encPurpose) || d.purpose || '',
+        ownerName:        decryptFieldDirectly(d.ownerName) || d.ownerName || '',
+        by:               decryptFieldDirectly(d.by) || d.by || '',
+        department:       decryptFieldDirectly(resolvedDept) || resolvedDept || '',
+        internalId:         d.internalId || String(d._id),
+        hasOriginalFile:    !!(d.hasOriginalFile),
+        hasProcessedFile:   !!(d.hasProcessedFile),
+        hasSignedFile:      !!(d.hasSignedFile || d.signedFile),
+        signedFileExt:      d.signedFileExt || null,
+        signedBy:           d.signedBy || null,
+        signedAt:           d.signedAt || null,
+        requiresUserAction: d.current_role === 'user',
+        allowedActions:     getDocumentAllowedActions(d, callerRole),
+        ownerRole:          ownerRoleMap[d.ownerId] || '',
+      };
+    });
 
     res.json(payload);
   } catch (err) {
@@ -737,20 +1064,50 @@ const trackDocument = async (req, res) => {
     const query = req.params.documentId;
     const doc   = await Document.findOne({
       $or: [{ internalId: query }, { displayId: query }, { fullDisplayId: query }],
-    }).select('-filePath -originalFile -processedFile -fileData');
+    }).select('-filePath -originalFile -processedFile -signedFile -fileData');
     if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
+    
+    // Automatically record scan log ONLY when source=qr is present in request query params
+    if (req.query.source === 'qr') {
+      await logScanInternal(doc, req);
+    }
+
+    const mongoose = require('mongoose');
+    const ownerUser = await User.findOne({ $or: [{ userId: doc.ownerId }, { _id: mongoose.Types.ObjectId.isValid(doc.ownerId) ? doc.ownerId : null }] }).select('role department').lean();
+    const ownerRole = ownerUser ? ownerUser.role : '';
+    const ownerDept = ownerUser ? ownerUser.department : '';
+
+    const resolvedDept = ownerDept || doc.department || '';
+
+    // Decrypt fields server-side using the shared IDEA key
+    const decryptedName = decryptFieldDirectly(doc.name) || doc.name || '';
+    const decryptedPurpose = decryptFieldDirectly(doc.purpose) || decryptFieldDirectly(doc.encPurpose) || doc.purpose || '';
+    const decryptedOwnerName = decryptFieldDirectly(doc.ownerName) || doc.ownerName || '';
+    const decryptedBy = decryptFieldDirectly(doc.by) || doc.by || '';
+    const decryptedDept = decryptFieldDirectly(resolvedDept) || resolvedDept || '';
+
     res.json({
       internalId: doc.internalId, displayId: doc.displayId,
       verifyCode: doc.verifyCode, fullDisplayId: doc.fullDisplayId,
       enc: doc.enc, encPurpose: doc.encPurpose,
-      type: doc.type, by: doc.by, status: doc.status,
+      name: decryptedName,
+      purpose: decryptedPurpose,
+      type: doc.type,
+      by: decryptedBy,
+      status: doc.status,
       current_role: doc.current_role, current_stage: doc.current_stage,
-      ownerId: doc.ownerId, ownerName: doc.ownerName, qrCode: doc.qrCode,
+      ownerId: doc.ownerId,
+      ownerName: decryptedOwnerName,
+      department: decryptedDept,
+      qrCode: doc.qrCode,
       hasOriginalFile: !!(doc.hasOriginalFile), hasProcessedFile: !!(doc.hasProcessedFile),
-      fileExt: doc.fileExt, processedFileExt: doc.processedFileExt,
+      hasSignedFile:   !!(doc.hasSignedFile || doc.signedFile),
+      fileExt: doc.fileExt, processedFileExt: doc.processedFileExt, signedFileExt: doc.signedFileExt,
       processedBy: doc.processedBy, processedAt: doc.processedAt,
+      signedBy: doc.signedBy, signedAt: doc.signedAt,
       resubmissionCount: doc.resubmissionCount || 0,
       history: doc.history, date: doc.date,
+      ownerRole,
     });
   } catch (err) {
     console.error('[trackDocument]', err);
@@ -763,29 +1120,59 @@ const getDocumentForOwner = async (req, res) => {
     const query = req.params.documentId;
     const doc   = await Document.findOne({
       $or: [{ internalId: query }, { displayId: query }, { fullDisplayId: query }],
-    }).select('-filePath -originalFile -processedFile -fileData');
+    }).select('-filePath -originalFile -processedFile -signedFile -fileData');
     if (!doc) return res.status(404).json({ message: `Document ${query} not found.` });
 
     const requesterId = req.user.userId || String(req.user._id);
     const isAdmin     = req.user.role === 'admin';
     const isOwner     = isAdmin || doc.ownerId === requesterId || doc.ownerId === String(req.user._id);
 
+    const mongoose = require('mongoose');
+    const ownerUser = await User.findOne({ $or: [{ userId: doc.ownerId }, { _id: mongoose.Types.ObjectId.isValid(doc.ownerId) ? doc.ownerId : null }] }).select('role department').lean();
+    const ownerRole = ownerUser ? ownerUser.role : '';
+    const ownerDept = ownerUser ? ownerUser.department : '';
+
+    const resolvedDept = ownerDept || doc.department || '';
+
+    // Decrypt fields server-side using the shared IDEA key
+    const decryptedName = decryptFieldDirectly(doc.name) || doc.name || '';
+    const decryptedPurpose = decryptFieldDirectly(doc.purpose) || decryptFieldDirectly(doc.encPurpose) || doc.purpose || '';
+    const decryptedOwnerName = decryptFieldDirectly(doc.ownerName) || doc.ownerName || '';
+    const decryptedBy = decryptFieldDirectly(doc.by) || doc.by || '';
+    const decryptedDept = decryptFieldDirectly(resolvedDept) || resolvedDept || '';
+
     const publicFields = {
       internalId: doc.internalId, displayId: doc.displayId,
       verifyCode: doc.verifyCode, fullDisplayId: doc.fullDisplayId,
       enc: doc.enc, encPurpose: doc.encPurpose || '',
-      type: doc.type, by: doc.by, status: doc.status,
+      type: doc.type,
+      by: decryptedBy,
+      status: doc.status,
       current_role: doc.current_role, current_stage: doc.current_stage,
-      ownerId: doc.ownerId, ownerName: doc.ownerName, qrCode: doc.qrCode,
+      ownerId: doc.ownerId,
+      ownerName: decryptedOwnerName,
+      department: decryptedDept,
+      qrCode: doc.qrCode,
       hasOriginalFile: !!(doc.hasOriginalFile), hasProcessedFile: !!(doc.hasProcessedFile),
-      fileExt: doc.fileExt, processedFileExt: doc.processedFileExt,
+      hasSignedFile:   !!(doc.hasSignedFile || doc.signedFile),
+      fileExt: doc.fileExt, processedFileExt: doc.processedFileExt, signedFileExt: doc.signedFileExt,
       processedBy: doc.processedBy, processedAt: doc.processedAt,
+      signedBy: doc.signedBy, signedAt: doc.signedAt,
       resubmissionCount: doc.resubmissionCount || 0,
       requiresUserAction: doc.current_role === 'user',
+      allowedActions: getDocumentAllowedActions(doc, req.user.role),
       history: doc.history, date: doc.date,
+      ownerRole,
     };
 
-    if (isOwner) return res.json({ ...publicFields, name: doc.name, purpose: doc.purpose, isOwner: true });
+    const callerRole    = req.user.role;
+    const isQueueHandler =
+      (callerRole === 'staff'   && doc.current_role === 'staff') ||
+      ((callerRole === 'faculty' || callerRole === 'dean') && (doc.current_role === 'faculty' || doc.current_role === 'admin'));
+
+    if (isOwner || isQueueHandler) {
+      return res.json({ ...publicFields, name: decryptedName, purpose: decryptedPurpose, isOwner });
+    }
     return res.json({ ...publicFields, name: null, purpose: null, isOwner: false });
   } catch (err) {
     console.error('[getDocumentForOwner]', err);
@@ -799,17 +1186,44 @@ const downloadDocument = async (req, res) => {
     const doc   = await Document.findOne({ $or: [{ internalId: query }, { displayId: query }] });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
 
+    // Optional verification to allow Admin, Staff, Faculty, or Owner to download regardless of status
+    let reqUser = null;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'cit_group6_secret_key_2024');
+        reqUser = await User.findById(decoded.id).select('-password');
+      } catch (err) {
+        // Fall back to unauthenticated public status check on verification error
+      }
+    }
+
     const isReleasable = doc.status === 'Approved and Released' || doc.status === 'Released';
-    if (!isReleasable) {
+    const isOwner = reqUser && (String(reqUser._id) === doc.ownerId || reqUser.userId === doc.ownerId);
+    const isStaffOrFacultyOrAdmin = reqUser && ['staff', 'faculty', 'admin', 'dean'].includes(reqUser.role);
+    const isStudent = reqUser && reqUser.role === 'user';
+    const downloadAllowed = isReleasable || isOwner || isStaffOrFacultyOrAdmin || isStudent;
+
+    if (!downloadAllowed) {
       return res.status(403).json({ message: `Download not allowed. Status: "${doc.status}".` });
     }
 
-    const isProcessed = !!(doc.processedFile);
-    const fileData    = isProcessed ? doc.processedFile : (doc.originalFile || doc.filePath);
-    const fileExt     = isProcessed ? (doc.processedFileExt || null) : (doc.fileExt || null);
+    let fileData, fileExt;
+    if (doc.processedFile) {
+      fileData = doc.processedFile;
+      fileExt = doc.processedFileExt || null;
+    } else if (doc.signedFile) {
+      fileData = doc.signedFile;
+      fileExt = doc.signedFileExt || null;
+    } else {
+      fileData = doc.originalFile || doc.filePath;
+      fileExt = doc.fileExt || null;
+    }
     if (!fileData) return res.status(404).json({ message: 'No file attached to this document.' });
 
-    const baseName = isProcessed ? doc.name + '_processed' : doc.name;
+    const decryptedName = decryptSmart(doc.enc) || doc.name || 'document';
+    const baseName = doc.processedFile ? decryptedName + '_processed' : (doc.signedFile ? decryptedName + '_signed' : decryptedName);
     if (fileData.startsWith('data:') || fileData.startsWith('{'))
       return res.json({ fileData, fileExt, name: baseName });
 
@@ -831,40 +1245,60 @@ const updateDocumentStatus = async (req, res) => {
     } else { body = req.body; }
 
     const { status, note, location, handler, by, processedFileExt } = body;
-    const resolvedProcessedFile    = req.file ? req.file.buffer.toString('utf8') : (body.processedFile || null);
     const resolvedProcessedFileExt = req.file ? (processedFileExt || '') : (body.processedFileExt || null);
+    
+    let resolvedProcessedFile = body.processedFile || null;
+    if (req.file) {
+      const ext = resolvedProcessedFileExt.toLowerCase();
+      let mime = 'application/octet-stream';
+      if (ext === '.pdf') mime = 'application/pdf';
+      else if (ext === '.png') mime = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+      resolvedProcessedFile = `data:${mime};base64,` + req.file.buffer.toString('base64');
+    }
 
     const doc = await Document.findOne({ $or: [{ internalId: query }, { displayId: query }] });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
+
+    const mongoose = require('mongoose');
+    const ownerUser = await User.findOne({ $or: [{ userId: doc.ownerId }, { _id: mongoose.Types.ObjectId.isValid(doc.ownerId) ? doc.ownerId : null }] }).select('role').lean();
+    if (ownerUser && ownerUser.role === 'dean') {
+      return res.status(403).json({ message: 'Cannot override the status of a Dean-submitted document.' });
+    }
 
     const isRelease = status === 'Approved and Released' || status === 'Released';
     if (isRelease && !resolvedProcessedFile && !doc.processedFile) {
       return res.status(400).json({ message: 'Cannot release without uploading a processed/final file.' });
     }
 
+    const previousStatus = doc.status;
+    const previousRole   = doc.current_role;
+
     const nowManila = manilaTimestamp();
     doc.status = status;
 
-    const isAdminCaller = req.user && req.user.role === 'admin';
-    if (!isAdminCaller) {
-      const statusToRole = {
-        'Submitted': { role: 'staff', stage: 'staff' },
-        'Under Initial Review': { role: 'staff', stage: 'staff' },
-        'Action Required: Resubmission': { role: 'user', stage: 'staff' },
-        'Returned to Requester': { role: 'completed', stage: 'completed' },
-        'Under Evaluation': { role: 'faculty', stage: 'faculty' },
-        'Revision Requested': { role: 'staff', stage: 'staff' },
-        'Pending Final Approval': { role: 'admin', stage: 'admin' },
-        'Sent Back for Reevaluation': { role: 'faculty', stage: 'faculty' },
-        'Approved and Released': { role: 'completed', stage: 'completed' },
-        'Rejected': { role: 'completed', stage: 'completed' },
-        'Released': { role: 'completed', stage: 'completed' },
-        'Processing': { role: 'faculty', stage: 'faculty' },
-        'On Hold': { role: 'staff', stage: 'staff' },
-        'Received': { role: 'staff', stage: 'staff' },
-      };
-      const mapping = statusToRole[status];
-      if (mapping) { doc.current_role = mapping.role; doc.current_stage = mapping.stage; }
+    const statusToRole = {
+      'Submitted': { role: 'staff', stage: 'staff' },
+      'Received': { role: 'staff', stage: 'staff' },
+      'Processing': { role: 'staff', stage: 'staff' },
+      'Under Evaluation': { role: 'faculty', stage: 'faculty' },
+      'Approved': { role: 'staff', stage: 'staff' },
+      'Approved and Released': { role: 'completed', stage: 'completed' },
+      'Rejected': { role: 'completed', stage: 'completed' },
+      'Action Required: Resubmission': { role: 'user', stage: 'staff' },
+      // Keep legacy for safety
+      'Under Initial Review': { role: 'staff', stage: 'staff' },
+      'Returned to Requester': { role: 'completed', stage: 'completed' },
+      'Revision Requested': { role: 'staff', stage: 'staff' },
+      'Pending Final Approval': { role: 'admin', stage: 'admin' },
+      'Sent Back for Reevaluation': { role: 'faculty', stage: 'faculty' },
+      'Released': { role: 'completed', stage: 'completed' },
+      'On Hold': { role: 'staff', stage: 'staff' },
+    };
+    const mapping = statusToRole[status];
+    if (mapping) {
+      doc.current_role = mapping.role;
+      doc.current_stage = mapping.stage;
     }
 
     if (resolvedProcessedFile) {
@@ -880,6 +1314,26 @@ const updateDocumentStatus = async (req, res) => {
       note: note || '', by: by || 'admin', location: location || '', handler: handler || '',
     });
     await doc.save();
+
+    let actionTakenMap = 'Forwarded';
+    const statusLower = status.toLowerCase();
+    if (statusLower.includes('submit')) actionTakenMap = 'Submitted';
+    else if (statusLower.includes('receive') || statusLower.includes('start')) actionTakenMap = 'Received';
+    else if (statusLower.includes('process')) actionTakenMap = 'Processing';
+    else if (statusLower.includes('approve')) actionTakenMap = 'Approved';
+    else if (statusLower.includes('reject')) actionTakenMap = 'Rejected';
+    else if (statusLower.includes('release')) actionTakenMap = 'Released';
+    else if (statusLower.includes('forward')) actionTakenMap = 'Forwarded';
+    else if (statusLower.includes('resubmit')) actionTakenMap = 'Resubmission';
+
+    await logMovementInternal(
+      doc,
+      req,
+      actionTakenMap,
+      previousStatus,
+      previousRole,
+      note || `Status overridden by admin to "${status}".`
+    );
 
     try {
       const adminName = req.user ? (req.user.name || req.user.username || 'Admin') : 'Admin';
@@ -919,9 +1373,7 @@ const getOriginalFile = async (req, res) => {
     const isAdmin       = req.user && req.user.role === 'admin';
     const isOwner       = req.user && (String(req.user._id) === doc.ownerId || req.user.userId === doc.ownerId);
     const callerRole    = req.user && req.user.role;
-    const isQueueHandler =
-      (callerRole === 'staff'   && doc.current_role === 'staff') ||
-      (callerRole === 'faculty' && (doc.current_role === 'faculty' || doc.current_role === 'admin'));
+    const isQueueHandler = ['staff', 'faculty', 'dean'].includes(callerRole);
 
     if (!isAdmin && !isOwner && !isQueueHandler)
       return res.status(403).json({ message: 'Access denied.' });
@@ -936,11 +1388,116 @@ const getOriginalFile = async (req, res) => {
   }
 };
 
+const getSignedFile = async (req, res) => {
+  try {
+    const query = req.params.documentId;
+    const doc   = await Document.findOne({ $or: [{ internalId: query }, { displayId: query }] })
+      .select('internalId ownerId name signedFileExt signedFile current_role');
+    if (!doc) return res.status(404).json({ message: 'Document not found.' });
+
+    const isAdmin       = req.user && req.user.role === 'admin';
+    const isOwner       = req.user && (String(req.user._id) === doc.ownerId || req.user.userId === doc.ownerId);
+    const callerRole    = req.user && req.user.role;
+    const isQueueHandler = ['staff', 'faculty', 'dean'].includes(callerRole);
+
+    if (!isAdmin && !isOwner && !isQueueHandler)
+      return res.status(403).json({ message: 'Access denied.' });
+
+    const fileData = doc.signedFile;
+    if (!fileData) return res.status(404).json({ message: 'No signed file attached.' });
+
+    return res.json({ fileData, fileExt: doc.signedFileExt || null, name: doc.name + '_signed' });
+  } catch (err) {
+    console.error('[getSignedFile]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const editDocumentMetadata = async (req, res) => {
+  try {
+    const query = req.params.documentId;
+    
+    let meta = {};
+    if (req.body.data) {
+      try { meta = JSON.parse(req.body.data); } catch(e) {}
+    } else {
+      meta = req.body;
+    }
+
+    const { name, department, note } = meta;
+
+    const doc = await Document.findOne({ $or: [{ internalId: query }, { displayId: query }] });
+    if (!doc) return res.status(404).json({ message: 'Document not found.' });
+
+    const isOwner = req.user && (String(req.user._id) === doc.ownerId || req.user.userId === doc.ownerId);
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied. You do not own this document.' });
+    }
+
+    if (!isAdmin && doc.status !== 'Submitted') {
+      return res.status(400).json({ message: 'Cannot edit document details once processing has started.' });
+    }
+
+    if (name) doc.name = name;
+    if (department) doc.department = department;
+    if (note !== undefined) doc.note = note;
+
+    if (req.file) {
+      const fileExt = req.file.originalname.substring(req.file.originalname.lastIndexOf('.')).toLowerCase();
+      let mime = 'application/octet-stream';
+      if (fileExt === '.pdf') mime = 'application/pdf';
+      else if (fileExt === '.png') mime = 'image/png';
+      else if (fileExt === '.jpg' || fileExt === '.jpeg') mime = 'image/jpeg';
+      
+      const fileBase64 = req.file.buffer.toString('base64');
+      const dataUri = `data:${mime};base64,` + fileBase64;
+
+      doc.originalFile = dataUri;
+      doc.originalFileExt = fileExt;
+      doc.filePath = dataUri;
+      doc.fileExt = fileExt;
+      doc.hasOriginalFile = true;
+      doc.fileURL = trackUrl(doc.internalId) + '&download=1';
+    }
+
+    await doc.save();
+
+    const decryptedDoc = {
+      ...doc.toObject(),
+      name:             decryptFieldDirectly(doc.name) || doc.name || '',
+      purpose:          decryptFieldDirectly(doc.purpose) || decryptFieldDirectly(doc.encPurpose) || doc.purpose || '',
+      ownerName:        decryptFieldDirectly(doc.ownerName) || doc.ownerName || '',
+      by:               decryptFieldDirectly(doc.by) || doc.by || '',
+      department:       decryptFieldDirectly(doc.department) || doc.department || '',
+    };
+
+    res.json({ message: 'Document updated successfully.', doc: decryptedDoc });
+  } catch (err) {
+    console.error('[editDocumentMetadata]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const deleteDocument = async (req, res) => {
   try {
     const query = req.params.documentId;
-    const doc   = await Document.findOneAndDelete({ $or: [{ internalId: query }, { displayId: query }] });
+    const doc   = await Document.findOne({ $or: [{ internalId: query }, { displayId: query }] });
     if (!doc) return res.status(404).json({ message: 'Document not found.' });
+
+    const isAdmin = req.user && req.user.role === 'admin';
+    const isOwner = req.user && (String(req.user._id) === doc.ownerId || req.user.userId === doc.ownerId);
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ message: 'Access denied. You do not own this document.' });
+    }
+
+    if (!isAdmin && doc.status !== 'Submitted') {
+      return res.status(400).json({ message: 'Cannot delete document once it has entered processing.' });
+    }
+
+    await Document.deleteOne({ _id: doc._id });
     await ScanLog.deleteMany({ documentId: doc.internalId });
     res.json({ message: `Document "${doc.name}" deleted.`, internalId: doc.internalId });
   } catch (err) {
@@ -1008,17 +1565,62 @@ const addMovementLog = async (req, res) => {
 
 const getAllScanLogs = async (req, res) => {
   try {
-    const { search, docId } = req.query;
+    const { documentId, docId, search } = req.query;
+    const targetDocId = documentId || docId;
+
     let filter = {};
-    if (docId)  filter.documentId = docId;
-    if (search) {
-      const re   = new RegExp(search, 'i');
-      filter.$or = [
-        { documentId: re }, { displayId: re }, { documentName: re },
-        { handledBy: re }, { location: re },
-      ];
+    if (targetDocId) {
+      filter.documentId = targetDocId;
     }
-    const scanLogs = await ScanLog.find(filter).sort({ timestamp: -1 }).lean();
+
+    const role = req.user ? req.user.role : 'visitor';
+    const userId = req.user ? (req.user.userId || String(req.user._id)) : '';
+    const userName = req.user ? (req.user.name || req.user.username) : '';
+
+    if (role === 'admin' || role === 'dean') {
+      // Admin and Dean see all scan logs
+    } else if (role === 'staff' || role === 'faculty') {
+      // Staff and Faculty see scan logs of documents they handled
+      const handledDocs = await Document.find({
+        $or: [
+          { ownerId: userId },
+          { 'history.by': userName },
+          { 'history.by': req.user ? req.user.username : '' },
+          { 'history.handler': userName },
+          { 'history.handler': req.user ? req.user.username : '' }
+        ]
+      }).select('internalId').lean();
+      
+      const handledIds = handledDocs.map(d => d.internalId);
+      if (targetDocId) {
+        if (!handledIds.includes(targetDocId)) {
+          return res.status(403).json({ message: 'Access denied. You did not handle this document.' });
+        }
+      } else {
+        filter.documentId = { $in: handledIds };
+      }
+    } else {
+      // Students and visitors are not allowed to see scan logs
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    if (search) {
+      const re = new RegExp(search, 'i');
+      const searchFilter = {
+        $or: [
+          { documentId: re }, { displayId: re }, { documentName: re },
+          { handledBy: re }, { location: re }, { browser: re }, { os: re }
+        ]
+      };
+      if (Object.keys(filter).length > 0) {
+        filter = { $and: [filter, searchFilter] };
+      } else {
+        filter = searchFilter;
+      }
+    }
+
+    // Exclude ipAddress to protect user privacy (RA 10173 / teacher review compliance)
+    const scanLogs = await ScanLog.find(filter).select('-ipAddress').sort({ timestamp: -1 }).lean();
     res.json(scanLogs);
   } catch (err) {
     console.error('[getAllScanLogs]', err);
@@ -1028,36 +1630,124 @@ const getAllScanLogs = async (req, res) => {
 
 const getAllMovementLogs = async (req, res) => {
   try {
-    const docs = await Document.find(
-      { 'history.action': 'Movement' },
-      { internalId: 1, displayId: 1, fullDisplayId: 1, name: 1, history: 1 },
-    ).lean();
+    const { documentId, docId, search } = req.query;
+    const targetDocId = documentId || docId;
 
-    const movementLogs = [];
-    docs.forEach(doc => {
-      (doc.history || []).forEach(h => {
-        if (h.action === 'Movement') {
-          movementLogs.push({
-            documentId: doc.internalId, displayId: doc.fullDisplayId || doc.displayId,
-            documentName: doc.name, handledBy: h.by || h.handler || '-',
-            location: h.location || '-', action: 'Movement',
-            note: h.note || '', timestamp: h.date, displayDate: h.date,
-          });
-        }
-      });
-    });
+    const role = req.user ? req.user.role : 'visitor';
+    const userId = req.user ? (req.user.userId || String(req.user._id)) : '';
+    const userName = req.user ? (req.user.name || req.user.username || '') : '';
 
-    movementLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    res.json(movementLogs);
+    let filter = {};
+
+    if (role === 'admin') {
+      // Admin sees all movement logs — filter only by documentId if provided
+      if (targetDocId) filter.documentId = targetDocId;
+    } else if (role === 'staff' || role === 'faculty' || role === 'dean') {
+      // Sees logs of documents they handled or own
+      const roleFilter = {
+        $or: [
+          { handledByNames: userName },
+          { handledByNames: req.user ? req.user.username : '' },
+          { ownerId: userId },
+        ],
+      };
+      filter = targetDocId
+        ? { $and: [{ documentId: targetDocId }, roleFilter] }
+        : roleFilter;
+    } else if (role === 'user') {
+      // Student sees only their own documents
+      filter = targetDocId
+        ? { $and: [{ documentId: targetDocId }, { ownerId: userId }] }
+        : { ownerId: userId };
+    } else {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    if (search) {
+      const re = new RegExp(search, 'i');
+      const searchFilter = {
+        $or: [
+          { documentId: re }, { displayId: re }, { documentName: re },
+          { actorName: re }, { actionTaken: re }, { note: re },
+        ],
+      };
+      filter = Object.keys(filter).length > 0
+        ? { $and: [filter, searchFilter] }
+        : searchFilter;
+    }
+
+    const logs = await MovementLog.find(filter).sort({ timestamp: -1 }).lean();
+    res.json(logs);
   } catch (err) {
     console.error('[getAllMovementLogs]', err);
     res.status(500).json({ message: err.message });
   }
 };
 
+
+const getDocumentsByUserForAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const mongoose = require('mongoose');
+    
+    const targetUser = await User.findOne({ $or: [{ userId }, { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }] });
+    if (!targetUser) return res.status(404).json({ message: 'User not found.' });
+
+    let docs = [];
+    if (targetUser.role === 'user') {
+      docs = await Document.find({ ownerId: { $in: [targetUser.userId, String(targetUser._id)] } })
+        .select('-filePath -fileData -originalFile -processedFile -signedFile')
+        .sort({ createdAt: -1 })
+        .lean();
+    } else if (['staff', 'faculty'].includes(targetUser.role)) {
+      const nameKey = targetUser.name;
+      const usernameKey = targetUser.username;
+      const idKey = targetUser.userId;
+      
+      docs = await Document.find({
+        $or: [
+          { 'history.by': { $in: [nameKey, usernameKey, idKey] } },
+          { 'history.handler': { $in: [nameKey, usernameKey, idKey] } },
+          { 'processedBy': { $in: [nameKey, usernameKey, idKey] } }
+        ]
+      })
+      .select('-filePath -fileData -originalFile -processedFile -signedFile')
+      .sort({ createdAt: -1 })
+      .lean();
+    } else {
+      docs = await Document.find({
+        $or: [
+          { 'history.by': { $in: [targetUser.name, targetUser.username, targetUser.userId] } },
+          { 'processedBy': { $in: [targetUser.name, targetUser.username, targetUser.userId] } }
+        ]
+      })
+      .select('-filePath -fileData -originalFile -processedFile -signedFile')
+      .sort({ createdAt: -1 })
+      .lean();
+    }
+
+    const payload = docs.map(d => ({
+      internalId:         d.internalId || String(d._id),
+      displayId:          d.fullDisplayId || d.displayId,
+      name:               decryptFieldDirectly(d.name) || d.name || '',
+      type:               d.type,
+      status:             d.status,
+      date:               d.createdAt || d.date || d.updatedAt,
+      ownerName:          decryptFieldDirectly(d.ownerName) || d.ownerName || '',
+      history:            d.history
+    }));
+
+    res.json(payload);
+  } catch (err) {
+    console.error('[getDocumentsByUserForAdmin]', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   registerDocument, createDocument, getMyDocuments, resubmitDocument,
-  updateDocumentStatusByRole, trackDocument, downloadDocument, getOriginalFile,
-  updateDocumentStatus, getAllDocuments, deleteDocument, logScan,
+  updateDocumentStatusByRole, trackDocument, downloadDocument, getOriginalFile, getSignedFile,
+  updateDocumentStatus, getAllDocuments, deleteDocument, editDocumentMetadata, logScan,
   addMovementLog, getAllScanLogs, getAllMovementLogs, getDocumentForOwner,
+  getDocumentsByUserForAdmin,
 };

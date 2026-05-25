@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/cit_doctracker';
+    const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/cit_doctracker';
 
     /* autoIndex: false — we manually sync indexes AFTER cleaning up
        stale ones, so Mongoose never recreates a bad non-sparse index */

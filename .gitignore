@@ -13,3 +13,14 @@ Document.class
 IDEA.class
 QRGenerator.class
 Tracker.class
+
+# Scratch and database queries
+backend/query_doc.txt
+backend/find_users.js
+backend/query_doc.js
+backend/query_docs.js
+backend/query_one_doc.js
+backend/rename_dean.js
+backend/rename_username.js
+backend/test*.js
+dummy.pdf

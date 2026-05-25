@@ -52,14 +52,17 @@ const {
   trackDocument,
   downloadDocument,
   getOriginalFile,
+  getSignedFile,
   updateDocumentStatus,
   getAllDocuments,
   deleteDocument,
+  editDocumentMetadata,
   logScan,
   addMovementLog,
   getAllScanLogs,
   getAllMovementLogs,
   getDocumentForOwner,
+  getDocumentsByUserForAdmin,
 } = require('../controllers/documentController');
 const protect = require('../middleware/authMiddleware');
 
@@ -67,6 +70,12 @@ const protect = require('../middleware/authMiddleware');
 const adminOnly = (req, res, next) => {
   if (!req.user || req.user.role !== 'admin')
     return res.status(403).json({ message: 'Admin access required.' });
+  next();
+};
+
+const staffOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== 'staff')
+    return res.status(403).json({ message: 'Staff access required.' });
   next();
 };
 
@@ -82,8 +91,8 @@ const userOnly = (req, res, next) => {
  * Users who need to resubmit must use POST /resubmit instead.
  */
 const staffFacultyAdmin = (req, res, next) => {
-  if (!req.user || !['staff', 'faculty', 'admin'].includes(req.user.role))
-    return res.status(403).json({ message: 'Staff, faculty, or admin access required.' });
+  if (!req.user || !['staff', 'faculty', 'admin', 'dean'].includes(req.user.role))
+    return res.status(403).json({ message: 'Staff, faculty, dean, or admin access required.' });
   next();
 };
 
@@ -102,8 +111,8 @@ router.post('/:documentId/scan-log',  logScan);
 /* ══════════════════════════════════════════════════════════════════
    ADMIN ONLY ROUTES
 ══════════════════════════════════════════════════════════════════ */
-router.get ('/scan-logs',              protect, adminOnly, getAllScanLogs);
-router.get ('/movement-logs',          protect, adminOnly, getAllMovementLogs);
+router.get ('/scan-logs',              protect, getAllScanLogs);
+router.get ('/movement-logs',          protect, getAllMovementLogs);
 router.post('/:documentId/movement',   protect, adminOnly, addMovementLog);
 
 /* ══════════════════════════════════════════════════════════════════
@@ -179,6 +188,10 @@ router.post('/resubmit',
 router.post('/update-status',
   protect,
   staffFacultyAdmin,
+  upload.fields([
+    { name: 'processedFile', maxCount: 1 },
+    { name: 'signedFile', maxCount: 1 }
+  ]),
   updateDocumentStatusByRole,
 );
 
@@ -209,6 +222,12 @@ router.get('/',
   getAllDocuments,
 );
 
+router.get('/user/:userId/all',
+  protect,
+  adminOnly,
+  getDocumentsByUserForAdmin,
+);
+
 /**
  * GET /:documentId/details — ownership-aware track endpoint.
  * Declared BEFORE /:documentId/status to avoid conflict.
@@ -223,20 +242,30 @@ router.get('/:documentId/original-file',
   getOriginalFile,
 );
 
+router.get('/:documentId/signed-file',
+  protect,
+  getSignedFile,
+);
+
 /**
  * PATCH /:documentId/status  (admin only — legacy full control + file upload)
  * Also syncs current_role and current_stage based on the new status.
  */
 router.patch('/:documentId/status',
   protect,
-  adminOnly,
+  staffOnly,
   upload.single('processedFile'),
   updateDocumentStatus,
 );
 
+router.patch('/:documentId/metadata',
+  protect,
+  upload.single('file'),
+  editDocumentMetadata,
+);
+
 router.delete('/:documentId',
   protect,
-  adminOnly,
   deleteDocument,
 );
 
