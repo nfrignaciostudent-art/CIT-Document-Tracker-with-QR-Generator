@@ -15,6 +15,7 @@ const connectDB = async () => {
       useNewUrlParser:    true,
       useUnifiedTopology: true,
       autoIndex:          false,
+      dbName:             'cit_doctracker',
     });
     console.log(`MongoDB Connected: ${conn.connection.host}`);
 
@@ -63,7 +64,83 @@ const connectDB = async () => {
         Attendance.syncIndexes(),
       ]);
       console.log('All indexes synced successfully.');
-    } catch (e) { console.warn('syncIndexes failed:', e.message); }
+
+      /* ── Step 4: Auto-seed default accounts if missing ────────────── */
+      const userCount = await User.countDocuments();
+      if (userCount === 0) {
+        console.log('No users found in database. Seeding default test accounts...');
+        const testUsers = [
+          {
+            userId:      'USR-ADMIN',
+            username:    'admin',
+            name:        'CIT Administrator',
+            password:    'admin1234',
+            role:        'admin',
+            color:       '#4ade80'
+          },
+          {
+            userId:      'USR-STAFF',
+            username:    'staff',
+            name:        'CIT Staff Clerk',
+            password:    'staff1234',
+            role:        'staff',
+            color:       '#f59e0b',
+            employee_id: 'EMP-STAFF-01',
+            department:  'IT Department Office'
+          },
+          {
+            userId:      'USR-FACULTY',
+            username:    'faculty',
+            name:        'CIT Faculty Evaluator',
+            password:    'faculty1234',
+            role:        'faculty',
+            color:       '#a78bfa',
+            employee_id: 'EMP-FACULTY-01',
+            department:  'IT Faculty Room'
+          },
+          {
+            userId:      'USR-DEAN',
+            username:    'dean',
+            name:        'College Dean',
+            password:    'dean1234',
+            role:        'dean',
+            color:       '#ec4899',
+            employee_id: 'EMP-DEAN-01',
+            department:  'Dean of IT'
+          },
+          {
+            userId:      'USR-STUDENT',
+            username:    '2026123456',
+            name:        'CIT Test Student',
+            password:    'student1234',
+            role:        'user',
+            color:       '#60a5fa',
+            studentId:   '2026123456',
+            section:     'BSIT-4A'
+          },
+          {
+            userId:      'USR-STUDENT-TEST',
+            username:    '2023000128',
+            name:        'CIT Test Student E2E',
+            password:    'password123',
+            role:        'user',
+            color:       '#3b82f6',
+            studentId:   '2023000128',
+            section:     'BSIT-4B'
+          }
+        ];
+
+        for (const u of testUsers) {
+          const user = new User(u);
+          await user.save();
+          console.log(`Seeded user: ${u.username} (${u.role})`);
+        }
+        console.log('Seeding completed successfully.');
+      } else {
+        console.log(`Database has ${userCount} users. Auto-seed skipped.`);
+      }
+
+    } catch (e) { console.warn('syncIndexes or auto-seed failed:', e.message); }
 
   } catch (error) {
     console.error('MongoDB connection error:', error.message);
